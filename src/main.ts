@@ -5,6 +5,8 @@ import { winstonLogger } from './logger';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpErrorFilter } from './common/filters/http-error.filter';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import * as dotenv from 'dotenv';
+dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
