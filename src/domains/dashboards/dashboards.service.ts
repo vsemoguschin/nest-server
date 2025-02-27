@@ -345,12 +345,41 @@ export class DashboardsService {
       },
     });
 
-    const chartData = [{ name: '2025-02-01', sales: 4000 }];
+    const chartData = [
+      { name: '01', total: 0 },
+      { name: '02', total: 0 },
+      { name: '03', total: 0 },
+      { name: '04', total: 0 },
+      { name: '05', total: 0 },
+      { name: '06', total: 0 },
+      { name: '07', total: 0 },
+      { name: '08', total: 0 },
+      { name: '09', total: 0 },
+      { name: '10', total: 0 },
+      { name: '11', total: 0 },
+      { name: '12', total: 0 },
+      { name: '13', total: 0 },
+      { name: '14', total: 0 },
+      { name: '15', total: 0 },
+      { name: '16', total: 0 },
+      { name: '17', total: 0 },
+      { name: '18', total: 0 },
+      { name: '19', total: 0 },
+      { name: '20', total: 0 },
+      { name: '21', total: 0 },
+      { name: '22', total: 0 },
+      { name: '23', total: 0 },
+      { name: '24', total: 0 },
+      { name: '25', total: 0 },
+      { name: '26', total: 0 },
+      { name: '27', total: 0 },
+      { name: '28', total: 0 },
+      { name: '29', total: 0 },
+      { name: '30', total: 0 },
+      { name: '31', total: 0 },
+    ];
 
-    //отсортировать все user.deals по saleDate(2025-02-01, 2025-02-02, 2025-02-03, ...)
-
-    // Общий план
-    let totalPlan = 0;
+    let dealsSales = 0;
 
     const result = await Promise.all(
       managers.map(async (m) => {
@@ -362,11 +391,22 @@ export class DashboardsService {
             deletedAt: null,
           },
         });
-
-        totalPlan += managerPlan?.plan || 0;
+        m.deals.map((deal) => {
+          const day = deal.saleDate.slice(8, 10);
+          const index = chartData.findIndex((d) => d.name === day);
+          chartData[index].total += deal.price;
+          dealsSales += deal.price;
+        });
       }),
     );
 
-    return result;
+    // убрать элементы с нулевыми значениями total из chartData
+    const filteredChartData = chartData.filter((d) => d.total
+    );
+
+    return {
+      dealsSales,
+      chartData,
+    };
   }
 }
