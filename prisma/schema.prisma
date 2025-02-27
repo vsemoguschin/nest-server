@@ -1,0 +1,475 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model RefreshToken {
+  id         Int      @id @default(autoincrement()) 
+  token      String   @unique
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  revoked    Boolean  @default(false)
+  
+
+  @@index([userId])
+}
+
+// ПРОСТРАНСТВО
+model WorkSpace {
+  id              Int        @id @default(autoincrement()) 
+  title           String     @unique
+  department      String
+  deletedAt       DateTime?  // Поле для мягкого удаления
+  groups          Group[]
+  users           User[]
+  clients         Client[]
+  deals           Deal[]
+  dealSources     DealSource[]
+  createdAt       DateTime     @default(now())
+}
+
+
+// ГРУПППА
+model Group {
+  id         Int        @id @default(autoincrement()) 
+  title      String     @unique
+  deletedAt  DateTime?  // Поле для мягкого удаления
+  createdAt  DateTime   @default(now())
+
+  workSpaceId Int
+  workSpace  WorkSpace @relation(fields: [workSpaceId], references: [id])
+
+  users      User[]
+  clients    Client[]
+  deals      Deal[]
+}
+
+// РОЛЬ
+model Role {
+  id         Int        @id @default(autoincrement()) 
+  shortName  String     @unique
+  fullName   String
+  department String // Используем enum
+  deletedAt  DateTime?  // Поле для мягкого удаления
+  createdAt  DateTime   @default(now())
+  users      User[]
+}
+
+// ПОЛЬЗОВАТЕЛЬ
+model User {
+  id             Int       @id @default(autoincrement())
+  fullName       String
+  email          String    @unique
+  password       String
+  info           String    @default("")
+  tg             String    @default("")
+  tg_id          Int       @default(0)
+  status         String    @default("")
+  deletedAt  DateTime?  // Поле для мягкого удаления
+  createdAt  DateTime   @default(now())
+
+  refreshTokens  RefreshToken[]
+
+  // Добавляем связь с ролью:
+  roleId      Int
+  role        Role      @relation(fields: [roleId], references: [id])
+
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
+
+  groupId     Int
+  group       Group     @relation(fields: [groupId], references: [id])
+
+  clients         Client[] // Один пользователь может иметь много клиентов
+  deals           Deal[] // Один пользователь может иметь много сделок
+  dealSales       DealUser[]
+  dealAudit       DealAudit[]
+
+  payments          Payment[]
+
+  dops              Dop[]
+
+  managersPlans ManagersPlan[]
+}
+model ManagersPlan {
+  id         Int        @id @default(autoincrement()) 
+  period     String // Если нужен только год-месяц, можно хранить как DateTime (например, первый день месяца)
+  plan       Int        @default(0)
+  deletedAt  DateTime?  // Поле для мягкого удаления
+  createdAt  DateTime   @default(now())
+  
+  // Связь с пользователем (для которого создаётся план)
+  userId  Int      
+  user    User     @relation(fields: [userId], references: [id])
+  // Убираем @unique, чтобы один пользователь мог иметь несколько планов
+}
+
+// КЛИЕНТ
+model Client {
+  id           Int       @id @default(autoincrement())
+  fullName     String // Имя клиента
+  phone        String // Номер телефона
+  chatLink     String    @unique // Ссылка на чат
+  adLink       String    @default("") // Ссылка на объявление
+  gender       String // Пол
+  type         String // Тип клиента
+  inn          String    @default("") // ИНН
+  info         String    @default("") // Информация
+  firstContact String // Дата первого контакта
+  isRegular    Boolean   @default(false)
+  deletedAt    DateTime?  // Поле для мягкого удаления
+  createdAt    DateTime  @default(now())
+
+  // Внешний ключ для связи с пользователем
+  workSpaceId  Int
+  workSpace    WorkSpace @relation(fields: [workSpaceId], references: [id])
+
+  // Внешний ключ для связи с пользователем
+  groupId      Int
+  group        Group     @relation(fields: [groupId], references: [id])
+
+  // Внешний ключ для связи с пользователем
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id])
+
+  // Связь со сделками:
+  deals        Deal[] // Один пользователь может иметь много сделок
+}
+
+
+//--СДЕЛКА---------------------------------------------------------
+model Deal {
+  id                Int        @id @default(autoincrement())
+  saleDate          String   // Дата продажи (обязательное поле)
+  card_id           String      // ID карточки дизайна
+  title             String   // Название сделки
+  price             Int      // Стоимость без допов
+  status            String     @default("Создана") // Допустимые значения: "Создана", "Изготовление", "Готов", "Готов к отправке", "Отправлен", "Доставлен"
+  // deadline          String   // Дедлайн
+  clothingMethod    String   // Метод закрытия (clothingMethod)
+  description       String     @default("") // Описание сделки
+  source            String   // Источник сделки
+  adTag             String   // ТЕГ (adTag)
+  discont           String   // Скидка. Допустимые значения: "Без скидки", "Желтая", "ОПТ", "Рассылка", "Красная"
+  sphere            String     @default("") // Сфера деятельности
+  city              String     @default("") // Город
+  region            String     @default("") // Регион
+  paid              Boolean    @default(false) // Оплачена?
+  maketType         String   // Тип макета. Допустимые значения: "Дизайнерский", "Заготовка из базы", "Рекламный", "Визуализатор", "Из рассылки"
+  category          String    @default("")
+  maketPresentation String   // Дата презентации макета
+  period            String     @default("") // Период, например "2025-02"; значение можно вычислять на уровне приложения
+  deletedAt         DateTime?  // Поле для мягкого удаления
+  createdAt         DateTime   @default(now())
+
+  // Внешний ключ для связи с пространством
+  workSpaceId       Int
+  workSpace         WorkSpace  @relation( fields: [workSpaceId], references: [id])
+
+  // Внешний ключ для связи с группой
+  groupId           Int
+  group             Group      @relation( fields: [groupId], references: [id])
+
+  // Внешний ключ для связи с пользователем (создателем сделки)
+  userId            Int
+  user              User       @relation( fields: [userId], references: [id])
+  dealers           DealUser[]
+
+  // Внешний ключ для связи с клиентом
+  clientId          Int
+  client            Client     @relation( fields: [clientId], references: [id])
+
+  payments          Payment[]
+
+  dops              Dop[]
+
+  deliveries        Delivery[]
+
+  orders            Order[]
+
+  statusHistory     DealStatusHistory[]
+  audit             DealAudit[]
+}
+
+// История изменения статуса
+model DealStatusHistory {
+  id         Int         @id @default(autoincrement()) 
+  status     String
+  changedAt  DateTime    @default(now())
+  comment    String?     
+
+  dealId     Int
+  deal       Deal        @relation(fields: [dealId], references: [id])
+}
+// История изменений сделки
+model DealAudit {
+  id        Int      @id @default(autoincrement()) 
+  action    String   // Описание действия, например, "Статус изменён", "Данные обновлены"
+  comment   String?  // Дополнительный комментарий (если требуется)
+  createdAt DateTime @default(now())
+
+  dealId    Int      // ID сделки, к которой относится аудит
+  deal      Deal     @relation(fields: [dealId], references: [id])
+
+  userId    Int?     // ID пользователя, который совершил действие (опционально)
+  user      User?    @relation(fields: [userId], references: [id])
+}
+// Источники сделок
+model DealSource {
+  id                Int        @id @default(autoincrement()) 
+  title             String     @unique
+
+  // Внешний ключ для связи с пространством
+  workSpaceId       Int
+  workSpace         WorkSpace  @relation( fields: [workSpaceId], references: [id])
+}
+// Методы закрытия
+model ClothingMethod {
+  id                Int        @id @default(autoincrement()) 
+  title             String     @unique
+  
+}
+// Рекламные теги
+model AdTag {
+  id                Int        @id @default(autoincrement()) 
+  title             String     @unique
+  
+
+}
+// Сферы деятельности
+model Sphere {
+  id                Int        @id @default(autoincrement()) 
+  title             String     @unique
+  
+
+}
+//-----------------------------------------------------------------
+
+// ДИЛЕРЫ
+model DealUser {
+  id        Int    @id @default(autoincrement()) 
+  price     Int    // Сумма
+
+  dealId    Int
+  deal      Deal   @relation(fields: [dealId], references: [id])
+
+  userId    Int
+  user      User   @relation(fields: [userId], references: [id])
+
+  @@unique([dealId, userId])
+}
+
+// ПЛАТЕЖИ
+model Payment {
+  id          Int           @id @default(autoincrement()) 
+  title       String        // Назначение платежа
+  price       Int           // Сумма
+  date        String        // Дата отплаты (можно заменить на DateTime, если потребуется)
+  method      String // Способ оплаты
+  description String        @default("") // Описание
+  reservation Boolean       @default(false) // Бронь
+  period      String        @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
+
+  // Поле для мягкого удаления (опциональное)
+  deletedAt   DateTime?
+
+  // Связи
+  userId      Int
+  user        User          @relation(fields: [userId], references: [id])
+  
+  dealId      Int
+  deal        Deal          @relation(fields: [dealId], references: [id])
+}
+
+
+// ДОП. УСЛУГИ
+model Dop {
+  id          Int      @id @default(autoincrement()) 
+  saleDate    String   // Дата продажи (можно заменить на DateTime, если требуется)
+  type        String   // Тип допа (можно изменить на внешний ключ к DopsTypes, если нужно)
+  price       Int      // Стоимость
+  description String   @default("")
+  period      String   @default("") // Период, например "2025-02". Значение задается приложением
+
+  // Отношения:
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  
+  dealId      Int
+  deal        Deal     @relation(fields: [dealId], references: [id])
+}
+// Типы допов
+model DopsType {
+  id    Int    @id @default(autoincrement()) 
+  title String @unique
+}
+
+// ДОСТАВКИ
+model Delivery {
+  id          Int              @id @default(autoincrement()) 
+  date        String           // Обязательное поле "Дата отплаты"
+  method      DeliveryMethods
+  type        DeliveryTypes
+  description String           @default("")
+  track       String           @default("")
+  status      DeliveryStatuses   @default(Создана)
+  price       Int              @default(0)
+  period      String           @default("")
+
+  dealId      Int
+  deal        Deal             @relation(fields: [dealId], references: [id])
+}
+// Методы доставки
+enum DeliveryMethods {
+  СДЕК
+  ПОЧТА_РОССИИ
+  Яндекс
+  Балтийский_курьер
+  Самовывоз
+  ТК_КИТ
+  ПЭТ
+  Боксбери
+  Деловые_линии
+}
+// Типы доставки
+enum DeliveryTypes {
+  NONE
+  Платно
+  Бесплатно
+  Досыл
+}
+// Статусы доставки
+enum DeliveryStatuses {
+  Создана
+  Доступна
+  Отправлена
+  Вручена
+  Возврат
+}
+
+// СТАДИИ ЗАКАЗОВ
+model Stage {
+  id        Int      @id @default(autoincrement()) 
+  title     String   @unique
+  index     Int?
+  deletedAt DateTime?
+
+  orders    Order[]
+}
+
+// ЗАКАЗЫ
+model Order {
+  id             Int             @id @default(autoincrement()) 
+  deadline       String       // Дедлайн
+  loadDate       String          // Дата выгрузки на производство (обязательное поле)
+  endDate        String          // Дата готовности
+  title          String          // Название заказа
+  material       MaterialEnum    @default(Поликарбонат) // Материал подложки
+  boardWidth     Int             // Ширина подложки
+  boardHeight    Int             // Высота подложки
+  holeType       String          @default("6мм")          // Тип отверстий
+  stand          Boolean         @default(false)       // Подставка
+  laminate       String          @default("")          // Пленка
+  print          Boolean         @default(false)       // Печать
+  printQuality   Boolean         @default(false)       // Качество печати
+  acrylic        String          @default("")          // Акрил
+  type           OrderTypeEnum   @default(Помещение)     // Тип (Помещение/Улица)
+  wireLength     String          // Длина акустического провода
+  elements       Int             // Количество элементов
+  gift           Boolean         @default(false)       // Подарок
+  gift_elements  Int             @default(0)           // Количество элементов подарка
+  gift_metrs     Int             @default(0)           // Метраж подарка
+  adapter        AdapterEnum     // Блок (например, Помещение, Уличный, Нет)
+  plug           String          @default("Нет")       // Вилка
+  fitting        FittingEnum     @default(Нет)         // Крепления
+  dimmer         Boolean         @default(false)       // Диммер
+  giftPack       Boolean         @default(false)       // Подарочная упаковка
+  description    String          @default("")          // Описание
+  period         String          @default("")          // Период, например "2025-02"
+  deletedAt      DateTime?                              // Для мягкого удаления
+
+  // Связи:
+  dealId         Int
+  deal           Deal            @relation(fields: [dealId], references: [id])
+  
+  stageId        Int
+  stage          Stage           @relation(fields: [stageId], references: [id])
+
+  neons          Neon[]
+}
+enum MaterialEnum {
+  Поликарбонат
+  ПВХ
+}
+enum OrderTypeEnum {
+  Помещение
+  Улица
+}
+enum AdapterEnum {
+  INSIDE  @map("Помещение")
+  OUTSIDE @map("Уличный")
+  NONE    @map("Нет")
+}
+enum FittingEnum {
+  Держатели_хромированые
+  Держатели_золотые
+  Держатели_черные
+  Крепления_для_окна
+  Дюбеля
+  Присоски
+  Нет
+}
+
+// НЕОН
+model Neon {
+  id        Int         @id @default(autoincrement()) 
+  width     String   @default("6мм")
+  length    Int         // Длина неона
+  color     String   // Цвет неона
+  type      String    @default("Стандарт")
+  elements  Int         @default(0) // Количество элементов
+
+  // Связь с заказом (Order)
+  orderId   Int
+  order     Order       @relation(fields: [orderId], references: [id])
+}
+enum NeonWidth {
+  мм6    @map("6мм")
+  мм8    @map("8мм")
+  Подсветка
+}
+enum NeonColor {
+  красный
+  синий
+  голубой
+  оранжевый
+  фиолетовый
+  розовый
+  бирюзовый
+  желтый
+  зеленый
+  холодный_белый @map("холодный белый")
+  теплый_белый   @map("теплый белый")
+  смарт
+  rgb
+}
+// enum NeonType {
+//   Стандарт
+//   Улица
+//   РГБ
+//   Подсветка
+//   РГБ_подсветка @map("РГБ подсветка")
+//   Смарт
+// }

@@ -1,0 +1,18 @@
+#cloud-config
+users:
+  - name: root
+    ssh-authorized-keys:
+      - ssh-rsa <ваш публичный SSH-ключ> # Замените на свой ключ для доступа по SSH
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose
+
+runcmd:
+  - systemctl enable docker
+  - systemctl start docker
+  - usermod -aG docker root # Добавляем root в группу docker для удобства
+  - echo "Server setup completed" > /root/setup.log
