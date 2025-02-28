@@ -27,7 +27,7 @@ async function bootstrap() {
     ], // Разрешаем доступ с localhost:3001
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Разрешаем HTTP-методы
     allowedHeaders: 'Content-Type, Authorization', // Разрешаем заголовки
-    credentials: true, // Разрешаем передачу cookies и аутентификационных данных
+    // credentials: true, // Разрешаем передачу cookies и аутентификационных данных
   });
 
   app.setGlobalPrefix('api');
