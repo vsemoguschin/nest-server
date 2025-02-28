@@ -17,17 +17,13 @@ async function bootstrap() {
     origin: [
       'http://localhost:3000',
       'http://localhost:3001',
-      'http://46.19.64.10:80',
-      'http://46.19.64.10:3000',
-      'http://46.19.64.10',
       'http://easy-crm.pro',
-      'https://46.19.64.10:3000',
       'https://easy-crm.pro',
-      'https://front.easy-crm.pro'
+      'https://front.easy-crm.pro',
     ], // Разрешаем доступ с localhost:3001
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Разрешаем HTTP-методы
     allowedHeaders: 'Content-Type, Authorization', // Разрешаем заголовки
-    // credentials: true, // Разрешаем передачу cookies и аутентификационных данных
+    credentials: true, // Разрешаем передачу cookies и аутентификационных данных
   });
 
   app.setGlobalPrefix('api');
