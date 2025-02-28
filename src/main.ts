@@ -23,7 +23,7 @@ async function bootstrap() {
       'http://easy-crm.pro',
       'https://46.19.64.10:3000',
       'https://easy-crm.pro',
-      'https://front.easy-crm.pro',
+      'https://front.easy-crm.pro'
     ], // Разрешаем доступ с localhost:3001
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Разрешаем HTTP-методы
     allowedHeaders: 'Content-Type, Authorization', // Разрешаем заголовки
