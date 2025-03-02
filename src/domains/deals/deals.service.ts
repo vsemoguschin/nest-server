@@ -73,7 +73,15 @@ export class DealsService {
 
       include: {
         dops: true,
-        payments: true,
+        payments: {
+          where: {
+            date: {
+              gte: start,
+              lte: end,
+            },
+            deletedAt: null,
+          },
+        },
         dealers: true,
         client: true,
         // deliveries: true,
@@ -162,6 +170,14 @@ export class DealsService {
       totalInfo,
     };
 
+    const pay = await this.prisma.payment.findMany({
+      where: {
+        period: start.slice(0, 7),
+        deletedAt: null,
+      },
+    });
+    console.log(pay.length);
+    console.log(pay.reduce((a, b) => a + b.price, 0));
     return resp;
   }
 
@@ -294,7 +310,7 @@ export class DealsService {
       where: { id: dealId },
       include: { dealers: true },
     });
-    
+
     if (!deal) {
       throw new NotFoundException(`Сделка с ID ${dealId} не найдена`);
     }

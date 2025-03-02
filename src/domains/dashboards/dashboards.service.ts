@@ -325,113 +325,13 @@ export class DashboardsService {
   }
 
   async getStatistics(user: UserDto, period: string) {
-    //period = '2025-02';
-
-    const resultExample = {
-      workspaces: [
-        {
-          id: 1,
-          title: 'Рабочее пространство 1',
-          plan: 10000,
-          dealsSales: 5000,
-          totalSales: 6000,
-          dealsAmount: 10,
-          dopSales: 1000,
-          dopsAmount: 5,
-          salesToPlan: 60,
-          remainder: 4000,
-          dopsToSales: 20,
-          dealsWithoutDesigners: 5,
-          dealsSalesWithoutDesigners: 2000,
-          averageBill: 500,
-          receivedPayments: 5000,
-          top5Users: [
-            {
-              name: 'Иванов Иван Иванович',
-              sales: 100,
-            },
-            {
-              name: 'Иванов Иван Иванович',
-              sales: 90,
-            },
-            {
-              name: 'Иванов Иван Иванович',
-              sales: 80,
-            },
-            {
-              name: 'Иванов Иван Иванович',
-              sales: 70,
-            },
-            {
-              name: 'Иванов Иван Иванович',
-              sales: 60,
-            },
-          ],
-        },
-        {
-          id: 2,
-          title: 'Рабочее пространство 2',
-          plan: 15000,
-          dealsSales: 7000,
-          totalSales: 8500,
-          dealsAmount: 15,
-          dopSales: 1500,
-          dopsAmount: 7,
-          salesToPlan: 57,
-          remainder: 6500,
-          dopsToSales: 18,
-          dealsWithoutDesigners: 8,
-          dealsSalesWithoutDesigners: 3000,
-          averageBill: 566,
-          receivedPayments: 7000,
-          top5Users: [
-            {
-              name: 'Петров Петр Петрович',
-              sales: 110,
-            },
-            {
-              name: 'Петров Петр Петрович',
-              sales: 100,
-            },
-            {
-              name: 'Петров Петр Петрович',
-              sales: 90,
-            },
-            {
-              name: 'Петров Петр Петрович',
-              sales: 80,
-            },
-            {
-              name: 'Петров Петр Петрович',
-              sales: 70,
-            },
-          ],
-        },
-      ],
-      totals: {
-        plan: 25000,
-        dealsSales: 12000,
-        totalSales: 14500,
-        dealsAmount: 25,
-        dopSales: 2500,
-        dopsAmount: 12,
-        salesToPlan: 58,
-        remainder: 10500,
-        dopsToSales: 19,
-        dealsWithoutDesigners: 13,
-        dealsSalesWithoutDesigners: 5000,
-        averageBill: 533,
-        receivedPayments: 12000,
-      },
-    };
-
     const allWorkspaces = await this.prisma.workSpace.findMany({
       where: {
         deletedAt: null,
         department: 'COMMERCIAL',
         title: {
-          in: ['B2B', 'ВК', 'Ведение']
-        }
+          in: ['B2B', 'ВК'],
+        },
       },
       include: {
         deals: {
@@ -444,6 +344,11 @@ export class DashboardsService {
               where: {
                 period,
                 deletedAt: null,
+              },
+            },
+            dealers: {
+              include: {
+                user: true,
               },
             },
           },
@@ -465,168 +370,247 @@ export class DashboardsService {
       },
     });
 
-    const result = allWorkspaces.map((w) => {
-      const plan = w.users.reduce(
-        (sum, user) => sum + user.managersPlans[0]?.plan || 0,
-        0,
-      );
-      const dealsSales = w.deals.reduce((sum, deal) => sum + deal.price, 0);
-      const dopSales = w.users.reduce(
-        (sum, user) => sum + user.dops.reduce((sum, dop) => sum + dop.price, 0),
-        0,
-      );
-      const totalSales = dealsSales + dopSales;
-      const dealsAmount = w.deals.length;
-      const dopsAmount = w.users.reduce(
-        (sum, user) => sum + user.dops.length,
-        0,
-      );
-      const salesToPlan = plan ? +((totalSales / plan) * 100).toFixed() : 0;
-      const remainder = plan - totalSales;
-      const dopsToSales = totalSales;
-      const averageBill = dealsAmount
-        ? +(dealsSales / dealsAmount).toFixed()
-        : 0;
-      const receivedPayments = w.deals.reduce(
-        (sum, deal) =>
-          sum + deal.payments.reduce((sum, payment) => sum + payment.price, 0),
-        0,
-      );
+    const fullData = {
+      workSpaceName: 'Все',
+      chartData: [
+        { name: '01', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '02', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '03', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '04', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '05', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '06', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '07', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '08', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '09', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '10', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '11', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '12', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '13', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '14', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '15', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '16', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '17', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '18', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '19', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '20', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '21', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '22', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '23', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '24', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '25', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '26', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '27', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '28', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '29', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '30', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '31', ['Сделки']: 0, ['Допы']: 0 },
+      ],
+      plan: 0,
+      dealsSales: 0,
+      totalSales: 0,
+      dealsAmount: 0,
+      dopSales: 0,
+      dopsAmount: 0,
+      salesToPlan: 0,
+      remainder: 0,
+      dopsToSales: 0,
+      averageBill: 0,
+      receivedPayments: 0,
+      users: [],
+      maketsSales: [
+        {
+          name: 'Дизайнерский',
+          sales: 0,
+        },
+        {
+          name: 'Заготовка из базы',
+          sales: 0,
+        },
+        {
+          name: 'Рекламный',
+          sales: 0,
+        },
+        {
+          name: 'Визуализатор',
+          sales: 0,
+        },
+        {
+          name: 'Из рассылки',
+          sales: 0,
+        },
+      ],
+    };
 
-      const chartData = [
-        { name: '01', total: 0 },
-        { name: '02', total: 0 },
-        { name: '03', total: 0 },
-        { name: '04', total: 0 },
-        { name: '05', total: 0 },
-        { name: '06', total: 0 },
-        { name: '07', total: 0 },
-        { name: '08', total: 0 },
-        { name: '09', total: 0 },
-        { name: '10', total: 0 },
-        { name: '11', total: 0 },
-        { name: '12', total: 0 },
-        { name: '13', total: 0 },
-        { name: '14', total: 0 },
-        { name: '15', total: 0 },
-        { name: '16', total: 0 },
-        { name: '17', total: 0 },
-        { name: '18', total: 0 },
-        { name: '19', total: 0 },
-        { name: '20', total: 0 },
-        { name: '21', total: 0 },
-        { name: '22', total: 0 },
-        { name: '23', total: 0 },
-        { name: '24', total: 0 },
-        { name: '25', total: 0 },
-        { name: '26', total: 0 },
-        { name: '27', total: 0 },
-        { name: '28', total: 0 },
-        { name: '29', total: 0 },
-        { name: '30', total: 0 },
-        { name: '31', total: 0 },
-      ];
+    const workSpacesData = allWorkspaces.map((w) => {
+      const title = w.title;
+      const data = {
+        workSpaceName: title,
+        chartData: [
+          { name: '01', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '02', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '03', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '04', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '05', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '06', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '07', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '08', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '09', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '10', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '11', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '12', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '13', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '14', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '15', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '16', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '17', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '18', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '19', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '20', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '21', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '22', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '23', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '24', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '25', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '26', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '27', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '28', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '29', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '30', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '31', ['Сделки']: 0, ['Допы']: 0 },
+        ],
+        plan: 0,
+        dealsSales: 0,
+        totalSales: 0,
+        dealsAmount: w.deals.length,
+        dopSales: 0,
+        dopsAmount: 0,
+        salesToPlan: 0,
+        remainder: 0,
+        dopsToSales: 0,
+        averageBill: 0,
+        receivedPayments: 0,
+        users: w.users.map((u) => {
+          return {
+            id: u.id,
+            fullName: u.fullName,
+            workSpace: w.title,
+            sales: 0,
+          };
+        }),
+        maketsSales: [
+          {
+            name: 'Дизайнерский',
+            sales: 0,
+          },
+          {
+            name: 'Заготовка из базы',
+            sales: 0,
+          },
+          {
+            name: 'Рекламный',
+            sales: 0,
+          },
+          {
+            name: 'Визуализатор',
+            sales: 0,
+          },
+          {
+            name: 'Из рассылки',
+            sales: 0,
+          },
+        ],
+      };
 
+      // Считаем сумму сделок
       w.deals.map((deal) => {
         const day = deal.saleDate.slice(8, 10);
-        const index = chartData.findIndex((d) => d.name === day);
-        chartData[index].total += deal.price;
+        const index = data.chartData.findIndex((d) => d.name === day);
+        data.chartData[index]['Сделки'] += deal.price;
+        fullData.chartData[index]['Сделки'] += deal.price;
+        data.dealsSales += deal.price;
+        data.totalSales += deal.price;
+
+        deal.payments.map((payment) => {
+          data.receivedPayments += payment.price;
+        });
+        deal.dealers.map((dealer) => {
+          const userIndex = data.users.findIndex((u) => u.id === dealer.userId);
+          data.users[userIndex].sales += dealer.price;
+        });
+        // console.log(deal.maketType);
+        const maketIndex = data.maketsSales.findIndex(
+          (m) => m.name === deal.maketType,
+        );
+        data.maketsSales[maketIndex].sales += deal.price;
       });
 
-      return {
-        id: w.id,
-        title: w.title,
-        plan,
-        dealsSales,
-        totalSales,
-        dealsAmount,
-        dopSales,
-        dopsAmount,
-        salesToPlan,
-        remainder,
-        dopsToSales,
-        averageBill,
-        receivedPayments,
-        chartData,
-      };
+      w.users.map((user) => {
+        user.dops.map((dop) => {
+          const day = dop.saleDate.slice(8, 10);
+          const index = data.chartData.findIndex((d) => d.name === day);
+          data.chartData[index]['Допы'] += dop.price;
+          fullData.chartData[index]['Допы'] += dop.price;
+          data.dopSales += dop.price;
+          data.dopsAmount += 1;
+          data.totalSales += dop.price;
+          data.plan = user.managersPlans[0]?.plan || 0;
+
+          const userIndex = data.users.findIndex((u) => u.id === dop.userId);
+          data.users[userIndex].sales += dop.price;
+        });
+      });
+
+      data.dopsToSales = data.totalSales
+        ? +((data.dopSales / data.totalSales) * 100).toFixed()
+        : 0;
+      data.averageBill = data.dealsAmount
+        ? +(data.dealsSales / data.dealsAmount).toFixed()
+        : 0;
+
+      data.salesToPlan = data.plan
+        ? +((data.totalSales / data.plan) * 100).toFixed()
+        : 0;
+
+      data.remainder = data.plan - data.totalSales;
+
+      fullData.dealsAmount += data.dealsAmount;
+      fullData.dealsSales += data.dealsSales;
+      fullData.totalSales += data.totalSales;
+      fullData.receivedPayments += data.receivedPayments;
+      fullData.dopsAmount += data.dopsAmount;
+      fullData.dopSales += data.dopSales;
+      fullData.plan += data.plan;
+      fullData.plan += data.plan;
+      fullData.maketsSales = fullData.maketsSales.map((m) => {
+        const maketIndex = data.maketsSales.findIndex((d) => d.name === m.name);
+        m.sales += data.maketsSales[maketIndex].sales;
+        return m;
+      });
+
+      data.users = data.users.sort((a, b) => b.sales - a.sales).slice(0, 5);
+      return data;
     });
 
-    // Находим пользователей с department = 'COMMERCIAL'
-    const managers = await this.prisma.user.findMany({
-      where: {
-        role: {
-          department: 'COMMERCIAL',
-        },
-      },
-      include: {
-        role: true,
-        deals: {
-          where: {
-            period,
-            deletedAt: null,
-          },
-        },
-      },
-    });
+    fullData.dopsToSales = fullData.totalSales
+      ? +((fullData.dopSales / fullData.totalSales) * 100).toFixed()
+      : 0;
+    fullData.averageBill = fullData.dealsAmount
+      ? +(fullData.dealsSales / fullData.dealsAmount).toFixed()
+      : 0;
+    fullData.salesToPlan = fullData.plan
+      ? +((fullData.totalSales / fullData.plan) * 100).toFixed()
+      : 0;
 
-    const chartData = [
-      { name: '01', total: 0 },
-      { name: '02', total: 0 },
-      { name: '03', total: 0 },
-      { name: '04', total: 0 },
-      { name: '05', total: 0 },
-      { name: '06', total: 0 },
-      { name: '07', total: 0 },
-      { name: '08', total: 0 },
-      { name: '09', total: 0 },
-      { name: '10', total: 0 },
-      { name: '11', total: 0 },
-      { name: '12', total: 0 },
-      { name: '13', total: 0 },
-      { name: '14', total: 0 },
-      { name: '15', total: 0 },
-      { name: '16', total: 0 },
-      { name: '17', total: 0 },
-      { name: '18', total: 0 },
-      { name: '19', total: 0 },
-      { name: '20', total: 0 },
-      { name: '21', total: 0 },
-      { name: '22', total: 0 },
-      { name: '23', total: 0 },
-      { name: '24', total: 0 },
-      { name: '25', total: 0 },
-      { name: '26', total: 0 },
-      { name: '27', total: 0 },
-      { name: '28', total: 0 },
-      { name: '29', total: 0 },
-      { name: '30', total: 0 },
-      { name: '31', total: 0 },
+    fullData.remainder = fullData.plan - fullData.totalSales;
+
+    const topManagers = workSpacesData.flatMap((w) => w.users);
+
+    return [
+      {
+        ...fullData,
+        users: topManagers.sort((a, b) => b.sales - a.sales).slice(0, 5),
+      },
+      ...workSpacesData,
     ];
-
-    let dealsSales = 0;
-
-    // const result = await Promise.all(
-    //   managers.map(async (m) => {
-    //     // Находим ManagersPlan за период
-    //     const managerPlan = await this.prisma.managersPlan.findFirst({
-    //       where: {
-    //         userId: m.id,
-    //         period,
-    //         deletedAt: null,
-    //       },
-    //     });
-    //     m.deals.map((deal) => {
-    //       const day = deal.saleDate.slice(8, 10);
-    //       const index = chartData.findIndex((d) => d.name === day);
-    //       chartData[index].total += deal.price;
-    //       dealsSales += deal.price;
-    //     });
-    //   }),
-    // );
-
-    // убрать элементы с нулевыми значениями total из chartData
-    const filteredChartData = chartData.filter((d) => d.total);
-
-    return result;
   }
 }
