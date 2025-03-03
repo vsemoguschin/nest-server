@@ -78,4 +78,9 @@ export class DashboardsController {
     }
     return this.dashboardsService.getStatistics(user, period);
   }
+  //Получить всю базу
+  @Get('/datas')
+  async getDatas(): Promise<any> {
+    return this.dashboardsService.getDatas();
+  }
 }

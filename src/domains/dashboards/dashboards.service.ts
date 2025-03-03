@@ -147,7 +147,7 @@ export class DashboardsService {
         );
         const totalDeals = dealUsers.length;
 
-        // Находим все Dop за период
+        // Находим все Dop за период для деления частей выручки
         const dops = await this.prisma.dop.findMany({
           where: {
             userId: m.id,
@@ -612,5 +612,48 @@ export class DashboardsService {
       },
       ...workSpacesData,
     ];
+  }
+
+  async getDatas() {
+    const workspaces = await this.prisma.workSpace.findMany({
+      include: {
+        groups: {
+          include: {
+            users: {
+              include: {
+                clients: {
+                  include: {
+                    deals: {
+                      include: {
+                        dops: true,
+                        payments: true,
+                        dealers: true,
+                      },
+                    },
+                  },
+                },
+                managersPlans: true,
+              },
+            },
+          },
+        },
+        dealSources: true,
+      },
+    });
+
+    // Получаем остальные данные
+    const doptypes = await this.prisma.dopsType.findMany();
+    const tag = await this.prisma.adTag.findMany();
+    const clothingMethods = await this.prisma.clothingMethod.findMany();
+    const spheres = await this.prisma.sphere.findMany();
+
+    // Возвращаем JSON-ответ
+    return {
+      workspaces,
+      doptypes,
+      tag,
+      clothingMethods,
+      spheres,
+    };
   }
 }

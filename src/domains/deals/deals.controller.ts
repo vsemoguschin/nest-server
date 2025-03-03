@@ -105,6 +105,7 @@ export class DealsController {
     summary: 'Удалить сделку',
     description: 'Endpoint: DELETE /groups/:id. Удаляет сделку по id.',
   })
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP')
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.dealsService.delete(id);
   }

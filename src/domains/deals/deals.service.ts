@@ -190,7 +190,11 @@ export class DealsService {
             user: true,
           },
         },
-        payments: true,
+        payments: {
+          where: {
+            deletedAt: null,
+          },
+        },
         dealers: {
           include: {
             user: true,
@@ -282,6 +286,30 @@ export class DealsService {
     if (!dealExists) {
       throw new NotFoundException(`Сделка с ID ${id} не найдена`);
     }
+    const dealId = id;
+    return this.prisma.$transaction(async (prisma) => {
+      // Удаляем все связанные DealUser
+      await prisma.dealUser.deleteMany({
+        where: { dealId },
+      });
+
+      // Удаляем все связанные Payment
+      await prisma.payment.deleteMany({
+        where: { dealId },
+      });
+
+      // Удаляем все связанные Dop
+      await prisma.dop.deleteMany({
+        where: { dealId },
+      });
+
+      // Удаляем саму сделку
+      const deletedDeal = await prisma.deal.delete({
+        where: { id: dealId },
+      });
+
+      return deletedDeal;
+    });
 
     return this.prisma.deal.update({
       where: { id },
