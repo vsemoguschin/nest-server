@@ -63,7 +63,7 @@ export class DealsService {
     // Запрашиваем сделки, у которых saleDate попадает в диапазон
     const deals = await this.prisma.deal.findMany({
       where: {
-        deletedAt: null,
+        // deletedAt: null,
         saleDate: {
           gte: start,
           lte: end,
@@ -119,6 +119,7 @@ export class DealsService {
       const groupId = el.groupId;
       const saleDate = el.saleDate;
       const maketType = el.maketType;
+      const deletedAt = el.deletedAt;
       // console.log(saleDate.toISOString().slice(0, 10), 234356);
 
       return {
@@ -146,6 +147,7 @@ export class DealsService {
         chatLink,
         saleDate,
         maketType,
+        deletedAt
       };
     });
 
@@ -183,7 +185,7 @@ export class DealsService {
 
   async findOne(id: number) {
     const deal = await this.prisma.deal.findUnique({
-      where: { id, deletedAt: null },
+      where: { id },
       include: {
         dops: {
           include: {

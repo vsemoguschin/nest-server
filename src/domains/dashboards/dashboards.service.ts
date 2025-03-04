@@ -15,6 +15,54 @@ interface RevenueDetail {
   revenue: number;
 }
 
+interface ChartDataItem {
+  name: string;
+  ['Сделки']: number;
+  ['Допы']: number;
+}
+
+interface User {
+  id: number;
+  fullName: string;
+  workSpace: string;
+  sales: number;
+}
+
+interface MaketsSales {
+  name: string;
+  sales: number;
+}
+
+interface Sources {
+  name: string;
+  sales: number;
+}
+
+interface adTag {
+  name: string;
+  sales: number;
+}
+
+export interface WorkSpaceData {
+  workSpaceName: string;
+  chartData: ChartDataItem[];
+  plan: number;
+  dealsSales: number;
+  totalSales: number;
+  dealsAmount: number;
+  dopSales: number;
+  dopsAmount: number;
+  salesToPlan: number;
+  remainder: number;
+  dopsToSales: number;
+  averageBill: number;
+  receivedPayments: number;
+  users: User[];
+  maketsSales: MaketsSales[];
+  sources: Sources[];
+  adTags: adTag[];
+}
+
 @Injectable()
 export class DashboardsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -133,7 +181,9 @@ export class DashboardsService {
                     deletedAt: null,
                   },
                 }, // Подтягиваем платежи для каждой сделки
-                dops: true,
+                dops: {
+                  where: { period },
+                },
                 dealers: true,
               },
             },
@@ -318,8 +368,8 @@ export class DashboardsService {
         period,
       },
     });
-    console.log(pay.reduce((a, b) => a + b.price, 0)); //2985507
-    console.log(result.reduce((a, b) => a + b.receivedPayments, 0)); //2960085
+    // console.log(pay.reduce((a, b) => a + b.price, 0)); //2985507
+    // console.log(result.reduce((a, b) => a + b.receivedPayments, 0)); //2960085
 
     return result;
   }
@@ -370,7 +420,7 @@ export class DashboardsService {
       },
     });
 
-    const fullData = {
+    const fullData: WorkSpaceData = {
       workSpaceName: 'Все',
       chartData: [
         { name: '01', ['Сделки']: 0, ['Допы']: 0 },
@@ -439,11 +489,13 @@ export class DashboardsService {
           sales: 0,
         },
       ],
+      sources: [],
+      adTags: [],
     };
 
     const workSpacesData = allWorkspaces.map((w) => {
       const title = w.title;
-      const data = {
+      const data: WorkSpaceData = {
         workSpaceName: title,
         chartData: [
           { name: '01', ['Сделки']: 0, ['Допы']: 0 },
@@ -519,6 +571,8 @@ export class DashboardsService {
             sales: 0,
           },
         ],
+        sources: [],
+        adTags: [],
       };
 
       // Считаем сумму сделок
@@ -542,6 +596,42 @@ export class DashboardsService {
           (m) => m.name === deal.maketType,
         );
         data.maketsSales[maketIndex].sales += deal.price;
+        if (!data.sources.find((s) => s.name === deal.source)) {
+          data.sources.push({ name: deal.source, sales: deal.price });
+        } else {
+          const sourceIndex = data.sources.findIndex(
+            (s) => s.name === deal.source,
+          );
+          data.sources[sourceIndex].sales += deal.price;
+        }
+        if (!fullData.sources.find((s) => s.name === deal.source)) {
+          fullData.sources.push({ name: deal.source, sales: deal.price });
+        } else {
+          const sourceIndex = fullData.sources.findIndex(
+            (s) => s.name === deal.source,
+          );
+          fullData.sources[sourceIndex].sales += deal.price;
+        }
+        //adtags
+        if (!data.adTags.find((s) => s.name === deal.adTag)) {
+          data.adTags.push({ name: deal.adTag, sales: deal.price });
+        } else {
+          const adTagIndex = data.adTags.findIndex(
+            (s) => s.name === deal.adTag,
+          );
+          data.adTags[adTagIndex].sales += deal.price;
+        }
+        if (!fullData.adTags.find((s) => s.name === deal.adTag)) {
+          fullData.adTags.push({ name: deal.adTag, sales: deal.price });
+        } else {
+          const adTagIndex = fullData.adTags.findIndex(
+            (s) => s.name === deal.adTag,
+          );
+          fullData.adTags[adTagIndex].sales += deal.price;
+        }
+        data.sources.sort((a, b) => b.sales - a.sales);
+        data.adTags.sort((a, b) => b.sales - a.sales);
+        data.maketsSales.sort((a, b) => b.sales - a.sales);
       });
 
       w.users.map((user) => {
@@ -603,6 +693,10 @@ export class DashboardsService {
 
     fullData.remainder = fullData.plan - fullData.totalSales;
 
+    fullData.sources.sort((a, b) => b.sales - a.sales);
+    fullData.adTags.sort((a, b) => b.sales - a.sales);
+    fullData.maketsSales.sort((a, b) => b.sales - a.sales);
+
     const topManagers = workSpacesData.flatMap((w) => w.users);
 
     return [
@@ -657,3 +751,39 @@ export class DashboardsService {
     };
   }
 }
+// Итог
+// Данные которые вбиваем
+// - дата
+// - количество заявок 
+// - презентаций макетов
+// - количество макетов день в день
+// - количество всего макетов
+
+// Данные которые автоматически отображаются
+// - сумма доп продаж
+// - общая сумма продаж
+// - колличество сделок
+// - конверсия = колличество сделок / колличество заявок
+// - ддр - от ропа заберет стоимость заявки и посчитается
+// - средний чек = общая сумма продаж/ колличество сделок
+// - заказы день в день
+
+const ad = 2000000;
+const callCost = ad / 1000;
+
+const first = {
+  calls: 100,
+  dopsSales: 50000,
+  totalSales: 55000,
+  dealSales: 5000,
+  dealsAmount: 5,
+}
+const conversion = first.dealsAmount / first.calls;
+const averageBill = first.totalSales / first.dealsAmount;
+const fddr = callCost * first.calls / first.totalSales;
+
+console.log({
+  conversion,
+  averageBill,
+  fddr
+});
