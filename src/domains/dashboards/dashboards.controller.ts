@@ -58,6 +58,31 @@ export class DashboardsController {
     return this.dashboardsService.getManagersData(user, period);
   }
 
+  @Get('/reports/managers')
+  @ApiOperation({
+    summary: 'Получить данные менеджеров',
+    description:
+      'Endpoint: GET /dashboards?period=YYYY-MM. Получить данные менеджеров за указанный период.',
+  })
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
+  @ApiResponse({
+    status: 200,
+    description: 'Данные менеджеров успешно получены.',
+  })
+  @ApiResponse({ status: 400, description: 'Неверный формат периода.' })
+  async getReports(
+    @CurrentUser() user: UserDto,
+    @Query('period') period: string,
+  ): Promise<any> {
+    // console.log(period);
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.dashboardsService.getManagersReports(user, period);
+  }
+
   //Получить статистику за указанный период
   @Get('/statistics')
   @ApiOperation({ summary: 'Получить статистику за указанный период' })

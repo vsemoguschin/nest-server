@@ -83,25 +83,27 @@ model User {
   refreshTokens  RefreshToken[]
 
   // Добавляем связь с ролью:
-  roleId      Int
-  role        Role      @relation(fields: [roleId], references: [id])
+  roleId         Int
+  role           Role      @relation(fields: [roleId], references: [id])
 
-  workSpaceId Int
-  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
+  workSpaceId    Int
+  workSpace      WorkSpace @relation(fields: [workSpaceId], references: [id])
 
-  groupId     Int
-  group       Group     @relation(fields: [groupId], references: [id])
+  groupId        Int
+  group          Group     @relation(fields: [groupId], references: [id])
 
-  clients         Client[] // Один пользователь может иметь много клиентов
-  deals           Deal[] // Один пользователь может иметь много сделок
-  dealSales       DealUser[]
-  dealAudit       DealAudit[]
+  clients        Client[] // Один пользователь может иметь много клиентов
+  deals          Deal[] // Один пользователь может иметь много сделок
+  dealSales      DealUser[]
+  dealAudit      DealAudit[]
 
-  payments          Payment[]
+  payments       Payment[]
 
-  dops              Dop[]
+  dops           Dop[]
 
-  managersPlans ManagersPlan[]
+  managersPlans  ManagersPlan[]
+
+  managerReports ManagerReport[]
 }
 model ManagersPlan {
   id         Int        @id @default(autoincrement()) 
@@ -112,8 +114,20 @@ model ManagersPlan {
   
   // Связь с пользователем (для которого создаётся план)
   userId  Int      
-  user    User     @relation(fields: [userId], references: [id])
+  user    User          @relation(fields: [userId], references: [id])
   // Убираем @unique, чтобы один пользователь мог иметь несколько планов
+}
+
+model ManagerReport {
+  id             Int    @id @default(autoincrement())
+  calls          Int    @default(0)
+  makets         Int    @default(0)
+  maketsDayToDay Int    @default(0)
+  date           String
+  period         String @default("")
+
+  userId         Int
+  user           User  @relation(fields: [userId], references: [id])
 }
 
 // КЛИЕНТ
@@ -393,7 +407,7 @@ model Order {
   gift_metrs     Int             @default(0)           // Метраж подарка
   adapter        AdapterEnum     // Блок (например, Помещение, Уличный, Нет)
   plug           String          @default("Нет")       // Вилка
-  fitting        FittingEnum     @default(Нет)         // Крепления
+  fitting        String          @default("Нет")         // Крепления
   dimmer         Boolean         @default(false)       // Диммер
   giftPack       Boolean         @default(false)       // Подарочная упаковка
   description    String          @default("")          // Описание
@@ -422,15 +436,15 @@ enum AdapterEnum {
   OUTSIDE @map("Уличный")
   NONE    @map("Нет")
 }
-enum FittingEnum {
-  Держатели_хромированые
-  Держатели_золотые
-  Держатели_черные
-  Крепления_для_окна
-  Дюбеля
-  Присоски
-  Нет
-}
+// enum FittingEnum {
+//   Держатели_хромированые
+//   Держатели_золотые
+//   Держатели_черные
+//   Крепления_для_окна
+//   Дюбеля
+//   Присоски
+//   Нет
+// }
 
 // НЕОН
 model Neon {

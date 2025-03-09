@@ -750,11 +750,35 @@ export class DashboardsService {
       spheres,
     };
   }
+  async getManagersReports(user: UserDto, period: string) {
+    function generateMonthDates(period: string): { date: string }[] {
+      // Разделяем строку на год и месяц
+      const [year, month] = period.split('-').map(Number);
+
+      // Создаем дату первого дня месяца
+      const startDate = new Date(year, month - 1, 1); // month - 1, так как месяцы в JS с 0
+      const lastDay = new Date(year, month, 0).getDate(); // Последний день месяца
+
+      const result: { date: string }[] = [];
+
+      // Генерируем даты от 1 до последнего дня
+      for (let day = 1; day <= lastDay; day++) {
+        const date = new Date(year, month - 1, day);
+        const formattedDate = date.toISOString().split('T')[0]; // Формат "YYYY-MM-DD"
+        result.push({ date: formattedDate });
+      }
+
+      return result;
+    }
+    const dates = generateMonthDates(period); 
+
+    console.log(dates);
+  }
 }
 // Итог
 // Данные которые вбиваем
 // - дата
-// - количество заявок 
+// - количество заявок
 // - презентаций макетов
 // - количество макетов день в день
 // - количество всего макетов
@@ -767,23 +791,3 @@ export class DashboardsService {
 // - ддр - от ропа заберет стоимость заявки и посчитается
 // - средний чек = общая сумма продаж/ колличество сделок
 // - заказы день в день
-
-const ad = 2000000;
-const callCost = ad / 1000;
-
-const first = {
-  calls: 100,
-  dopsSales: 50000,
-  totalSales: 55000,
-  dealSales: 5000,
-  dealsAmount: 5,
-}
-const conversion = first.dealsAmount / first.calls;
-const averageBill = first.totalSales / first.dealsAmount;
-const fddr = callCost * first.calls / first.totalSales;
-
-console.log({
-  conversion,
-  averageBill,
-  fddr
-});
