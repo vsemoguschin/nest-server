@@ -146,7 +146,7 @@ export class DealsService {
         chatLink,
         saleDate,
         maketType,
-        deletedAt
+        deletedAt,
       };
     });
 
@@ -327,6 +327,10 @@ export class DealsService {
       adTags: adTags.map((el) => el.title.trim()),
       spheres: spheres.map((el) => el.title.trim()),
     };
+  }
+
+  async getSources() {
+    return await this.prisma.dealSource.findMany();
   }
 
   async updateDealers(dealId: number, updateDealersDto: UpdateDealersDto) {

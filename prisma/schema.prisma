@@ -256,32 +256,41 @@ model DealAudit {
 }
 // Источники сделок
 model DealSource {
-  id                Int        @id @default(autoincrement()) 
-  title             String     @unique
+  id           Int           @id @default(autoincrement()) 
+  title        String        @unique
+  adExpenses   AdExpense[]
 
   // Внешний ключ для связи с пространством
-  workSpaceId       Int
-  workSpace         WorkSpace  @relation( fields: [workSpaceId], references: [id])
+  workSpaceId  Int
+  workSpace    WorkSpace  @relation( fields: [workSpaceId], references: [id])
 }
+
+// расходы на рекламу
+model AdExpense {
+  id            Int        @id @default(autoincrement())
+  price         Int        @default(0)
+  date          String
+  period        String     @default("")
+
+  dealSourceId  Int
+  dealSource    DealSource @relation(fields: [dealSourceId], references: [id])
+}
+
 // Методы закрытия
 model ClothingMethod {
-  id                Int        @id @default(autoincrement()) 
-  title             String     @unique
+  id     Int     @id @default(autoincrement()) 
+  title  String  @unique
   
 }
 // Рекламные теги
 model AdTag {
-  id                Int        @id @default(autoincrement()) 
-  title             String     @unique
-  
-
+  id     Int     @id @default(autoincrement()) 
+  title  String  @unique
 }
 // Сферы деятельности
 model Sphere {
-  id                Int        @id @default(autoincrement()) 
-  title             String     @unique
-  
-
+  id     Int     @id @default(autoincrement()) 
+  title  String  @unique
 }
 //-----------------------------------------------------------------
 

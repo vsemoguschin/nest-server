@@ -38,6 +38,11 @@ export class DealsController {
     return this.dealsService.getDatas();
   }
 
+  @Get('sources')
+  async getSources() {
+    return this.dealsService.getSources()
+  }
+
   @Post()
   @ApiOperation({
     summary: 'Создать сделку',
@@ -121,4 +126,5 @@ export class DealsController {
   ) {
     return this.dealsService.updateDealers(dealId, updateDealersDto);
   }
+
 }

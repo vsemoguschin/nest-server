@@ -17,6 +17,7 @@ import { PaymentsModule } from './domains/payments/payments.module';
 import { DopsModule } from './domains/dops/dops.module';
 import { ManagersModule } from './domains/managers/managers.module';
 import { ReportsModule } from './domains/reports/reports.module';
+import { AdModule } from './domains/ad/ad.module';
 
 
 @Module({
@@ -36,6 +37,7 @@ import { ReportsModule } from './domains/reports/reports.module';
     DopsModule,
     ManagersModule,
     ReportsModule,
+    AdModule,
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],
