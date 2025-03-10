@@ -13,9 +13,9 @@ import { WorkspacesService } from './workspaces.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
-import { User } from '@prisma/client';
 import { WorkSpaceDto } from './dto/workspace.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { UserDto } from '../users/dto/user.dto';
 
 @ApiTags('workspaces')
 @Controller('workspaces')
@@ -49,7 +49,7 @@ export class WorkspacesController {
       'Endpoint: GET /workspaces. Возвращает список всех активных рабочих пространств.',
   })
   @Roles( 'G', 'KD', 'DO', 'ROD')
-  async findAll(@CurrentUser() user: User) :Promise<WorkSpaceDto[]> {
+  async findAll(@CurrentUser() user: UserDto) :Promise<WorkSpaceDto[]> {
     return this.WorkspacesService.findAll(user);
   }
 

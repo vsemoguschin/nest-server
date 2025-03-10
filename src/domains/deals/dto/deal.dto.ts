@@ -146,7 +146,6 @@ export class DealDto {
     period: string;
     userId: number;
     id: number;
-    deletedAt: Date | null;
     dealId: number;
     date: string;
     method: string;

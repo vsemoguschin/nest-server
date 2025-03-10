@@ -18,6 +18,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserDto } from '../users/dto/user.dto';
+import { CreateRopReportDto } from './dto/create-rop-report.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('manager-reports')
@@ -35,6 +36,16 @@ export class ReportsController {
     return report;
   }
 
+  @Post('rop')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
+  @ApiOperation({ summary: 'Создать отчет менеджера' })
+  @ApiResponse({ status: 201, description: 'Отчет успешно создан' })
+  @ApiResponse({ status: 400, description: 'Неверные данные' })
+  async createRopReport(@Body() createRopReportDto: CreateRopReportDto) {
+    const report = await this.reportService.createRopReport(createRopReportDto);
+    return report;
+  }
+
   @Get('managers')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
   async getManagersReports(
@@ -47,6 +58,44 @@ export class ReportsController {
       );
     }
     return this.reportService.getManagersReports(period, user);
+  }
+
+  @Get('workspaces')
+  @Roles('ADMIN', 'G', 'KD', 'DO')
+  async getRopsReports(
+    @CurrentUser() user: UserDto,
+    @Query('period') period: string,
+  ) {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.reportService.getRopsReports(period, user);
+  }
+
+  @Get('workspace/:id/data')
+  @ApiOperation({ summary: 'Получить данные пространства за дату' })
+  @ApiQuery({
+    name: 'date',
+    required: true,
+    description: 'Дата в формате YYYY-MM-DD',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Данные пространства успешно получены',
+  })
+  @ApiResponse({ status: 404, description: 'Пользователь не найден' })
+  async getRopData(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('date') date: string,
+  ) {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException(
+        'Параметр date обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.reportService.getRopsReportsPredata(date, id);
   }
 
   @Get('manager/:id/data')

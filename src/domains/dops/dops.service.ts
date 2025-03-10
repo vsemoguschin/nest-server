@@ -17,6 +17,16 @@ export class DopsService {
       );
     }
 
+    const managerExists = await this.prisma.user.findUnique({
+      where: { id: createDopDto.userId },
+    });
+    if (!managerExists) {
+      throw new NotFoundException(
+        `Менеджера с ID ${createDopDto.userId} не найден`,
+      );
+    }
+    // return console.log(managerExists);
+
     // Вычисляем period из saleDate
     const period = createDopDto.saleDate.slice(0, 7); // Например, "2025-02" из "2025-02-20"
 
@@ -30,6 +40,7 @@ export class DopsService {
         period, // Вычисленное значение
         userId: createDopDto.userId, // Берем из текущего пользователя
         dealId: createDopDto.dealId,
+        workSpaceId: managerExists.workSpaceId
       },
     });
 

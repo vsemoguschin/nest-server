@@ -79,7 +79,6 @@ export class DealsService {
               gte: start,
               lte: end,
             },
-            deletedAt: null,
           },
         },
         dealers: true,
@@ -175,7 +174,6 @@ export class DealsService {
     const pay = await this.prisma.payment.findMany({
       where: {
         period: start.slice(0, 7),
-        deletedAt: null,
       },
     });
     console.log(pay.length);
@@ -192,11 +190,7 @@ export class DealsService {
             user: true,
           },
         },
-        payments: {
-          where: {
-            deletedAt: null,
-          },
-        },
+        payments: true,
         dealers: {
           include: {
             user: true,

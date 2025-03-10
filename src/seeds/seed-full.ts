@@ -43453,6 +43453,7 @@ async function seed() {
                 ...dop,
                 updatedUserId: false,
                 updatedDealId: false,
+                workSpaceId: 0,
               };
             }),
           ),
@@ -43508,6 +43509,7 @@ async function seed() {
           if (allDops[i].userId === user.id && !allDops[i].updatedUserId) {
             allDops[i].updatedUserId = true;
             allDops[i].userId = createdUser.id;
+            allDops[i].workSpaceId = createdUser.workSpaceId;
           }
         }
         for (const client of user.clients) {
@@ -43574,6 +43576,7 @@ async function seed() {
                   period: payment.date.slice(0, 7),
                   userId: createdUser.id,
                   dealId: createdDeal.id,
+                  workSpaceId: createdDeal.workSpaceId
                 },
               });
             }
@@ -43614,6 +43617,7 @@ async function seed() {
         period: dop.saleDate.slice(0, 7),
         userId: dop.userId,
         dealId: dop.dealId,
+        workSpaceId: dop.workSpaceId,
       },
     });
   }

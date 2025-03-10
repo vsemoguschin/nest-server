@@ -7,6 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { User } from '@prisma/client';
+import { UserDto } from '../users/dto/user.dto';
 
 @Injectable()
 export class WorkspacesService {
@@ -58,10 +59,15 @@ export class WorkspacesService {
     return workspace;
   }
 
-  async findAll(user: User) {
+  async findAll(user: UserDto) {
+    const workspacesSearch =
+      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
 
     const workspaces = await this.prisma.workSpace.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        id: workspacesSearch,
+      },
     });
     if (!workspaces || workspaces.length === 0) {
       throw new NotFoundException('Нет доступных рабочих пространств');

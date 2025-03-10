@@ -36,8 +36,11 @@ model WorkSpace {
   users           User[]
   clients         Client[]
   deals           Deal[]
+  dops            Dop[]
+  payments        Payment[]
   dealSources     DealSource[]
   createdAt       DateTime     @default(now())
+  reports         RopReport[]
 }
 
 
@@ -128,6 +131,17 @@ model ManagerReport {
 
   userId         Int
   user           User  @relation(fields: [userId], references: [id])
+}
+
+model RopReport {
+  id             Int    @id @default(autoincrement())
+  calls          Int    @default(0)
+  makets         Int    @default(0)
+  date           String
+  period         String @default("")
+
+  workSpaceId         Int
+  workSpace           WorkSpace  @relation(fields: [workSpaceId], references: [id])
 }
 
 // КЛИЕНТ
@@ -296,15 +310,15 @@ model Payment {
   reservation Boolean       @default(false) // Бронь
   period      String        @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
 
-  // Поле для мягкого удаления (опциональное)
-  deletedAt   DateTime?
-
   // Связи
   userId      Int
   user        User          @relation(fields: [userId], references: [id])
   
   dealId      Int
   deal        Deal          @relation(fields: [dealId], references: [id])
+  
+  workSpaceId      Int
+  workspace        WorkSpace          @relation(fields: [workSpaceId], references: [id])
 }
 
 
@@ -323,6 +337,9 @@ model Dop {
   
   dealId      Int
   deal        Deal     @relation(fields: [dealId], references: [id])
+  
+  workSpaceId      Int
+  workSpace        WorkSpace     @relation(fields: [workSpaceId], references: [id])
 }
 // Типы допов
 model DopsType {

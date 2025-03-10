@@ -178,7 +178,6 @@ export class DashboardsService {
                 payments: {
                   where: {
                     period,
-                    deletedAt: null,
                   },
                 }, // Подтягиваем платежи для каждой сделки
                 dops: {
@@ -209,7 +208,6 @@ export class DashboardsService {
                 payments: {
                   where: {
                     period,
-                    deletedAt: null,
                   },
                 },
                 dealers: true,
@@ -393,7 +391,6 @@ export class DashboardsService {
             payments: {
               where: {
                 period,
-                deletedAt: null,
               },
             },
             dealers: {

@@ -7,6 +7,7 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateManagerReportDto } from './dto/create-manager-report.dto';
 import { UserDto } from '../users/dto/user.dto';
+import { CreateRopReportDto } from './dto/create-rop-report.dto';
 
 @Injectable()
 export class ReportsService {
@@ -36,6 +37,36 @@ export class ReportsService {
         makets,
         maketsDayToDay,
         userId,
+        date,
+        period: date.slice(0, 7),
+      },
+    });
+
+    return report;
+  }
+
+  async createRopReport(createRopReportDto: CreateRopReportDto) {
+    const { calls, makets, workSpaceId, date } = createRopReportDto;
+
+    // Проверяем, существует ли запись с таким userId и date
+    const existingReport = await this.prisma.ropReport.findFirst({
+      where: {
+        workSpaceId,
+        date,
+      },
+    });
+
+    if (existingReport) {
+      throw new ConflictException(
+        `Отчет для пользователя с ID ${workSpaceId} и датой ${date} уже существует`,
+      );
+    }
+
+    const report = await this.prisma.ropReport.create({
+      data: {
+        calls,
+        makets,
+        workSpaceId,
         date,
         period: date.slice(0, 7),
       },
@@ -182,6 +213,127 @@ export class ReportsService {
         dopSales,
         averageBill,
         dealsDayToDayCount,
+      };
+    });
+  }
+
+  async getRopsReportsPredata(date: string, id: number) {
+    const workSpace = await this.prisma.workSpace.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        deals: {
+          where: {
+            saleDate: date,
+          },
+          include: {
+            client: true,
+          },
+        },
+        payments: {
+          where: {
+            date,
+          },
+        },
+        dops: {
+          where: {
+            saleDate: date,
+          },
+        },
+      },
+    });
+
+    if (!workSpace) {
+      throw new NotFoundException(`Пространство с ID ${id} не найден`);
+    }
+
+    const dateDeals = workSpace.deals.filter((d) => d.saleDate === date);
+    const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
+    const dateDops = workSpace.dops.filter((d) => d.saleDate === date);
+    const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
+    const totalSales = dopSales + dealSales;
+    const dealsAmount = dateDeals.length;
+    const averageBill = dealsAmount ? totalSales / dealsAmount : 0;
+    const dealsDayToDayCount = dateDeals.filter(
+      (d) => d.saleDate === d.client.firstContact,
+    ).length;
+
+    return {
+      date, //дата
+      workSpaceId: workSpace?.id,
+      workSpace: workSpace.title,
+      dealSales, //сумма сделок
+      dealsAmount, //количество сделок
+      dopSales, //сумма доп продаж
+      totalSales, //общая сумма продаж
+      averageBill: +averageBill.toFixed(), //средний чек
+      dealsDayToDayCount, // заказов день в день
+    };
+  }
+
+  async getRopsReports(period: string, user: UserDto) {
+    const reports = await this.prisma.ropReport.findMany({
+      where: { period },
+      include: {
+        workSpace: {
+          include: {
+            deals: {
+              where: { period },
+              include: {
+                client: true,
+              },
+            },
+            dops: {
+              where: { period },
+            },
+            payments: {
+              where: { period },
+            },
+          },
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    });
+
+    return reports.map((r) => {
+      const { date, calls, makets } = r;
+      const dateDeals = r.workSpace.deals.filter((d) => d.saleDate === date);
+      const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
+      const dateDops = r.workSpace.dops.filter((d) => d.saleDate === date);
+      const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
+      const totalSales = dopSales + dealSales;
+      const dealsAmount = dateDeals.length;
+      const averageBill = dealsAmount ? totalSales / dealsAmount : 0;
+      const conversion = dealsAmount / calls;
+      const conversionMaket = makets / dealsAmount;
+      const conversionToSale = dealsAmount / makets;
+      const dealsDayToDayCount = dateDeals.filter(
+        (d) => d.saleDate === d.client.firstContact,
+      ).length;
+      const conversionDealsDayToDay = dealsDayToDayCount / calls;
+
+      return {
+        id: r.id,
+        date, //дата
+        workSpaceId: r.workSpaceId,
+        workSpace: r.workSpace.title,
+        calls, // количество заявок
+        dealSales, //сумма сделок
+        dealsAmount, //количество сделок
+        dopSales, //сумма доп продаж
+        totalSales, //общая сумма продаж
+        averageBill, //средний чек
+        makets, //количество макетов
+        conversion, //конверсия
+        conversionMaket, //конверсия в макет (количество макетов/колво сделок)
+        conversionToSale, //конверсия из макета в продажу(колво сделок/колво макетов)
+        dealsDayToDayCount, // заказов день в день
+        conversionDealsDayToDay, // конверсия заказов день в день (заказы день в день/заявки)
+        callsCost: 0, //Стоимость заявки(по формуле)
+        ddr: 0, //ДРР(по формуле)
       };
     });
   }

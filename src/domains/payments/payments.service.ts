@@ -8,11 +8,22 @@ export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createPaymentDto: CreatePaymentDto, user: UserDto) {
+    const existingDeal = await this.prisma.deal.findUnique({
+      where: {
+        id: createPaymentDto.dealId,
+      },
+    });
+
+    if (!existingDeal) {
+      throw new NotFoundException(`Сделка с id ${createPaymentDto.dealId} не найден.`);
+    }
+
     const newPayment = await this.prisma.payment.create({
       data: {
         ...createPaymentDto,
         userId: user.id,
         period: createPaymentDto.date.slice(0, 7),
+        workSpaceId: existingDeal.workSpaceId
       },
     });
     return newPayment;
