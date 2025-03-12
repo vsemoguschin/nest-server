@@ -729,6 +729,8 @@ export class DashboardsService {
           },
         },
         dealSources: true,
+        reports: true,
+        adExpenses: true
       },
     });
 

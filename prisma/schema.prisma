@@ -32,6 +32,7 @@ model WorkSpace {
   title           String     @unique
   department      String
   deletedAt       DateTime?  // Поле для мягкого удаления
+  createdAt       DateTime     @default(now())
   groups          Group[]
   users           User[]
   clients         Client[]
@@ -39,8 +40,8 @@ model WorkSpace {
   dops            Dop[]
   payments        Payment[]
   dealSources     DealSource[]
-  createdAt       DateTime     @default(now())
   reports         RopReport[]
+  adExpenses      AdExpense[]
 }
 
 
@@ -274,6 +275,9 @@ model AdExpense {
 
   dealSourceId  Int
   dealSource    DealSource @relation(fields: [dealSourceId], references: [id])
+
+  workSpaceId  Int
+  workSpace    WorkSpace  @relation( fields: [workSpaceId], references: [id])
 }
 
 // Методы закрытия

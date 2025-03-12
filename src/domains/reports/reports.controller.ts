@@ -21,10 +21,16 @@ import { UserDto } from '../users/dto/user.dto';
 import { CreateRopReportDto } from './dto/create-rop-report.dto';
 
 @UseGuards(RolesGuard)
-@ApiTags('manager-reports')
+@ApiTags('reports')
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportService: ReportsService) {}
+
+  @Get('workspaces-list')
+  @Roles('ADMIN', 'G', 'KD', 'DO')
+  async getWorkSpaces(@CurrentUser() user: UserDto) {
+    return this.reportService.getWorkSpaces(user);
+  }
 
   @Post('manager')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')

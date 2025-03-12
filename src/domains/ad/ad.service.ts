@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AdExpenseCreateDto } from './dto/ad-expense-create.dto';
 
@@ -7,10 +7,23 @@ export class AdService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createAdExpense(adExpenseCreateDto: AdExpenseCreateDto) {
+    const dealSource = await this.prisma.dealSource.findUnique({
+      where: {
+        id: adExpenseCreateDto.dealSourceId,
+      },
+    });
+
+    if (!dealSource) {
+      throw new NotFoundException(
+        `Источник с id ${adExpenseCreateDto.dealSourceId} не найдено.`,
+      );
+    }
+
     const newAdExpense = await this.prisma.adExpense.create({
       data: {
         ...adExpenseCreateDto,
         period: adExpenseCreateDto.date.slice(0, 7),
+        workSpaceId: dealSource.workSpaceId,
       },
     });
     // console.log(newAdExpense);
