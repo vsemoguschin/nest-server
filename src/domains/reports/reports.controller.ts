@@ -66,7 +66,7 @@ export class ReportsController {
     return this.reportService.getManagersReports(period, user);
   }
 
-  @Get('workspaces')
+  @Get('rops')
   @Roles('ADMIN', 'G', 'KD', 'DO')
   async getRopsReports(
     @CurrentUser() user: UserDto,
@@ -135,5 +135,14 @@ export class ReportsController {
   @ApiResponse({ status: 404, description: 'Отчет не найден' })
   async delete(@Param('id', ParseIntPipe) id: number) {
     return this.reportService.delete(id);
+  }
+
+  @Delete('rop/:id')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP')
+  @ApiOperation({ summary: 'Удалить отчет менеджера' })
+  @ApiResponse({ status: 200, description: 'Отчет успешно удален' })
+  @ApiResponse({ status: 404, description: 'Отчет не найден' })
+  async deleteRopReport(@Param('id', ParseIntPipe) id: number) {
+    return this.reportService.deleteRopReport(id);
   }
 }

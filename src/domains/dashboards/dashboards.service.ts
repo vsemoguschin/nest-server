@@ -38,7 +38,12 @@ interface Sources {
   sales: number;
 }
 
-interface adTag {
+interface AdTag {
+  name: string;
+  sales: number;
+}
+
+interface AdExpenses {
   name: string;
   sales: number;
 }
@@ -60,7 +65,8 @@ export interface WorkSpaceData {
   users: User[];
   maketsSales: MaketsSales[];
   sources: Sources[];
-  adTags: adTag[];
+  adTags: AdTag[];
+  adExpenses: AdExpenses[];
 }
 
 @Injectable()
@@ -407,9 +413,21 @@ export class DashboardsService {
                 period,
               },
             },
+            role: true,
             dops: {
               where: {
                 period,
+              },
+            },
+          },
+        },
+        dealSources: {
+          include: {
+            adExpenses: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
               },
             },
           },
@@ -488,6 +506,7 @@ export class DashboardsService {
       ],
       sources: [],
       adTags: [],
+      adExpenses: [],
     };
 
     const workSpacesData = allWorkspaces.map((w) => {
@@ -570,7 +589,36 @@ export class DashboardsService {
         ],
         sources: [],
         adTags: [],
+        adExpenses: [],
       };
+
+      // console.log(w.dealSources);
+      w.dealSources.map((ds) => {
+        // console.log(ds);
+        const adExps = ds.adExpenses.reduce((a, b) => a + b.price, 0);
+        if (!data.adExpenses.find((e) => e.name === ds.title)) {
+          data.adExpenses.push({
+            name: ds.title,
+            sales: adExps,
+          });
+        } else {
+          const dsIndex = data.adExpenses.findIndex((s) => s.name === ds.title);
+          data.adExpenses[dsIndex].sales += adExps;
+        }
+        if (!fullData.adExpenses.find((e) => e.name === ds.title)) {
+          fullData.adExpenses.push({
+            name: ds.title,
+            sales: adExps,
+          });
+        } else {
+          const dsIndex = fullData.adExpenses.findIndex(
+            (s) => s.name === ds.title,
+          );
+          fullData.adExpenses[dsIndex].sales += adExps;
+        }
+
+        data.adExpenses.sort((a, b) => b.sales - a.sales);
+      });
 
       // Считаем сумму сделок
       w.deals.map((deal) => {
@@ -593,6 +641,8 @@ export class DashboardsService {
           (m) => m.name === deal.maketType,
         );
         data.maketsSales[maketIndex].sales += deal.price;
+
+        // sources
         if (!data.sources.find((s) => s.name === deal.source)) {
           data.sources.push({ name: deal.source, sales: deal.price });
         } else {
@@ -609,6 +659,7 @@ export class DashboardsService {
           );
           fullData.sources[sourceIndex].sales += deal.price;
         }
+
         //adtags
         if (!data.adTags.find((s) => s.name === deal.adTag)) {
           data.adTags.push({ name: deal.adTag, sales: deal.price });
@@ -626,6 +677,7 @@ export class DashboardsService {
           );
           fullData.adTags[adTagIndex].sales += deal.price;
         }
+
         data.sources.sort((a, b) => b.sales - a.sales);
         data.adTags.sort((a, b) => b.sales - a.sales);
         data.maketsSales.sort((a, b) => b.sales - a.sales);
@@ -640,11 +692,14 @@ export class DashboardsService {
           data.dopSales += dop.price;
           data.dopsAmount += 1;
           data.totalSales += dop.price;
-          data.plan = user.managersPlans[0]?.plan || 0;
-
           const userIndex = data.users.findIndex((u) => u.id === dop.userId);
           data.users[userIndex].sales += dop.price;
         });
+
+        if (user.role.shortName === 'DO') {
+          // console.log(user);
+          data.plan = user.managersPlans[0]?.plan || 0;
+        };
       });
 
       data.dopsToSales = data.totalSales
@@ -659,6 +714,7 @@ export class DashboardsService {
         : 0;
 
       data.remainder = data.plan - data.totalSales;
+      // console.log(fullData.plan);
 
       fullData.dealsAmount += data.dealsAmount;
       fullData.dealsSales += data.dealsSales;
@@ -666,7 +722,6 @@ export class DashboardsService {
       fullData.receivedPayments += data.receivedPayments;
       fullData.dopsAmount += data.dopsAmount;
       fullData.dopSales += data.dopSales;
-      fullData.plan += data.plan;
       fullData.plan += data.plan;
       fullData.maketsSales = fullData.maketsSales.map((m) => {
         const maketIndex = data.maketsSales.findIndex((d) => d.name === m.name);
@@ -693,6 +748,8 @@ export class DashboardsService {
     fullData.sources.sort((a, b) => b.sales - a.sales);
     fullData.adTags.sort((a, b) => b.sales - a.sales);
     fullData.maketsSales.sort((a, b) => b.sales - a.sales);
+    fullData.adExpenses.sort((a, b) => b.sales - a.sales);
+
 
     const topManagers = workSpacesData.flatMap((w) => w.users);
 
@@ -730,7 +787,7 @@ export class DashboardsService {
         },
         dealSources: true,
         reports: true,
-        adExpenses: true
+        adExpenses: true,
       },
     });
 
@@ -769,7 +826,7 @@ export class DashboardsService {
 
       return result;
     }
-    const dates = generateMonthDates(period); 
+    const dates = generateMonthDates(period);
 
     console.log(dates);
   }

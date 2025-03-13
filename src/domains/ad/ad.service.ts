@@ -39,16 +39,44 @@ export class AdService {
       },
       include: {
         dealSource: true,
+        workSpace: {
+          include: {
+            reports: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
+              },
+            },
+          },
+        },
       },
       orderBy: {
         date: 'desc',
       },
     });
+
     return sources.map((s) => {
       return {
         ...s,
         source: s.dealSource.title,
+        workSpace: s.workSpace.title,
       };
+    });
+  }
+
+  async delete(id: number) {
+    // Проверяем, существует ли доп
+    const adExists = await this.prisma.adExpense.findUnique({
+      where: { id },
+    });
+    if (!adExists) {
+      throw new NotFoundException(`Запись с ID ${id} не найдена`);
+    }
+
+    // Удаляем доп
+    return this.prisma.adExpense.delete({
+      where: { id },
     });
   }
 }

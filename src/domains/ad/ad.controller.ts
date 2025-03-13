@@ -2,12 +2,15 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
+  ParseIntPipe,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { AdService } from './ad.service';
 import { AdExpenseCreateDto } from './dto/ad-expense-create.dto';
@@ -24,7 +27,7 @@ export class AdController {
     summary: 'Создать расход',
     description: 'Endpoint: POST ads/expenses. Создает новый расход.',
   })
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'MARKETER')
   async create(
     @Body() adExpenseCreateDto: AdExpenseCreateDto,
   ): Promise<AdExpenseCreateDto> {
@@ -38,7 +41,7 @@ export class AdController {
     description:
       'Endpoint: GET /deals?period=YYYY-MM. Получить список расходов за указанный период.',
   })
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'MARKETER')
   async getList(
     @Query('period') period: string,
   ): Promise<AdExpenseCreateDto[]> {
@@ -51,5 +54,17 @@ export class AdController {
       );
     }
     return this.adService.getAdExpensesList(period);
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Удалить запись',
+    description: 'Удаляет запись по ID.',
+  })
+  @ApiResponse({ status: 200, description: 'Запись успешно удалена.' })
+  @ApiResponse({ status: 404, description: 'Запись не найдена.' })
+  @Roles('ADMIN', 'G', 'KD', 'MARKETER')
+  async delete(@Param('id', ParseIntPipe) id: number) {
+    return this.adService.delete(id);
   }
 }

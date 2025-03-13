@@ -75,6 +75,10 @@ const ROLES = {
     fullName: 'Менеджер ТЗ',
     department: 'PRODUCTION',
   },
+  MARKETER: {
+    fullName: 'Маркетолог',
+    department: 'MARKETER',
+  },
 };
 
 async function seedRoles() {

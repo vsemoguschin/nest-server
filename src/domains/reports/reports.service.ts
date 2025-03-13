@@ -91,6 +91,23 @@ export class ReportsService {
     return { message: `Отчет с ID ${id} успешно удален` };
   }
 
+  async deleteRopReport(id: number) {
+    const report = await this.prisma.ropReport.findUnique({
+      where: { id },
+    });
+    console.log(report, id);
+
+    if (!report) {
+      throw new NotFoundException(`Отчет с ID ${id} не найден`);
+    }
+
+    await this.prisma.ropReport.delete({
+      where: { id },
+    });
+
+    return { message: `Отчет с ID ${id} успешно удален` };
+  }
+
   async getManagerData(id: number, date: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -225,7 +242,9 @@ export class ReportsService {
         (d) => d.deal.saleDate === d.deal.client.firstContact,
       ).length;
 
-      const ddr =totalSales ? +(calls * callCost / totalSales).toFixed(2) : 0
+      const ddr = totalSales
+        ? +((calls * callCost) / totalSales).toFixed(2)
+        : 0;
       return {
         manager: r.user.fullName,
         userId: r.userId,
@@ -355,6 +374,7 @@ export class ReportsService {
       const dateExpenses = r.workSpace.adExpenses.filter(
         (e) => e.date === date,
       );
+
       const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
       const dateDeals = r.workSpace.deals.filter((d) => d.saleDate === date);
       const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
@@ -363,16 +383,26 @@ export class ReportsService {
       const totalSales = dopSales + dealSales;
       const dealsAmount = dateDeals.length;
       const averageBill = dealsAmount ? totalSales / dealsAmount : 0;
-      const conversion = dealsAmount / calls;
-      const conversionMaket = makets ? dealsAmount / makets : 0;
-      const conversionToSale = dealSales ? makets / dealSales : 0;
+      const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
+      const conversionMaket = calls ? +((makets / calls) * 100).toFixed(2) : 0;
+      const conversionToSale = makets
+        ? +((dealsAmount / makets) * 100).toFixed(2)
+        : 0;
+      
       const dealsDayToDayCount = dateDeals.filter(
         (d) => d.saleDate === d.client.firstContact,
       ).length;
-      const conversionDealsDayToDay = dealsDayToDayCount / calls;
-      const callCost = +(dateExpensesPrice / calls).toFixed();
-      const ddr = +(dateExpensesPrice / totalSales).toFixed(2);
-      console.log(callCost);
+
+      const conversionDealsDayToDay = calls
+        ? +((dealsDayToDayCount / calls) * 100).toFixed(2)
+        : 0;
+      
+      const callCost = calls ? +(dateExpensesPrice / calls).toFixed() : 0;
+      const ddr = totalSales
+        ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
+        : 0;
+      
+      // console.log(callCost);
 
       return {
         id: r.id,
@@ -386,11 +416,11 @@ export class ReportsService {
         totalSales, //общая сумма продаж
         averageBill: +averageBill.toFixed(), //средний чек
         makets, //количество макетов
-        conversion: +(conversion * 100).toFixed(2), //конверсия
-        conversionMaket: +(conversionMaket * 100).toFixed(2), //конверсия в макет (количество макетов/колво сделок)
-        conversionToSale: +(conversionToSale * 100).toFixed(2), //конверсия из макета в продажу(колво сделок/колво макетов)
+        conversion, //конверсия
+        conversionMaket, //конверсия в макет (количество макетов/колво сделок)
+        conversionToSale, //конверсия из макета в продажу(колво сделок/колво макетов)
         dealsDayToDayCount, // заказов день в день
-        conversionDealsDayToDay: +(conversionDealsDayToDay * 100).toFixed(2), // конверсия заказов день в день (заказы день в день/заявки)
+        conversionDealsDayToDay, // конверсия заказов день в день (заказы день в день/заявки)
         callCost, //Стоимость заявки(по формуле)
         ddr, //ДРР(по формуле)
       };
