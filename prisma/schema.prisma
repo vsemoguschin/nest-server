@@ -40,6 +40,7 @@ model WorkSpace {
   dops            Dop[]
   payments        Payment[]
   dealSources     DealSource[]
+  adSources       AdSource[]
   reports         RopReport[]
   adExpenses      AdExpense[]
 }
@@ -255,6 +256,18 @@ model DealAudit {
   userId    Int?     // ID пользователя, который совершил действие (опционально)
   user      User?    @relation(fields: [userId], references: [id])
 }
+
+// Источники сделок
+model AdSource {
+  id           Int           @id @default(autoincrement()) 
+  title        String        @unique
+  adExpenses   AdExpense[]
+
+  // Внешний ключ для связи с пространством
+  workSpaceId  Int
+  workSpace    WorkSpace  @relation( fields: [workSpaceId], references: [id])
+}
+
 // Источники сделок
 model DealSource {
   id           Int           @id @default(autoincrement()) 
@@ -273,8 +286,11 @@ model AdExpense {
   date          String
   period        String     @default("")
 
-  dealSourceId  Int
-  dealSource    DealSource @relation(fields: [dealSourceId], references: [id])
+  dealSourceId  Int?
+  dealSource    DealSource? @relation(fields: [dealSourceId], references: [id])
+
+  adSourceId  Int?
+  adSource    AdSource? @relation(fields: [adSourceId], references: [id])
 
   workSpaceId  Int
   workSpace    WorkSpace  @relation( fields: [workSpaceId], references: [id])

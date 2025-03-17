@@ -421,7 +421,7 @@ export class DashboardsService {
             },
           },
         },
-        dealSources: {
+        adSources: {
           include: {
             adExpenses: {
               where: {
@@ -593,7 +593,7 @@ export class DashboardsService {
       };
 
       // console.log(w.dealSources);
-      w.dealSources.map((ds) => {
+      w.adSources.map((ds) => {
         // console.log(ds);
         const adExps = ds.adExpenses.reduce((a, b) => a + b.price, 0);
         if (!data.adExpenses.find((e) => e.name === ds.title)) {

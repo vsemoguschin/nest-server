@@ -20,7 +20,12 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 @ApiTags('ads')
 @Controller('ads')
 export class AdController {
-  constructor(private readonly adService: AdService) {}
+  constructor(private readonly adService: AdService) { }
+
+  @Get('sources')
+  async getSources() {
+    return this.adService.getSources()
+  }
 
   @Post('expenses')
   @ApiOperation({

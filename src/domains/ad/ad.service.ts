@@ -7,15 +7,15 @@ export class AdService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createAdExpense(adExpenseCreateDto: AdExpenseCreateDto) {
-    const dealSource = await this.prisma.dealSource.findUnique({
+    const adSource = await this.prisma.adSource.findUnique({
       where: {
-        id: adExpenseCreateDto.dealSourceId,
+        id: adExpenseCreateDto.adSourceId || 0,
       },
     });
 
-    if (!dealSource) {
+    if (!adSource) {
       throw new NotFoundException(
-        `Источник с id ${adExpenseCreateDto.dealSourceId} не найдено.`,
+        `Источник с id ${adExpenseCreateDto.adSourceId} не найдено.`,
       );
     }
 
@@ -23,7 +23,7 @@ export class AdService {
       data: {
         ...adExpenseCreateDto,
         period: adExpenseCreateDto.date.slice(0, 7),
-        workSpaceId: dealSource.workSpaceId,
+        workSpaceId: adSource.workSpaceId,
       },
     });
     // console.log(newAdExpense);
@@ -38,7 +38,8 @@ export class AdService {
         },
       },
       include: {
-        dealSource: true,
+        // dealSource: true,
+        adSource: true,
         workSpace: {
           include: {
             reports: {
@@ -58,8 +59,8 @@ export class AdService {
 
     return sources.map((s) => {
       return {
-        ...s,
-        source: s.dealSource.title,
+        ...s, 
+        source: s.adSource?.title,
         workSpace: s.workSpace.title,
       };
     });
@@ -78,5 +79,9 @@ export class AdService {
     return this.prisma.adExpense.delete({
       where: { id },
     });
+  }
+
+  async getSources() {
+    return await this.prisma.adSource.findMany();
   }
 }

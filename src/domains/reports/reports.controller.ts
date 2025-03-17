@@ -128,14 +128,14 @@ export class ReportsController {
     return this.reportService.getManagerData(id, date);
   }
 
-  @Delete('manager-report/:id')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP')
-  @ApiOperation({ summary: 'Удалить отчет менеджера' })
-  @ApiResponse({ status: 200, description: 'Отчет успешно удален' })
-  @ApiResponse({ status: 404, description: 'Отчет не найден' })
-  async delete(@Param('id', ParseIntPipe) id: number) {
-    return this.reportService.delete(id);
-  }
+  // @Delete('manager-report/:id')
+  // @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP')
+  // @ApiOperation({ summary: 'Удалить отчет менеджера' })
+  // @ApiResponse({ status: 200, description: 'Отчет успешно удален' })
+  // @ApiResponse({ status: 404, description: 'Отчет не найден' })
+  // async delete(@Param('id', ParseIntPipe) id: number) {
+  //   return this.reportService.delete(id);
+  // }
 
   @Delete('rop/:id')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP')
@@ -144,5 +144,14 @@ export class ReportsController {
   @ApiResponse({ status: 404, description: 'Отчет не найден' })
   async deleteRopReport(@Param('id', ParseIntPipe) id: number) {
     return this.reportService.deleteRopReport(id);
+  }
+
+  @Delete('manager/:id')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP')
+  @ApiOperation({ summary: 'Удалить отчет менеджера' })
+  @ApiResponse({ status: 200, description: 'Отчет успешно удален' })
+  @ApiResponse({ status: 404, description: 'Отчет не найден' })
+  async deleteManagerReport(@Param('id', ParseIntPipe) id: number) {
+    return this.reportService.deleteManagerReport(id);
   }
 }

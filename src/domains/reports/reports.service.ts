@@ -75,21 +75,21 @@ export class ReportsService {
     return report;
   }
 
-  async delete(id: number) {
-    const report = await this.prisma.managerReport.findUnique({
-      where: { id },
-    });
+  // async delete(id: number) {
+  //   const report = await this.prisma.managerReport.findUnique({
+  //     where: { id },
+  //   });
 
-    if (!report) {
-      throw new NotFoundException(`Отчет с ID ${id} не найден`);
-    }
+  //   if (!report) {
+  //     throw new NotFoundException(`Отчет с ID ${id} не найден`);
+  //   }
 
-    await this.prisma.managerReport.delete({
-      where: { id },
-    });
+  //   await this.prisma.managerReport.delete({
+  //     where: { id },
+  //   });
 
-    return { message: `Отчет с ID ${id} успешно удален` };
-  }
+  //   return { message: `Отчет с ID ${id} успешно удален` };
+  // }
 
   async deleteRopReport(id: number) {
     const report = await this.prisma.ropReport.findUnique({
@@ -106,6 +106,24 @@ export class ReportsService {
     });
 
     return { message: `Отчет с ID ${id} успешно удален` };
+  }
+
+  async deleteManagerReport(id: number) {
+    const report = await this.prisma.managerReport.findUnique({
+      where: { id },
+    });
+    console.log(report, id);
+
+    if (!report) {
+      throw new NotFoundException(`Отчет с ID ${id} не найден`);
+    }
+
+    await this.prisma.managerReport.delete({
+      where: { id },
+    });
+
+    // return { message: `Отчет с ID ${id} успешно удален` };
+    return { message: `Отчет успешно удален` };
   }
 
   async getManagerData(id: number, date: string) {
@@ -231,13 +249,14 @@ export class ReportsService {
         0,
       );
       const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
-      const callCost = dateCalls ? dateExpensesPrice / dateCalls : 0;
+      const callCost = dateCalls ? +(dateExpensesPrice / dateCalls).toFixed() : 0;
       const dateDops = r.user.dops.filter((d) => d.saleDate === date);
       const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
       const dealSales = dateDeals.reduce((a, b) => a + b.deal.price, 0);
       const totalSales = dopSales + dealSales;
       const dealsAmount = dateDeals.length;
-      const averageBill = dealsAmount ? totalSales / dealsAmount : 0;
+      const averageBill = dealsAmount ? +(totalSales / dealsAmount).toFixed() : 0;
+      const conversion = calls ? +(dealsAmount / calls * 100).toFixed(2) : 0
       const dealsDayToDayCount = r.user.dealSales.filter(
         (d) => d.deal.saleDate === d.deal.client.firstContact,
       ).length;
@@ -246,19 +265,22 @@ export class ReportsService {
         ? +((calls * callCost) / totalSales).toFixed(2)
         : 0;
       return {
+        id: r.id,
+        date: r.date,
         manager: r.user.fullName,
         userId: r.userId,
+        workSpaceId: r.user.workSpaceId,
+        workSpace: r.user.workSpace.title,
         calls,
-        date: r.date,
-        makets: r.makets,
-        maketsDayToDay: r.maketsDayToDay,
-        totalSales,
         dealSales,
         dealsAmount,
-        conversion: +(dealsAmount / r.calls).toFixed(2),
-        ddr,
         dopSales,
+        totalSales,
         averageBill,
+        makets: r.makets,
+        maketsDayToDay: r.maketsDayToDay,
+        conversion,
+        ddr,
         dealsDayToDayCount,
       };
     });
