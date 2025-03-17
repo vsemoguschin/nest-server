@@ -31,5 +31,5 @@ export class AdExpenseCreateDto {
   period?: string;
 
   @IsInt({ message: 'adSourceId должен быть целым числом (ID источника).' })
-  adSourceId: number | null;
+  adSourceId: number;
 }

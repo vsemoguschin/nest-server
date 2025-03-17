@@ -272,7 +272,6 @@ model AdSource {
 model DealSource {
   id           Int           @id @default(autoincrement()) 
   title        String        @unique
-  adExpenses   AdExpense[]
 
   // Внешний ключ для связи с пространством
   workSpaceId  Int
@@ -286,11 +285,8 @@ model AdExpense {
   date          String
   period        String     @default("")
 
-  dealSourceId  Int?
-  dealSource    DealSource? @relation(fields: [dealSourceId], references: [id])
-
-  adSourceId  Int?
-  adSource    AdSource? @relation(fields: [adSourceId], references: [id])
+  adSourceId  Int
+  adSource    AdSource @relation(fields: [adSourceId], references: [id])
 
   workSpaceId  Int
   workSpace    WorkSpace  @relation( fields: [workSpaceId], references: [id])
