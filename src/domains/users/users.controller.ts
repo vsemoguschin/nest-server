@@ -65,7 +65,7 @@ export class UsersController {
   }
 
   @Patch(':id/new-pass')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'G', 'KD', 'DO')
   @ApiOperation({ summary: 'Обновить пароль пользователя' })
   @ApiParam({ name: 'id', type: 'integer', description: 'ID пользователя' })
   @ApiBody({

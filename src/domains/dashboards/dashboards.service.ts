@@ -73,7 +73,7 @@ export interface WorkSpaceData {
 export class DashboardsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getWorkspaces(user: UserDto): Promise<WorkSpaceDto[]> {
+  async getWorkspaces(user: UserDto) {
     let where: Partial<{ deletedAt: null; id: { gt: number } | number }> = {
       deletedAt: null,
     };
@@ -91,7 +91,7 @@ export class DashboardsService {
                 fullName: true,
                 role: true,
                 tg: true,
-                id: true,
+                id: true, 
               }
             },
           },

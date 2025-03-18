@@ -22,7 +22,7 @@ export class DashboardsController {
   @Get('/workspaces')
   @ApiResponse({ status: 200, type: [WorkSpaceDto] })
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP')
-  async getWorkspaces(@CurrentUser() user: UserDto): Promise<WorkSpaceDto[]> {
+  async getWorkspaces(@CurrentUser() user: UserDto) {
     return this.dashboardsService.getWorkspaces(user);
   }
 
