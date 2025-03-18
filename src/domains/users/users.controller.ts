@@ -6,6 +6,8 @@ import {
   Param,
   ParseIntPipe,
   Delete,
+  UseGuards,
+  Patch,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -13,11 +15,16 @@ import {
   ApiResponse,
   ApiParam,
   ApiNoContentResponse,
+  ApiBody,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UserProfileDto } from 'src/profile/dto/user-profile.dto';
+import { Roles } from 'src/common/decorators/roles.decorator';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { UpdatePasswordDto } from './dto/user-update-pass.dto';
 
+@UseGuards(RolesGuard)
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
@@ -25,6 +32,7 @@ export class UsersController {
 
   @Post()
   @ApiOperation({ summary: 'Создать нового пользователя' })
+  @Roles('ADMIN', 'G', 'KD', 'DO')
   async createUser(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
@@ -51,7 +59,29 @@ export class UsersController {
   @ApiOperation({ summary: 'Удалить пользователя по ID' })
   @ApiParam({ name: 'id', type: 'integer', description: 'ID пользователя' })
   @ApiNoContentResponse({ description: 'Пользователь успешно удален' })
+  @Roles('ADMIN', 'G', 'KD', 'DO')
   async deleteUser(@Param('id', ParseIntPipe) userId: number): Promise<void> {
     await this.usersService.deleteUser(userId);
+  }
+
+  @Patch(':id/new-pass')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Обновить пароль пользователя' })
+  @ApiParam({ name: 'id', type: 'integer', description: 'ID пользователя' })
+  @ApiBody({
+    description: 'Новый пароль',
+    schema: {
+      type: 'object',
+      properties: {
+        newPass: { type: 'string', example: 'newPassword123' },
+      },
+    },
+  })
+  @ApiNoContentResponse({ description: 'Пароль успешно обновлен' })
+  async updatePassword(
+    @Param('id', ParseIntPipe) userId: number,
+    @Body() updatePasswordDto: UpdatePasswordDto,
+  ): Promise<void> {
+    await this.usersService.updatePassword(userId, updatePasswordDto.newPass);
   }
 }

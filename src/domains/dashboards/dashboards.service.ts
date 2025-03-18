@@ -87,9 +87,12 @@ export class DashboardsService {
           include: {
             users: {
               where: { deletedAt: null },
-              include: {
+              select: {
+                fullName: true,
                 role: true,
-              },
+                tg: true,
+                id: true,
+              }
             },
           },
         },

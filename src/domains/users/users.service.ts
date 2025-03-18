@@ -50,10 +50,7 @@ export class UsersService {
     }
 
     // Хешируем пароль
-    const hashedPassword = await bcrypt.hash(
-      createUserDto.password,
-      3,
-    );
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 3);
 
     const createdUser = await this.prisma.user.create({
       data: {
@@ -119,5 +116,30 @@ export class UsersService {
     hashedPassword: string,
   ): Promise<boolean> {
     return bcrypt.compare(plainPassword, hashedPassword);
+  }
+
+  async updatePassword(
+    userId: number,
+    newPass: string,
+  ): Promise<{ message: string }> {
+    // Проверяем, существует ли пользователь
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) {
+      throw new NotFoundException(`Пользователь с ID ${userId} не найден`);
+    }
+
+    // Хешируем новый пароль
+    const hashedPassword = await bcrypt.hash(newPass, 3);
+
+    // Обновляем пароль в базе данных
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+      },
+    });
+    return { message: 'Пароль изменен' };
   }
 }
