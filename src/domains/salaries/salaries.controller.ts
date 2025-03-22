@@ -17,7 +17,7 @@ export class SalariesController {
   constructor(private readonly salariesService: SalariesService) {}
 
   @Get('/mop/avito')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
   async getAvitoMopSalaries(
     @CurrentUser() user: UserDto,
     @Query('period') period: string,
@@ -31,7 +31,7 @@ export class SalariesController {
   }
 
   @Get('/mop/vk')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
   async getVKMopSalaries(
     @CurrentUser() user: UserDto,
     @Query('period') period: string,
