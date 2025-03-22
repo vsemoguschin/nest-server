@@ -22,6 +22,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: { id: payload.sub }, // payload.sub обычно содержит ID пользователя
       include: {
         role: true, // Включаем роль
+        workSpace: true,
       },
     });
 

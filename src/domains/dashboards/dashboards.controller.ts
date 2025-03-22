@@ -109,3 +109,4 @@ export class DashboardsController {
     return this.dashboardsService.getDatas();
   }
 }
+

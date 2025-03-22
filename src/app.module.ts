@@ -18,6 +18,7 @@ import { DopsModule } from './domains/dops/dops.module';
 import { ManagersModule } from './domains/managers/managers.module';
 import { ReportsModule } from './domains/reports/reports.module';
 import { AdModule } from './domains/ad/ad.module';
+import { SalariesModule } from './domains/salaries/salaries.module';
 
 
 @Module({
@@ -38,6 +39,7 @@ import { AdModule } from './domains/ad/ad.module';
     ManagersModule,
     ReportsModule,
     AdModule,
+    SalariesModule,
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],

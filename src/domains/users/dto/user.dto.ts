@@ -6,6 +6,7 @@ import {
   IsInt,
 } from 'class-validator';
 import { RoleDto } from 'src/domains/roles/dto/role.dto';
+import { WorkSpaceDto } from 'src/domains/workspaces/dto/workspace.dto';
 
 export class UserDto {
   @ApiProperty({ example: 1, description: 'ID пользователя' })
@@ -86,6 +87,13 @@ export class UserDto {
     required: false,
   })
   role: RoleDto; // Опционально, если нужно включить роль
+
+  @ApiProperty({
+    type: () => WorkSpaceDto,
+    description: 'пространство пользователя',
+    required: false,
+  })
+  workSpace: WorkSpaceDto; // Опционально, если нужно включить роль
 
   @ApiProperty({ example: 1, description: 'ID рабочего пространства' })
   @IsInt()
