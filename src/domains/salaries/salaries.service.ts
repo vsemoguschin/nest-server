@@ -164,12 +164,19 @@ export class SalariesService {
       }));
 
     userData.map((u) => {
-      if (
-        u.id === topDealSales[0].id ||
-        u.id === topDopSales[0].id ||
-        u.id === topAverageBill[0].id ||
-        u.id === topConversion[0].id
-      ) {
+      if (u.id === topDealSales[0].id) {
+        u.topBonus += 2000;
+        u.totalSalary += 2000;
+      }
+      if (u.id === topDopSales[0].id) {
+        u.topBonus += 2000;
+        u.totalSalary += 2000;
+      }
+      if (u.id === topAverageBill[0].id) {
+        u.topBonus += 2000;
+        u.totalSalary += 2000;
+      }
+      if (u.id === topConversion[0].id) {
         u.topBonus += 2000;
         u.totalSalary += 2000;
       }
