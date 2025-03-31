@@ -119,6 +119,7 @@ export class DealsService {
       const saleDate = el.saleDate;
       const maketType = el.maketType;
       const deletedAt = el.deletedAt;
+      const reservation = el.reservation;
       // console.log(saleDate.toISOString().slice(0, 10), 234356);
 
       return {
@@ -147,6 +148,7 @@ export class DealsService {
         saleDate,
         maketType,
         deletedAt,
+        reservation
       };
     });
 
@@ -271,6 +273,7 @@ export class DealsService {
         maketPresentation: updateDealDto.maketPresentation,
         period: updateDealDto.period,
         category: updateDealDto.category,
+        reservation: updateDealDto.reservation,
       },
     });
 

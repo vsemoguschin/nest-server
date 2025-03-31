@@ -141,4 +141,8 @@ export class CreateDealDto {
 
   @IsInt({ message: 'clientId должен быть целым числом (ID клиента).' })
   clientId: number;
+
+  @IsBoolean({ message: 'reservation должно быть true или false (бронь?).' })
+  @IsOptional()
+  reservation: boolean = false;
 }

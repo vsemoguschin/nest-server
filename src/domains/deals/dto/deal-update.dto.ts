@@ -102,6 +102,10 @@ export class UpdateDealDto {
   @IsOptional()
   paid?: boolean = false;
 
+  @IsBoolean({ message: 'reservation должно быть true или false (бронь?).' })
+  @IsOptional()
+  reservation?: boolean = false;
+
   @IsIn(maketTypes, { message: 'Не верный тип макета' })
   maketType: string;
 

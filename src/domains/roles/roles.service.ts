@@ -42,7 +42,7 @@ export class RolesService {
       where: {
         deletedAt: null, // выбираем только активные роли
         shortName: {
-          in: ['ROP', 'MOP', 'DIZ', 'MTZ', 'FRZ', 'LAM', 'MASTER', 'PACKER', 'MARKETER'],
+          in: ['ROP', 'MOP', 'DIZ', 'MTZ', 'FRZ', 'LAM', 'MASTER', 'PACKER', 'MARKETER', 'BUKH'],
         }, // Фильтруем по списку shortName
       },
     });

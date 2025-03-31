@@ -5,14 +5,14 @@ const prisma = new PrismaClient();
 async function main() {
   // Проверяем, существует ли роль
   let newRole = await prisma.role.findFirst({
-    where: { shortName: 'MARKETER' },
+    where: { shortName: 'BUKH' },
   });
   if (!newRole) {
     newRole = await prisma.role.create({
       data: {
-        shortName: 'MARKETER',
-        fullName: 'Маркетолог',
-        department: 'MARKETING',
+        shortName: 'BUKH',
+        fullName: 'Бухгалтер',
+        department: 'FINANCE',
       },
     });
     console.log('Created Role:', newRole);
@@ -38,12 +38,12 @@ async function main() {
 
   // Проверяем, существует ли группа рабочего пространства
   let newWorkSpaceGroup = await prisma.group.findFirst({
-    where: { title: 'Маркетинг', workSpaceId: newWorkSpace.id },
+    where: { title: 'Финансы', workSpaceId: newWorkSpace.id },
   });
   if (!newWorkSpaceGroup) {
     newWorkSpaceGroup = await prisma.group.create({
       data: {
-        title: 'Маркетинг',
+        title: 'Финансы',
         workSpaceId: newWorkSpace.id,
       },
     });

@@ -9,6 +9,14 @@ import { CreateManagerReportDto } from './dto/create-manager-report.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateRopReportDto } from './dto/create-rop-report.dto';
 
+const formatDate = (dateString: string): string => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    throw new Error('Дата должна быть в формате YYYY-MM-DD');
+  }
+  const [year, month, day] = dateString.split('-');
+  return `${day}.${month}.${year}`;
+};
+
 @Injectable()
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
@@ -138,6 +146,7 @@ export class ReportsService {
     const deals = await this.prisma.deal.findMany({
       where: {
         saleDate: date,
+        reservation: false,
         dealers: {
           some: {
             userId: id,
@@ -203,6 +212,7 @@ export class ReportsService {
               where: {
                 deal: {
                   period,
+                  reservation: false,
                 },
               },
               include: {
@@ -249,14 +259,18 @@ export class ReportsService {
         0,
       );
       const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
-      const callCost = dateCalls ? +(dateExpensesPrice / dateCalls).toFixed() : 0;
+      const callCost = dateCalls
+        ? +(dateExpensesPrice / dateCalls).toFixed()
+        : 0;
       const dateDops = r.user.dops.filter((d) => d.saleDate === date);
       const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
       const dealSales = dateDeals.reduce((a, b) => a + b.deal.price, 0);
       const totalSales = dopSales + dealSales;
       const dealsAmount = dateDeals.length;
-      const averageBill = dealsAmount ? +(totalSales / dealsAmount).toFixed() : 0;
-      const conversion = calls ? +(dealsAmount / calls * 100).toFixed(2) : 0
+      const averageBill = dealsAmount
+        ? +(totalSales / dealsAmount).toFixed()
+        : 0;
+      const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
       const dealsDayToDayCount = r.user.dealSales.filter(
         (d) => d.deal.saleDate === d.deal.client.firstContact,
       ).length;
@@ -264,9 +278,10 @@ export class ReportsService {
       const ddr = totalSales
         ? +((calls * callCost) / totalSales).toFixed(2)
         : 0;
+
       return {
         id: r.id,
-        date: r.date,
+        date: formatDate(r.date),
         manager: r.user.fullName,
         userId: r.userId,
         workSpaceId: r.user.workSpaceId,
@@ -311,6 +326,7 @@ export class ReportsService {
         deals: {
           where: {
             saleDate: date,
+            reservation: false,
           },
           include: {
             client: true,
@@ -369,7 +385,10 @@ export class ReportsService {
         workSpace: {
           include: {
             deals: {
-              where: { period },
+              where: {
+                period,
+                reservation: false,
+               },
               include: {
                 client: true,
               },
@@ -410,7 +429,7 @@ export class ReportsService {
       const conversionToSale = makets
         ? +((dealsAmount / makets) * 100).toFixed(2)
         : 0;
-      
+
       const dealsDayToDayCount = dateDeals.filter(
         (d) => d.saleDate === d.client.firstContact,
       ).length;
@@ -418,17 +437,17 @@ export class ReportsService {
       const conversionDealsDayToDay = calls
         ? +((dealsDayToDayCount / calls) * 100).toFixed(2)
         : 0;
-      
+
       const callCost = calls ? +(dateExpensesPrice / calls).toFixed() : 0;
       const ddr = totalSales
         ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
         : 0;
-      
+
       // console.log(callCost);
 
       return {
         id: r.id,
-        date, //дата
+        date: formatDate(date), //дата
         workSpaceId: r.workSpaceId,
         workSpace: r.workSpace.title,
         calls, // количество заявок

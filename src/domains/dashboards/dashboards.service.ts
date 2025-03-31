@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { WorkSpaceDto } from '../workspaces/dto/workspace.dto';
 import { UserDto } from '../users/dto/user.dto';
 
 // Определяем тип для деталей выручки
@@ -91,8 +90,8 @@ export class DashboardsService {
                 fullName: true,
                 role: true,
                 tg: true,
-                id: true, 
-              }
+                id: true,
+              },
             },
           },
         },
@@ -178,6 +177,7 @@ export class DashboardsService {
             userId: m.id,
             deal: {
               period,
+              reservation: false,
               deletedAt: null,
             },
           },
@@ -702,7 +702,7 @@ export class DashboardsService {
         if (user.role.shortName === 'DO') {
           // console.log(user);
           data.plan = user.managersPlans[0]?.plan || 0;
-        };
+        }
       });
 
       data.dopsToSales = data.totalSales
@@ -752,7 +752,6 @@ export class DashboardsService {
     fullData.adTags.sort((a, b) => b.sales - a.sales);
     fullData.maketsSales.sort((a, b) => b.sales - a.sales);
     fullData.adExpenses.sort((a, b) => b.sales - a.sales);
-
 
     const topManagers = workSpacesData.flatMap((w) => w.users);
 

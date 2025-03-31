@@ -203,6 +203,7 @@ model Deal {
   period            String     @default("") // Период, например "2025-02"; значение можно вычислять на уровне приложения
   deletedAt         DateTime?  // Поле для мягкого удаления
   createdAt         DateTime   @default(now())
+  reservation       Boolean    @default(false) // Бронь
 
   // Внешний ключ для связи с пространством
   workSpaceId       Int

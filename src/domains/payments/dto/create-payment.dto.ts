@@ -23,7 +23,7 @@ const paymentMethods = [
 
 export class CreatePaymentDto {
   @IsString()
-  @IsNotEmpty({message: "Назначение платежа не может быть пустым"})
+  @IsNotEmpty({ message: 'Назначение платежа не может быть пустым' })
   title: string;
 
   @IsInt({ message: 'price должен быть целым числом (стоимость без допов).' })
@@ -51,7 +51,7 @@ export class CreatePaymentDto {
   @IsNotEmpty()
   description?: string;
 
-  @IsBoolean({ message: 'paid должно быть true или false (оплачена?).' })
+  @IsBoolean({ message: 'reservation должно быть true или false (бронь?).' })
   @IsOptional()
   reservation: boolean = false;
 

@@ -22,7 +22,10 @@ export class SalariesService {
             workSpace: true,
             dealSales: {
               where: {
-                deal: { period },
+                deal: {
+                  period,
+                  reservation: false,
+                 },
               },
               include: {
                 deal: {
@@ -209,7 +212,10 @@ export class SalariesService {
             workSpace: true,
             dealSales: {
               where: {
-                deal: { period },
+                deal: {
+                  period,
+                  reservation: false,
+                 },
               },
               include: {
                 deal: {
