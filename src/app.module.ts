@@ -19,6 +19,7 @@ import { ManagersModule } from './domains/managers/managers.module';
 import { ReportsModule } from './domains/reports/reports.module';
 import { AdModule } from './domains/ad/ad.module';
 import { SalariesModule } from './domains/salaries/salaries.module';
+import { SalaryPaysModule } from './domains/salary-pays/salary-pays.module';
 
 
 @Module({
@@ -40,6 +41,7 @@ import { SalariesModule } from './domains/salaries/salaries.module';
     ReportsModule,
     AdModule,
     SalariesModule,
+    SalaryPaysModule,
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],

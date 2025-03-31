@@ -109,6 +109,8 @@ model User {
   managersPlans  ManagersPlan[]
 
   managerReports ManagerReport[]
+
+  salaryPays     salaryPay[]
 }
 model ManagersPlan {
   id         Int        @id @default(autoincrement()) 
@@ -144,6 +146,17 @@ model RopReport {
 
   workSpaceId         Int
   workSpace           WorkSpace  @relation(fields: [workSpaceId], references: [id])
+}
+
+model salaryPay {
+  id             Int    @id @default(autoincrement())
+  date           String
+  period         String @default("")
+  price          Int
+  status         String
+
+  userId         Int
+  user           User   @relation(fields: [userId], references: [id])
 }
 
 // КЛИЕНТ
