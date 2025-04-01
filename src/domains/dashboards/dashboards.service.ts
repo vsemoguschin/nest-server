@@ -5,7 +5,7 @@ import { UserDto } from '../users/dto/user.dto';
 const formatDate = (dateString: string): string => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
     // throw new Error('Дата должна быть в формате YYYY-MM-DD');
-    return ''
+    return '';
   }
   const [year, month, day] = dateString.split('-');
   return `${day}.${month}.${year}`;
@@ -85,7 +85,7 @@ export class DashboardsService {
     let where: Partial<{ deletedAt: null; id: { gt: number } | number }> = {
       deletedAt: null,
     };
-    if (['DO', 'ROD', 'DP', 'RP'].includes(user.role.shortName)) {
+    if (!['ADMIN', 'G', 'KD'].includes(user.role.shortName)) {
       where = { id: user.workSpaceId, deletedAt: null };
     }
     const workspaces = await this.prisma.workSpace.findMany({
@@ -116,7 +116,7 @@ export class DashboardsService {
       id: { gt: 0 } as { gt: number } | number,
     };
 
-    if (['DO', 'ROP', 'MOP', 'DP', 'RP'].includes(user.role.shortName)) {
+    if (!['ADMIN', 'G', 'KD'].includes(user.role.shortName)) {
       workSpacesSearch = {
         id: user.workSpaceId,
         deletedAt: null,
@@ -878,16 +878,18 @@ export class DashboardsService {
     const result = workspaces.map((w) => ({
       id: w.id,
       title: w.title,
-      pays: w.salaryPays.map((p) => ({
-        id: p.id,
-        fullName: p.user.fullName,
-        role: p.user.role.fullName,
-        userId: p.userId,
-        price: p.price,
-        date: formatDate(p.date),
-        period: p.period,
-        status: p.status,
-      })).sort((a, b) => a.fullName.localeCompare(b.fullName)),
+      pays: w.salaryPays
+        .map((p) => ({
+          id: p.id,
+          fullName: p.user.fullName,
+          role: p.user.role.fullName,
+          userId: p.userId,
+          price: p.price,
+          date: formatDate(p.date),
+          period: p.period,
+          status: p.status,
+        }))
+        .sort((a, b) => a.fullName.localeCompare(b.fullName)),
       users: w.users,
       totals: [
         {
