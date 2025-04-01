@@ -11,7 +11,7 @@ export class SalaryPaysService {
   async create(createDto: SalaryPayCreateDto) {
     // Проверяем, существует ли пользователь
     const userExists = await this.prisma.user.findUnique({
-      where: { id: createDto.userId },
+      where: { id: createDto.userId, deletedAt: null },
     });
     if (!userExists) {
       throw new NotFoundException(

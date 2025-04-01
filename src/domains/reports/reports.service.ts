@@ -136,7 +136,7 @@ export class ReportsService {
 
   async getManagerData(id: number, date: string) {
     const user = await this.prisma.user.findUnique({
-      where: { id },
+      where: { id, deletedAt: null },
     });
 
     if (!user) {

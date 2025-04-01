@@ -143,6 +143,7 @@ export class DashboardsService {
     const managers = await this.prisma.user.findMany({
       where: {
         workSpaceId: { in: workSpaceIds },
+        deletedAt: null,
       },
       include: {
         workSpace: true,
@@ -163,6 +164,7 @@ export class DashboardsService {
           department: 'COMMERCIAL',
         },
         workSpaceId: workspacesSearch,
+        deletedAt: null,
       },
       include: {
         role: true,

@@ -18,7 +18,7 @@ export class DopsService {
     }
 
     const managerExists = await this.prisma.user.findUnique({
-      where: { id: createDopDto.userId },
+      where: { id: createDopDto.userId, deletedAt: null },
     });
     if (!managerExists) {
       throw new NotFoundException(

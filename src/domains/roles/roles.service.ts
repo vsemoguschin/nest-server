@@ -42,7 +42,20 @@ export class RolesService {
       where: {
         deletedAt: null, // выбираем только активные роли
         shortName: {
-          in: ['ROP', 'MOP', 'DIZ', 'MTZ', 'FRZ', 'LAM', 'MASTER', 'PACKER', 'MARKETER', 'BUKH'],
+          in: [
+            'ROP',
+            'MOP',
+            'DIZ',
+            'MTZ',
+            'FRZ',
+            'LAM',
+            'MASTER',
+            'PACKER',
+            'MARKETER',
+            'BUKH',
+            'ROV',
+            'MOV',
+          ],
         }, // Фильтруем по списку shortName
       },
     });
@@ -52,6 +65,7 @@ export class RolesService {
     }
     return roles;
   }
+
   async update(id: number, updateRoleDto: UpdateRoleDto) {
     // Проверяем, существует ли роль с данным id
     const existingRole = await this.prisma.role.findUnique({ where: { id } });

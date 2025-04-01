@@ -33,7 +33,7 @@ export class ManagersService {
   async setPlan(managerId: number, updatePlanDto: UpdatePlanDto) {
     // Проверяем существование пользователя
     const user = await this.prisma.user.findUnique({
-      where: { id: managerId },
+      where: { id: managerId, deletedAt: null },
     });
     if (!user) {
       throw new NotFoundException(`Менеджер с ID ${managerId} не найден`);
