@@ -9,6 +9,16 @@ export class SalaryPaysService {
 
   // Создание записи о выплате
   async create(createDto: SalaryPayCreateDto) {
+    // Проверяем, существует ли пользователь
+    const userExists = await this.prisma.user.findUnique({
+      where: { id: createDto.userId },
+    });
+    if (!userExists) {
+      throw new NotFoundException(
+        `Пользователь с ID ${createDto.userId} не найден`,
+      );
+    }
+
     return this.prisma.salaryPay.create({
       data: {
         date: createDto.date,
@@ -16,6 +26,7 @@ export class SalaryPaysService {
         price: createDto.price,
         status: createDto.status,
         userId: createDto.userId,
+        workSpaceId: userExists.workSpaceId,
       },
       include: {
         user: true, // Включаем данные пользователя в ответ
@@ -63,7 +74,8 @@ export class SalaryPaysService {
     return this.prisma.salaryPay.update({
       where: { id },
       data: {
-        status: updateStatusDto.status,
+          status: updateStatusDto.status,
+          date: new Date().toISOString().slice(0, 10),
       },
       include: {
         user: true,

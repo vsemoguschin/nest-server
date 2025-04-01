@@ -103,6 +103,30 @@ export class DashboardsController {
     }
     return this.dashboardsService.getStatistics(user, period);
   }
+
+  //Получить данные по выплатам за указанный период
+  @Get('/pays')
+  @ApiOperation({ summary: 'Получить данные по выплатам за указанный период' })
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'BUKH')
+  @ApiResponse({
+    status: 200,
+    description: 'Данные по выплатам успешно получены.',
+  })
+  @ApiResponse({ status: 400, description: 'Неверный формат периода.' })
+  async getPays(
+    @CurrentUser() user: UserDto,
+    @Query('period') period: string,
+  ): Promise<any> {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.dashboardsService.getPays(user, period);
+  }
+
+
+  
   //Получить всю базу
   @Get('/datas')
   async getDatas(): Promise<any> {

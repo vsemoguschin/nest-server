@@ -43,6 +43,7 @@ model WorkSpace {
   adSources       AdSource[]
   reports         RopReport[]
   adExpenses      AdExpense[]
+  salaryPays      salaryPay[]
 }
 
 
@@ -147,16 +148,19 @@ model RopReport {
   workSpaceId         Int
   workSpace           WorkSpace  @relation(fields: [workSpaceId], references: [id])
 }
-
+// Суммы выплат
 model salaryPay {
   id             Int    @id @default(autoincrement())
-  date           String
+  date           String @default("")
   period         String @default("")
   price          Int
   status         String
 
   userId         Int
   user           User   @relation(fields: [userId], references: [id])
+
+  workSpaceId    Int
+  workSpace      WorkSpace @relation(fields: [workSpaceId], references: [id])
 }
 
 // КЛИЕНТ

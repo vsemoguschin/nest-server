@@ -2,6 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserDto } from '../users/dto/user.dto';
 
+const formatDate = (dateString: string): string => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    // throw new Error('Дата должна быть в формате YYYY-MM-DD');
+    return ''
+  }
+  const [year, month, day] = dateString.split('-');
+  return `${day}.${month}.${year}`;
+};
+
 // Определяем тип для деталей выручки
 interface RevenueDetail {
   dealId: number;
@@ -831,5 +840,69 @@ export class DashboardsService {
     const dates = generateMonthDates(period);
 
     console.log(dates);
+  }
+
+  async getPays(user: UserDto, period: string) {
+    const workspacesSearch =
+      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+
+    const workspaces = await this.prisma.workSpace.findMany({
+      where: {
+        id: workspacesSearch,
+        deletedAt: null,
+      },
+      include: {
+        salaryPays: {
+          where: {
+            period,
+          },
+          include: {
+            user: {
+              include: {
+                role: true,
+              },
+            },
+          },
+        },
+        users: {
+          select: {
+            id: true,
+            fullName: true,
+          },
+        },
+      },
+    });
+
+    const result = workspaces.map((w) => ({
+      id: w.id,
+      title: w.title,
+      pays: w.salaryPays.map((p) => ({
+        id: p.id,
+        fullName: p.user.fullName,
+        role: p.user.role.fullName,
+        userId: p.userId,
+        price: p.price,
+        date: formatDate(p.date),
+        period: p.period,
+        status: p.status,
+      })).sort((a, b) => a.fullName.localeCompare(b.fullName)),
+      users: w.users,
+      totals: [
+        {
+          title: 'Выплачено',
+          value: w.salaryPays
+            .filter((p) => p.date !== '')
+            .reduce((sum, p) => sum + p.price, 0),
+        },
+        {
+          title: 'Остаток',
+          value: w.salaryPays
+            .filter((p) => p.date == '')
+            .reduce((sum, p) => sum + p.price, 0),
+        },
+      ],
+    }));
+
+    return result;
   }
 }

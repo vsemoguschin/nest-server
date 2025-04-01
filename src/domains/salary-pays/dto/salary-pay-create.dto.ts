@@ -10,8 +10,7 @@ export class SalaryPayCreateDto {
     example: '2025-01-12',
   })
   @IsString()
-  @IsNotEmpty()
-  date: string;
+  date: string = '';
 
   @ApiProperty({
     description: 'Период выплаты (например, YYYY-MM)',

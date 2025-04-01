@@ -18,6 +18,11 @@ export class SalariesService {
         users: {
           where: { role: { shortName: 'MOP' } },
           include: {
+            salaryPays: {
+              where: {
+                period,
+              },
+            },
             role: true,
             workSpace: true,
             dealSales: {
@@ -113,6 +118,7 @@ export class SalariesService {
         id: u.id,
         manager: u.fullName, //менеджер
         totalSalary: salesBonus + bonus, //ЗП(₽)
+        pays: u.salaryPays.reduce((a, b) => a + b.price, 0), //выплачено(₽)
         salesBonus, //% с продаж(₽)
         dopBonus, //% с допов(₽)
         bonus, //премия(₽)
@@ -208,6 +214,11 @@ export class SalariesService {
         users: {
           where: { role: { shortName: 'MOP' } },
           include: {
+            salaryPays: {
+              where: {
+                period,
+              },
+            },
             role: true,
             workSpace: true,
             dealSales: {
@@ -430,6 +441,7 @@ export class SalariesService {
         dealSales: userSales.dealSales,
         dopSales: userSales.dopSales,
         totalSales: userSales.totalSales,
+        pays: u.salaryPays.reduce((a, b) => a + b.price, 0),
         salesBonus,
         topBonus,
         dimmerSales,
