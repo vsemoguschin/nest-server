@@ -59,7 +59,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Удалить пользователя по ID' })
   @ApiParam({ name: 'id', type: 'integer', description: 'ID пользователя' })
   @ApiNoContentResponse({ description: 'Пользователь успешно удален' })
-  @Roles('ADMIN', 'G', 'KD', 'DO')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'ROD')
   async deleteUser(@Param('id', ParseIntPipe) userId: number): Promise<void> {
     await this.usersService.deleteUser(userId);
   }
