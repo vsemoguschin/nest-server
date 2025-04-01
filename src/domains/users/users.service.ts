@@ -60,6 +60,7 @@ export class UsersService {
         workSpaceId: createUserDto.workSpaceId,
         groupId: createUserDto.groupId,
         roleId: createUserDto.roleId,
+        tg: createUserDto.tg,
       },
     });
     console.log({ ...createdUser, role });
