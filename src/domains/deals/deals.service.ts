@@ -59,7 +59,11 @@ export class DealsService {
 
   async getList(user: UserDto, start: string, end: string) {
     const workspacesSearch =
-      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+      user.role.department === 'administration' ||
+      user.role.shortName === 'ROV' ||
+      user.role.shortName === 'MOV'
+        ? { gt: 0 }
+        : user.workSpaceId;
     // Запрашиваем сделки, у которых saleDate попадает в диапазон
     const deals = await this.prisma.deal.findMany({
       where: {
@@ -148,7 +152,7 @@ export class DealsService {
         saleDate,
         maketType,
         deletedAt,
-        reservation
+        reservation,
       };
     });
 
