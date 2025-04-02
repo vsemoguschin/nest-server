@@ -32,7 +32,7 @@ export class UsersController {
 
   @Post()
   @ApiOperation({ summary: 'Создать нового пользователя' })
-  @Roles('ADMIN', 'G', 'KD', 'DO')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'ROV')
   async createUser(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
