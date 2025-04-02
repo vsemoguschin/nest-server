@@ -37,6 +37,11 @@ export class CreateManagerReportDto {
   @IsNotEmpty()
   maketsDayToDay: number;
 
+  @IsInt()
+  @Min(0)
+  @IsNotEmpty()
+  redirectToMSG: number;
+
   @IsString({ message: 'period должно быть строкой (период).' })
   @IsOptional()
   @IsNotEmpty()

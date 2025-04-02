@@ -57,7 +57,7 @@ export class DealsService {
     return newDeal;
   }
 
-  async getList(user: UserDto, start: string, end: string) {
+  async getList(user: UserDto, period: string) {
     const workspacesSearch =
       user.role.department === 'administration' ||
       user.role.shortName === 'ROV' ||
@@ -69,22 +69,14 @@ export class DealsService {
       where: {
         // deletedAt: null,
         saleDate: {
-          gte: start,
-          lte: end,
+          startsWith: period,
         },
         workSpaceId: workspacesSearch,
       },
 
       include: {
         dops: true,
-        payments: {
-          where: {
-            date: {
-              gte: start,
-              lte: end,
-            },
-          },
-        },
+        payments: true,
         dealers: true,
         client: true,
         // deliveries: true,
@@ -94,6 +86,11 @@ export class DealsService {
         saleDate: 'desc',
       },
     });
+
+    console.log(
+      deals.flatMap((deal) => deal.dealers).reduce((a, b) => a + b.price, 0),
+      22121212,
+    );
 
     const dealsList = deals.map((el) => {
       const { id } = el;
@@ -162,6 +159,7 @@ export class DealsService {
       dopsPrice: 0,
       recievedPayments: 0,
       remainder: 0,
+      dealsAmount: dealsList.length,
     };
 
     dealsList.map((el) => {
@@ -177,13 +175,13 @@ export class DealsService {
       totalInfo,
     };
 
-    const pay = await this.prisma.payment.findMany({
-      where: {
-        period: start.slice(0, 7),
-      },
-    });
-    console.log(pay.length);
-    console.log(pay.reduce((a, b) => a + b.price, 0));
+    // const pay = await this.prisma.payment.findMany({
+    //   where: {
+    //     period: start.slice(0, 7),
+    //   },
+    // });
+    // console.log(pay.length);
+    // console.log(pay.reduce((a, b) => a + b.price, 0));
     return resp;
   }
 

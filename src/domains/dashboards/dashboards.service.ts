@@ -153,6 +153,7 @@ export class DashboardsService {
     return { workSpaces, groups, managers };
   }
 
+  // managers
   async getManagersData(user: UserDto, period: string) {
     const workspacesSearch =
       user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
@@ -162,6 +163,9 @@ export class DashboardsService {
       where: {
         role: {
           department: 'COMMERCIAL',
+          shortName: ['ADMIN', 'G', 'KD'].includes(user.role.shortName)
+            ? {}
+            : { in: ['MOP'] },
         },
         workSpaceId: workspacesSearch,
         deletedAt: null,
@@ -187,7 +191,9 @@ export class DashboardsService {
           where: {
             userId: m.id,
             deal: {
-              period,
+              saleDate: {
+                startsWith: period,
+              },
               reservation: false,
               deletedAt: null,
             },
@@ -197,11 +203,17 @@ export class DashboardsService {
               include: {
                 payments: {
                   where: {
-                    period,
+                    date: {
+                      startsWith: period,
+                    },
                   },
                 }, // Подтягиваем платежи для каждой сделки
                 dops: {
-                  where: { period },
+                  where: {
+                    saleDate: {
+                      startsWith: period,
+                    },
+                  },
                 },
                 dealers: true,
               },
@@ -386,12 +398,20 @@ export class DashboardsService {
         period,
       },
     });
-    // console.log(pay.reduce((a, b) => a + b.price, 0)); //2985507
+    const deals = await this.prisma.deal.findMany({
+      where: {
+        saleDate: {
+          startsWith: period,
+        },
+      },
+    });
+    console.log(deals.reduce((a, b) => a + b.price, 0)); //2985507
     // console.log(result.reduce((a, b) => a + b.receivedPayments, 0)); //2960085
 
     return result;
   }
 
+  // satistics
   async getStatistics(user: UserDto, period: string) {
     const allWorkspaces = await this.prisma.workSpace.findMany({
       where: {
@@ -404,13 +424,18 @@ export class DashboardsService {
       include: {
         deals: {
           where: {
-            period,
+            saleDate: {
+              startsWith: period,
+            },
+            reservation: false,
             deletedAt: null,
           },
           include: {
             payments: {
               where: {
-                period,
+                date: {
+                  startsWith: period,
+                },
               },
             },
             dealers: {
@@ -430,7 +455,9 @@ export class DashboardsService {
             role: true,
             dops: {
               where: {
-                period,
+                saleDate: {
+                  startsWith: period,
+                },
               },
             },
           },

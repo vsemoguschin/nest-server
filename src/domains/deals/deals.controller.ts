@@ -40,7 +40,7 @@ export class DealsController {
 
   @Get('sources')
   async getSources() {
-    return this.dealsService.getSources()
+    return this.dealsService.getSources();
   }
 
   @Post()
@@ -66,20 +66,17 @@ export class DealsController {
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   async getList(
     @CurrentUser() user: UserDto,
-    @Query('start') start: string,
-    @Query('end') end: string,
+    @Query('period') period: string,
   ): Promise<any> {
     if (
-      !start ||
-      !end ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(start) ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(end)
+      !period ||
+      (!/^\d{4}-\d{2}-\d{2}$/.test(period) && !/^\d{4}-\d{2}$/.test(period))
     ) {
       throw new BadRequestException(
-        'Параметры start и end обязательны и должны быть в формате YYYY-MM-DD',
+        'Параметры period обязательны и должны быть в формате YYYY-MM-DD',
       );
     }
-    return this.dealsService.getList(user, start, end);
+    return this.dealsService.getList(user, period);
   }
 
   @Get(':id')
@@ -116,9 +113,15 @@ export class DealsController {
   }
 
   @Patch(':dealId/dealers')
-  @ApiOperation({ summary: 'Обновить список дилеров сделки', description: 'Обновляет список дилеров для указанной сделки.' })
+  @ApiOperation({
+    summary: 'Обновить список дилеров сделки',
+    description: 'Обновляет список дилеров для указанной сделки.',
+  })
   @ApiResponse({ status: 200, description: 'Список дилеров успешно обновлен.' })
-  @ApiResponse({ status: 400, description: 'Неверные данные или сумма не совпадает.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Неверные данные или сумма не совпадает.',
+  })
   @ApiResponse({ status: 404, description: 'Сделка не найдена.' })
   async updateDealers(
     @Param('dealId', ParseIntPipe) dealId: number,
@@ -126,5 +129,4 @@ export class DealsController {
   ) {
     return this.dealsService.updateDealers(dealId, updateDealersDto);
   }
-
 }

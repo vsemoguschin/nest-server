@@ -23,6 +23,11 @@ export class ManagersService {
       select: {
         id: true,
         fullName: true,
+        workSpace: {
+          select: {
+            title: true,
+          }
+        }
       },
       orderBy: {
         fullName: 'asc', // Сортировка по имени (опционально)

@@ -133,6 +133,7 @@ model ManagerReport {
   maketsDayToDay Int    @default(0)
   date           String
   period         String @default("")
+  redirectToMSG  Int    @default(0) //new
 
   userId         Int
   user           User  @relation(fields: [userId], references: [id])
@@ -142,6 +143,8 @@ model RopReport {
   id             Int    @id @default(autoincrement())
   calls          Int    @default(0)
   makets         Int    @default(0)
+  maketsDayToDay Int    @default(0) //new
+  redirectToMSG  Int    @default(0) //new
   date           String
   period         String @default("")
 

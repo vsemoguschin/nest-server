@@ -22,7 +22,7 @@ export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
   async create(createManagerReportDto: CreateManagerReportDto) {
-    const { calls, makets, maketsDayToDay, userId, date } =
+    const { calls, makets, maketsDayToDay, userId, date, redirectToMSG } =
       createManagerReportDto;
 
     // Проверяем, существует ли запись с таким userId и date
@@ -47,6 +47,7 @@ export class ReportsService {
         userId,
         date,
         period: date.slice(0, 7),
+        redirectToMSG,
       },
     });
 
@@ -54,7 +55,8 @@ export class ReportsService {
   }
 
   async createRopReport(createRopReportDto: CreateRopReportDto) {
-    const { calls, makets, workSpaceId, date } = createRopReportDto;
+    const { calls, makets, workSpaceId, date, maketsDayToDay, redirectToMSG } =
+      createRopReportDto;
 
     // Проверяем, существует ли запись с таким userId и date
     const existingReport = await this.prisma.ropReport.findFirst({
@@ -76,6 +78,8 @@ export class ReportsService {
         makets,
         workSpaceId,
         date,
+        maketsDayToDay,
+        redirectToMSG,
         period: date.slice(0, 7),
       },
     });
@@ -247,7 +251,7 @@ export class ReportsService {
     });
 
     return reports.map((r) => {
-      const { date, calls } = r;
+      const { date, calls, redirectToMSG } = r;
       const dateDeals = r.user.dealSales.filter(
         (d) => d.deal.saleDate === date,
       );
@@ -296,6 +300,7 @@ export class ReportsService {
         maketsDayToDay: r.maketsDayToDay,
         conversion,
         ddr,
+        redirectToMSG,
         dealsDayToDayCount,
       };
     });
@@ -386,9 +391,11 @@ export class ReportsService {
           include: {
             deals: {
               where: {
-                period,
+                saleDate: {
+                  startsWith: period,
+                },
                 reservation: false,
-               },
+              },
               include: {
                 client: true,
               },
@@ -411,7 +418,7 @@ export class ReportsService {
     });
 
     return reports.map((r) => {
-      const { date, calls, makets } = r;
+      const { date, calls, makets, maketsDayToDay, redirectToMSG } = r;
       const dateExpenses = r.workSpace.adExpenses.filter(
         (e) => e.date === date,
       );
@@ -457,6 +464,8 @@ export class ReportsService {
         totalSales, //общая сумма продаж
         averageBill: +averageBill.toFixed(), //средний чек
         makets, //количество макетов
+        maketsDayToDay, //количество макетов
+        redirectToMSG, //количество редиректов
         conversion, //конверсия
         conversionMaket, //конверсия в макет (количество макетов/колво сделок)
         conversionToSale, //конверсия из макета в продажу(колво сделок/колво макетов)
