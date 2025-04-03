@@ -58,12 +58,21 @@ export class DealsService {
   }
 
   async getList(user: UserDto, period: string) {
-    const workspacesSearch =
+    let workspacesSearch =
       user.role.department === 'administration' ||
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;
+
+    //Ведение авито
+    if (user.id === 84 || user.id === 87) {
+      workspacesSearch = 2;
+    }
+    // Ведение ВК
+    if (user.id === 86 || user.id === 88) {
+      workspacesSearch = 3;
+    }
     // Запрашиваем сделки, у которых saleDate попадает в диапазон
     const deals = await this.prisma.deal.findMany({
       where: {
@@ -185,13 +194,23 @@ export class DealsService {
   }
 
   async searchByName(user: UserDto, name: string) {
-    const workspacesSearch =
+    let workspacesSearch =
       user.role.department === 'administration' ||
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;
     // Запрашиваем сделки, у которых saleDate попадает в диапазон
+
+    //Ведение авито
+    if (user.id === 84 || user.id === 87) {
+      workspacesSearch = 2;
+    }
+    // Ведение ВК
+    if (user.id === 86 || user.id === 88) {
+      workspacesSearch = 3;
+    }
+
     const deals = await this.prisma.deal.findMany({
       where: {
         OR: [
