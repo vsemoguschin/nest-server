@@ -86,7 +86,7 @@ export class DashboardsController {
   //Получить статистику за указанный период
   @Get('/statistics')
   @ApiOperation({ summary: 'Получить статистику за указанный период' })
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'DO')
   @ApiResponse({
     status: 200,
     description: 'Статистика успешно получена.',
