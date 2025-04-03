@@ -79,6 +79,23 @@ export class DealsController {
     return this.dealsService.getList(user, period);
   }
 
+  @Get('search')
+  @ApiOperation({
+    summary: 'Поиск сделок по названию',
+    description:
+      'Endpoint: GET /deals/search?name=Название. Поиск сделок по названию.',
+  })
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  async searchDealsByName(
+    @CurrentUser() user: UserDto,
+    @Query('name') name: string,
+  ): Promise<any> {
+    if (!name || name.trim() === '') {
+      throw new BadRequestException('Параметр name обязателен.');
+    }
+    return this.dealsService.searchByName(user, name);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Получить сделку',

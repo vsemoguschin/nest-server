@@ -184,6 +184,145 @@ export class DealsService {
     return resp;
   }
 
+  async searchByName(user: UserDto, name: string) {
+    const workspacesSearch =
+      user.role.department === 'administration' ||
+      user.role.shortName === 'ROV' ||
+      user.role.shortName === 'MOV'
+        ? { gt: 0 }
+        : user.workSpaceId;
+    // Запрашиваем сделки, у которых saleDate попадает в диапазон
+    const deals = await this.prisma.deal.findMany({
+      where: {
+        OR: [
+          {
+            title: {
+              contains: name,
+              mode: 'insensitive',
+            },
+          },
+          {
+            client: {
+              chatLink: {
+                contains: name,
+                mode: 'insensitive',
+              },
+            },
+          },
+        ],
+        workSpaceId: workspacesSearch,
+      },
+
+      include: {
+        dops: true,
+        payments: true,
+        dealers: true,
+        client: true,
+        // deliveries: true,
+        // workSpace: true,
+      },
+      orderBy: {
+        saleDate: 'desc',
+      },
+    });
+
+    console.log(deals.length);
+
+    const dealsList = deals.map((el) => {
+      const { id } = el;
+      const title = el.title; //Название
+      const price = el.price; //Стоимость сделки
+      const dopsPrice = el.dops.reduce((a, b) => a + b.price, 0); //сумма допов
+      const recievedPayments = el.payments.reduce((a, b) => a + b.price, 0); //внесенных платежей
+      const totalPrice = price + dopsPrice; //Общяя сумма
+      const remainder = totalPrice - recievedPayments; //Остаток
+      const dealers = el.dealers; //менеджер(ы)
+      const source = el.source; //источник сделки
+      const adTag = el.adTag; //тег рекламный
+      const firstPayment = el.payments[0]?.method || ''; //метод первого платежа
+      const city = el.city;
+      const clothingMethod = el.clothingMethod;
+      const clientType = el.client.type;
+      const chatLink = el.client.chatLink;
+      const sphere = el.sphere;
+      const discont = el.discont;
+      const status = el.status;
+      const paid = el.paid;
+      // const delivery = el.deliveries; //полностью
+      // const workspace = el.workSpace.title;
+      const client = el.client; //передаю полность
+      const workSpaceId = el.workSpaceId;
+      const groupId = el.groupId;
+      const saleDate = el.saleDate;
+      const maketType = el.maketType;
+      const deletedAt = el.deletedAt;
+      const reservation = el.reservation;
+      // console.log(saleDate.toISOString().slice(0, 10), 234356);
+
+      return {
+        id,
+        title,
+        totalPrice,
+        price,
+        clientType,
+        dopsPrice,
+        recievedPayments,
+        remainder,
+        dealers,
+        source,
+        adTag,
+        firstPayment,
+        city,
+        clothingMethod,
+        client,
+        sphere,
+        discont,
+        status,
+        paid,
+        workSpaceId,
+        groupId,
+        chatLink,
+        saleDate,
+        maketType,
+        deletedAt,
+        reservation,
+      };
+    });
+
+    const totalInfo = {
+      totalPrice: 0,
+      price: 0,
+      dopsPrice: 0,
+      recievedPayments: 0,
+      remainder: 0,
+      dealsAmount: dealsList.length,
+    };
+
+    dealsList.map((el) => {
+      if (!el.reservation) {
+        totalInfo.totalPrice += el.totalPrice;
+        totalInfo.price += el.price;
+        totalInfo.dopsPrice += el.dopsPrice;
+        totalInfo.recievedPayments += el.recievedPayments;
+        totalInfo.remainder += el.remainder;
+      }
+    });
+
+    const resp = {
+      deals: dealsList,
+      totalInfo,
+    };
+
+    // const pay = await this.prisma.payment.findMany({
+    //   where: {
+    //     period: start.slice(0, 7),
+    //   },
+    // });
+    // console.log(pay.length);
+    // console.log(pay.reduce((a, b) => a + b.price, 0));
+    return resp;
+  }
+
   async findOne(id: number) {
     const deal = await this.prisma.deal.findUnique({
       where: { id },
