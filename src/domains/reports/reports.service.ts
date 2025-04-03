@@ -453,7 +453,7 @@ export class ReportsService {
         ? +((dealsDayToDayCount / calls) * 100).toFixed(2)
         : 0;
 
-      const callCost = calls ? +(dateExpensesPrice / calls).toFixed() : 0;
+      const callCost = calls ? +(dateExpensesPrice / calls).toFixed(2) : 0;
       const ddr = totalSales
         ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
         : 0;
@@ -481,6 +481,7 @@ export class ReportsService {
         conversionDealsDayToDay, // конверсия заказов день в день (заказы день в день/заявки)
         callCost, //Стоимость заявки(по формуле)
         ddr, //ДРР(по формуле)
+        dateExpensesPrice, //стоимость рекламы
       };
     });
   }
