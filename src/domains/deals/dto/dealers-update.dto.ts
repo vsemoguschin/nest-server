@@ -28,6 +28,11 @@ export class DealerDto {
   @IsInt({ message: 'ID сделки должен быть целым числом.' })
   @IsNotEmpty({ message: 'ID сделки обязателен.' })
   dealId: number;
+
+  @IsInt()
+  @Min(0)
+  @IsNotEmpty()
+  idx: number;
 }
 
 export class UpdateDealersDto {

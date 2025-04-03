@@ -401,10 +401,18 @@ export class ReportsService {
               },
             },
             dops: {
-              where: { period },
+              where: {
+                saleDate: {
+                  startsWith: period,
+                },
+              },
             },
             payments: {
-              where: { period },
+              where: {
+                date: {
+                  startsWith: period,
+                },
+              },
             },
             adExpenses: {
               where: { period },

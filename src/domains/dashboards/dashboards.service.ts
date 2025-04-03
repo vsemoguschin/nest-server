@@ -168,10 +168,15 @@ export class DashboardsService {
             : { in: ['MOP'] },
         },
         workSpaceId: workspacesSearch,
-        deletedAt: null,
+        // deletedAt: null,
       },
       include: {
         role: true,
+        managerReports: {
+          where: {
+            period,
+          },
+        },
       },
     });
 
@@ -369,13 +374,31 @@ export class DashboardsService {
           0,
         );
 
+        //заявки
+        const managerDeals = dealUsers.filter((du) => du.idx === 0).length;
+        const calls = m.managerReports.reduce((a, b) => a + b.calls, 0);
+        const maketsDayToDay = m.managerReports.reduce(
+          (a, b) => a + b.maketsDayToDay,
+          0,
+        );
+        const makets = m.managerReports.reduce((a, b) => a + b.makets, 0);
+        const conversionMaket = calls
+          ? +((makets / calls) * 100).toFixed(2)
+          : 0;
+        const conversionMaketDayToDay = calls
+          ? +((maketsDayToDay / calls) * 100).toFixed(2)
+          : 0;
+        const conversionToSale = makets
+          ? +((managerDeals / makets) * 100).toFixed(2)
+          : 0;
+
         return {
           id: m.id,
           manager: m.fullName,
           plan,
           dealsSales,
           totalSales,
-          dealsAmount: totalDeals,
+          dealsAmount: managerDeals,
           salesToPlan,
           remainder,
           dopsSales,
@@ -389,30 +412,27 @@ export class DashboardsService {
           groupId: m.groupId,
           managerId: m.id,
           period,
+          calls,
+          makets,
+          maketsDayToDay,
+          conversionMaket,
+          conversionMaketDayToDay,
+          conversionToSale,
+          fired: m.deletedAt ? true : false,
         };
       }),
-    );
-
-    const pay = await this.prisma.payment.findMany({
-      where: {
-        period,
-      },
+    ).then((data) => {
+      return data.filter((d) => d.totalSales > 0 || d.fired === false);
     });
-    const deals = await this.prisma.deal.findMany({
-      where: {
-        saleDate: {
-          startsWith: period,
-        },
-      },
-    });
-    console.log(deals.reduce((a, b) => a + b.price, 0)); //2985507
-    // console.log(result.reduce((a, b) => a + b.receivedPayments, 0)); //2960085
 
     return result;
   }
 
   // satistics
   async getStatistics(user: UserDto, period: string) {
+    const workspacesSearch =
+      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+
     const allWorkspaces = await this.prisma.workSpace.findMany({
       where: {
         deletedAt: null,
@@ -420,6 +440,7 @@ export class DashboardsService {
         title: {
           in: ['B2B', 'ВК'],
         },
+        id: workspacesSearch,
       },
       include: {
         deals: {

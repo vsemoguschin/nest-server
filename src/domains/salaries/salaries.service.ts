@@ -28,9 +28,11 @@ export class SalariesService {
             dealSales: {
               where: {
                 deal: {
-                  period,
+                  saleDate: {
+                    startsWith: period,
+                  },
                   reservation: false,
-                 },
+                },
               },
               include: {
                 deal: {
@@ -40,7 +42,13 @@ export class SalariesService {
                 },
               },
             },
-            dops: { where: { period } },
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: period,
+                },
+              },
+            },
             managerReports: {
               where: {
                 period,
@@ -128,8 +136,10 @@ export class SalariesService {
         conversion, //конверсия(%)
         averageBill, //средний чек(₽)
         topBonus: 0,
+        shift: u.managerReports.length,
+        fired: u.deletedAt ? true : false,
       };
-    });
+    }).filter((u) => u.totalSales || !u.fired);
 
     // - Самая высокая Сумма Заказов в отделе
     const topDealSales = [...userData]
@@ -224,9 +234,11 @@ export class SalariesService {
             dealSales: {
               where: {
                 deal: {
-                  period,
+                  saleDate: {
+                    startsWith: period,
+                  },
                   reservation: false,
-                 },
+                },
               },
               include: {
                 deal: {
@@ -236,13 +248,31 @@ export class SalariesService {
                 },
               },
             },
-            dops: { where: { period } },
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: period,
+                },
+              },
+            },
             managerReports: {
               where: {
                 period,
               },
             },
           },
+        },
+      },
+    });
+
+    const ropPlan = await this.prisma.managersPlan.findFirst({
+      where: {
+        period,
+        user: {
+          role: {
+            shortName: 'DO',
+          },
+          workSpaceId: workSpace?.id,
         },
       },
     });
@@ -255,55 +285,70 @@ export class SalariesService {
         topDimmerSales: [],
         topSalesWithoutDesigners: [],
         topConversionDayToDay: [],
+        overRopPlan: false,
       };
     }
 
     // Расчет продаж для каждого пользователя
-    const usersWithSales = workSpace.users.map((u) => {
-      const dealSales = u.dealSales.reduce((a, b) => a + b.price, 0);
-      const dopSales = u.dops.reduce((a, b) => a + b.price, 0);
-      const totalSales = dealSales + dopSales;
-      const dimmerSales = u.dops
-        .filter((d) => d.type === 'Диммер')
-        .reduce((a, b) => a + b.price, 0);
+    const usersWithSales = workSpace.users
+      .map((u) => {
+        const dealSales = u.dealSales.reduce((a, b) => a + b.price, 0);
+        const dopSales = u.dops.reduce((a, b) => a + b.price, 0);
+        const totalSales = dealSales + dopSales;
+        const dimmerSales = u.dops
+          .filter((d) => d.type === 'Диммер')
+          .reduce((a, b) => a + b.price, 0);
 
-      const userDeals = u.dealSales.flatMap((d) => d.deal);
+        const userDeals = u.dealSales.flatMap((d) => d.deal);
 
-      const dealsWithoutDesigners = userDeals.filter((d) =>
-        [
-          'Заготовка из базы',
-          'Рекламный',
-          'Из рассылки',
-          'Визуализатор',
-        ].includes(d.maketType),
-      );
-      const salesWithoutDesigners = dealsWithoutDesigners.reduce(
-        (a, b) => a + b.price,
-        0,
-      );
+        const dealsWithoutDesigners = userDeals.filter((d) =>
+          [
+            'Заготовка из базы',
+            'Рекламный',
+            'Из рассылки',
+            'Визуализатор',
+          ].includes(d.maketType),
+        );
+        const salesWithoutDesigners = dealsWithoutDesigners.reduce(
+          (a, b) => a + b.price,
+          0,
+        );
 
-      const dealsDayToDay = userDeals.filter(
-        (d) => d.saleDate === d.client.firstContact,
-      );
+        const dealsDayToDay = userDeals.filter(
+          (d) => d.saleDate === d.client.firstContact,
+        );
 
-      const totalCalls = u.managerReports.reduce((a, b) => a + b.calls, 0);
+        const totalCalls = u.managerReports.reduce((a, b) => a + b.calls, 0);
 
-      const conversionDayToDay = totalCalls
-        ? +((dealsDayToDay.length / totalCalls) * 100).toFixed(2)
-        : 0;
+        const conversionDayToDay = totalCalls
+          ? +((dealsDayToDay.length / totalCalls) * 100).toFixed(2)
+          : 0;
 
-      return {
-        id: u.id,
-        manager: u.fullName,
-        dealSales,
-        dopSales,
-        totalSales,
-        dimmerSales,
-        dealsWithoutDesigners: dealsWithoutDesigners.length,
-        salesWithoutDesigners,
-        conversionDayToDay,
-      };
-    });
+        return {
+          id: u.id,
+          manager: u.fullName,
+          dealSales,
+          dopSales,
+          totalSales,
+          dimmerSales,
+          dealsWithoutDesigners: dealsWithoutDesigners.length,
+          salesWithoutDesigners,
+          conversionDayToDay,
+        };
+      })
+
+    let isOverRopPlan = false;
+
+    const ropPlanValue = ropPlan?.plan || 0;
+
+    const workSpaceSales = usersWithSales.reduce(
+      (acc, u) => acc + u.totalSales,
+      0,
+    );
+
+    if (workSpaceSales > ropPlanValue) {
+      isOverRopPlan = true;
+    }
 
     // Определение топов
     const topTotalSales = [...usersWithSales]
@@ -435,6 +480,12 @@ export class SalariesService {
         ? +((dealsDayToDay.length / totalCalls) * 100).toFixed(2)
         : 0;
 
+      //Смены
+      const shift = u.managerReports.length;
+      const shiftBonus = shift * 666;
+
+      const workSpacePlanBonus = isOverRopPlan ? 3000 : 0;
+
       return {
         id: u.id,
         manager: u.fullName,
@@ -445,12 +496,16 @@ export class SalariesService {
         salesBonus,
         topBonus,
         dimmerSales,
-        totalSalary: salesBonus + topBonus,
+        totalSalary: salesBonus + topBonus + shiftBonus + workSpacePlanBonus,
         dealsWithoutDesigners: dealsWithoutDesigners.length,
         salesWithoutDesigners,
         conversionDayToDay,
+        shift: u.managerReports.length,
+        shiftBonus,
+        workSpacePlanBonus,
+        fired: u.deletedAt ? true : false,
       };
-    });
+    }).filter((u) => u.totalSales || !u.fired);
 
     return {
       users: res,

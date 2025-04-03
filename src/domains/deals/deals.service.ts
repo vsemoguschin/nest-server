@@ -87,10 +87,7 @@ export class DealsService {
       },
     });
 
-    console.log(
-      deals.flatMap((deal) => deal.dealers).reduce((a, b) => a + b.price, 0),
-      22121212,
-    );
+    console.log(deals.length);
 
     const dealsList = deals.map((el) => {
       const { id } = el;
@@ -163,11 +160,13 @@ export class DealsService {
     };
 
     dealsList.map((el) => {
-      totalInfo.totalPrice += el.totalPrice;
-      totalInfo.price += el.price;
-      totalInfo.dopsPrice += el.dopsPrice;
-      totalInfo.recievedPayments += el.recievedPayments;
-      totalInfo.remainder += el.remainder;
+      if (!el.reservation) {
+        totalInfo.totalPrice += el.totalPrice;
+        totalInfo.price += el.price;
+        totalInfo.dopsPrice += el.dopsPrice;
+        totalInfo.recievedPayments += el.recievedPayments;
+        totalInfo.remainder += el.remainder;
+      }
     });
 
     const resp = {
@@ -198,6 +197,9 @@ export class DealsService {
         dealers: {
           include: {
             user: true,
+          },
+          orderBy: {
+            idx: 'asc',
           },
         },
         client: true,
@@ -390,11 +392,13 @@ export class DealsService {
           update: {
             userId: dealer.userId,
             price: dealer.price,
+            idx: dealer.idx,
           },
           create: {
             dealId: dealer.dealId,
             userId: dealer.userId,
             price: dealer.price,
+            idx: dealer.idx,
           },
         }),
       );

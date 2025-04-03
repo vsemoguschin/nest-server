@@ -335,6 +335,7 @@ model Sphere {
 model DealUser {
   id        Int    @id @default(autoincrement()) 
   price     Int    // Сумма
+  idx       Int    @default(0)// Индекс (для сортировки)
 
   dealId    Int
   deal      Deal   @relation(fields: [dealId], references: [id])
