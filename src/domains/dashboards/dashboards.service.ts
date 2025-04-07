@@ -29,6 +29,12 @@ interface ChartDataItem {
   ['Допы']: number;
 }
 
+interface CalsChartDataItem {
+  name: string;
+  ['ВК']: number;
+  ['B2B']: number;
+}
+
 interface User {
   id: number;
   fullName: string;
@@ -59,6 +65,7 @@ interface AdExpenses {
 export interface WorkSpaceData {
   workSpaceName: string;
   chartData: ChartDataItem[];
+  callsChartData: CalsChartDataItem[];
   plan: number;
   dealsSales: number;
   totalSales: number;
@@ -495,6 +502,13 @@ export class DashboardsService {
             },
           },
         },
+        reports: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
       },
     });
 
@@ -532,6 +546,39 @@ export class DashboardsService {
         { name: '29', ['Сделки']: 0, ['Допы']: 0 },
         { name: '30', ['Сделки']: 0, ['Допы']: 0 },
         { name: '31', ['Сделки']: 0, ['Допы']: 0 },
+      ],
+      callsChartData: [
+        { name: '01', ['ВК']: 0, ['B2B']: 0 },
+        { name: '02', ['ВК']: 0, ['B2B']: 0 },
+        { name: '03', ['ВК']: 0, ['B2B']: 0 },
+        { name: '04', ['ВК']: 0, ['B2B']: 0 },
+        { name: '05', ['ВК']: 0, ['B2B']: 0 },
+        { name: '06', ['ВК']: 0, ['B2B']: 0 },
+        { name: '07', ['ВК']: 0, ['B2B']: 0 },
+        { name: '08', ['ВК']: 0, ['B2B']: 0 },
+        { name: '09', ['ВК']: 0, ['B2B']: 0 },
+        { name: '10', ['ВК']: 0, ['B2B']: 0 },
+        { name: '11', ['ВК']: 0, ['B2B']: 0 },
+        { name: '12', ['ВК']: 0, ['B2B']: 0 },
+        { name: '13', ['ВК']: 0, ['B2B']: 0 },
+        { name: '14', ['ВК']: 0, ['B2B']: 0 },
+        { name: '15', ['ВК']: 0, ['B2B']: 0 },
+        { name: '16', ['ВК']: 0, ['B2B']: 0 },
+        { name: '17', ['ВК']: 0, ['B2B']: 0 },
+        { name: '18', ['ВК']: 0, ['B2B']: 0 },
+        { name: '19', ['ВК']: 0, ['B2B']: 0 },
+        { name: '20', ['ВК']: 0, ['B2B']: 0 },
+        { name: '21', ['ВК']: 0, ['B2B']: 0 },
+        { name: '22', ['ВК']: 0, ['B2B']: 0 },
+        { name: '23', ['ВК']: 0, ['B2B']: 0 },
+        { name: '24', ['ВК']: 0, ['B2B']: 0 },
+        { name: '25', ['ВК']: 0, ['B2B']: 0 },
+        { name: '26', ['ВК']: 0, ['B2B']: 0 },
+        { name: '27', ['ВК']: 0, ['B2B']: 0 },
+        { name: '28', ['ВК']: 0, ['B2B']: 0 },
+        { name: '29', ['ВК']: 0, ['B2B']: 0 },
+        { name: '30', ['ВК']: 0, ['B2B']: 0 },
+        { name: '31', ['ВК']: 0, ['B2B']: 0 },
       ],
       plan: 0,
       dealsSales: 0,
@@ -608,6 +655,39 @@ export class DashboardsService {
           { name: '29', ['Сделки']: 0, ['Допы']: 0 },
           { name: '30', ['Сделки']: 0, ['Допы']: 0 },
           { name: '31', ['Сделки']: 0, ['Допы']: 0 },
+        ],
+        callsChartData: [
+          { name: '01', ['ВК']: 0, ['B2B']: 0 },
+          { name: '02', ['ВК']: 0, ['B2B']: 0 },
+          { name: '03', ['ВК']: 0, ['B2B']: 0 },
+          { name: '04', ['ВК']: 0, ['B2B']: 0 },
+          { name: '05', ['ВК']: 0, ['B2B']: 0 },
+          { name: '06', ['ВК']: 0, ['B2B']: 0 },
+          { name: '07', ['ВК']: 0, ['B2B']: 0 },
+          { name: '08', ['ВК']: 0, ['B2B']: 0 },
+          { name: '09', ['ВК']: 0, ['B2B']: 0 },
+          { name: '10', ['ВК']: 0, ['B2B']: 0 },
+          { name: '11', ['ВК']: 0, ['B2B']: 0 },
+          { name: '12', ['ВК']: 0, ['B2B']: 0 },
+          { name: '13', ['ВК']: 0, ['B2B']: 0 },
+          { name: '14', ['ВК']: 0, ['B2B']: 0 },
+          { name: '15', ['ВК']: 0, ['B2B']: 0 },
+          { name: '16', ['ВК']: 0, ['B2B']: 0 },
+          { name: '17', ['ВК']: 0, ['B2B']: 0 },
+          { name: '18', ['ВК']: 0, ['B2B']: 0 },
+          { name: '19', ['ВК']: 0, ['B2B']: 0 },
+          { name: '20', ['ВК']: 0, ['B2B']: 0 },
+          { name: '21', ['ВК']: 0, ['B2B']: 0 },
+          { name: '22', ['ВК']: 0, ['B2B']: 0 },
+          { name: '23', ['ВК']: 0, ['B2B']: 0 },
+          { name: '24', ['ВК']: 0, ['B2B']: 0 },
+          { name: '25', ['ВК']: 0, ['B2B']: 0 },
+          { name: '26', ['ВК']: 0, ['B2B']: 0 },
+          { name: '27', ['ВК']: 0, ['B2B']: 0 },
+          { name: '28', ['ВК']: 0, ['B2B']: 0 },
+          { name: '29', ['ВК']: 0, ['B2B']: 0 },
+          { name: '30', ['ВК']: 0, ['B2B']: 0 },
+          { name: '31', ['ВК']: 0, ['B2B']: 0 },
         ],
         plan: 0,
         dealsSales: 0,
@@ -746,6 +826,15 @@ export class DashboardsService {
         data.maketsSales.sort((a, b) => b.sales - a.sales);
       });
 
+      // Считаем заявки
+      w.reports.map((r) => {
+        const day = r.date.slice(8, 10);
+        const index = data.callsChartData.findIndex((d) => d.name === day);
+        // console.log(data.callsChartData[index]['ВК']);
+        data.callsChartData[index][w.title] += r.calls;
+        fullData.callsChartData[index][w.title] += r.calls;
+      });
+
       w.users.map((user) => {
         user.dops.map((dop) => {
           const day = dop.saleDate.slice(8, 10);
@@ -792,7 +881,7 @@ export class DashboardsService {
         return m;
       });
 
-      data.users = data.users.sort((a, b) => b.sales - a.sales).slice(0, 5);
+      data.users = data.users.sort((a, b) => b.sales - a.sales).slice(0, 10);
       return data;
     });
 
@@ -818,7 +907,7 @@ export class DashboardsService {
     return [
       {
         ...fullData,
-        users: topManagers.sort((a, b) => b.sales - a.sales).slice(0, 5),
+        users: topManagers.sort((a, b) => b.sales - a.sales).slice(0, 10),
       },
       ...workSpacesData,
     ];

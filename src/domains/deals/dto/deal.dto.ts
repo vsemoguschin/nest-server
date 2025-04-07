@@ -157,7 +157,6 @@ export class DealDto {
     price: number;
     status: string;
     description: string;
-    period: string;
     id: number;
     dealId: number;
     type: string;

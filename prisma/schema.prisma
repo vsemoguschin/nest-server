@@ -396,45 +396,17 @@ model DopsType {
 
 // ДОСТАВКИ
 model Delivery {
-  id          Int              @id @default(autoincrement()) 
-  date        String           // Обязательное поле "Дата отплаты"
-  method      DeliveryMethods
-  type        DeliveryTypes
-  description String           @default("")
-  track       String           @default("")
-  status      DeliveryStatuses   @default(Создана)
-  price       Int              @default(0)
-  period      String           @default("")
+  id          Int     @id @default(autoincrement()) 
+  date        String  // Обязательное поле "дата отправки"
+  method      String  @default("")
+  type        String  @default("")
+  description String  @default("")
+  track       String  @default("")
+  status      String  @default("")
+  price       Int     @default(0)
 
   dealId      Int
   deal        Deal             @relation(fields: [dealId], references: [id])
-}
-// Методы доставки
-enum DeliveryMethods {
-  СДЕК
-  ПОЧТА_РОССИИ
-  Яндекс
-  Балтийский_курьер
-  Самовывоз
-  ТК_КИТ
-  ПЭТ
-  Боксбери
-  Деловые_линии
-}
-// Типы доставки
-enum DeliveryTypes {
-  NONE
-  Платно
-  Бесплатно
-  Досыл
-}
-// Статусы доставки
-enum DeliveryStatuses {
-  Создана
-  Доступна
-  Отправлена
-  Вручена
-  Возврат
 }
 
 // СТАДИИ ЗАКАЗОВ

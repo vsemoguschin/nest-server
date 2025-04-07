@@ -412,7 +412,7 @@ export class DealsService {
         },
       });
     }
-
+    console.log(updateDealDto.status);
     // Обновляем сделку
     const updatedDeal = await this.prisma.deal.update({
       where: { id },

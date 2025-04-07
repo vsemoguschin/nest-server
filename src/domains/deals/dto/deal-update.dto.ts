@@ -1,9 +1,9 @@
 import {
   IsInt,
   IsString,
-  IsNotEmpty,
-  IsBoolean,
+  // IsNotEmpty,
   IsOptional,
+  IsBoolean,
   Matches,
   IsDateString,
   IsIn,
@@ -19,6 +19,7 @@ const statuses = [
   'Готов к отправке',
   'Отправлен',
   'Доставлен',
+  'Возврат',
 ];
 const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная'];
 const maketTypes = [
@@ -33,7 +34,8 @@ const categories = ['Услуги', 'Товары для бизнеса', 'Ме�
 
 export class UpdateDealDto {
   @IsString({ message: 'Дата продажи должно быть строкой.' })
-  @IsNotEmpty()
+  // @IsNotEmpty()
+  @IsOptional()
   @Matches(
     /^\d{4}-\d{2}-\d{2}$/, // Проверка формата "YYYY-MM-DD"
     { message: 'Дата должна быть в формате YYYY-MM-DD' },
@@ -42,27 +44,31 @@ export class UpdateDealDto {
     {},
     { message: 'Дата продажи должна быть валидной датой в формате YYYY-MM-DD' },
   )
-  saleDate: string;
+  saleDate?: string;
 
   @IsString({ message: 'card_id должен быть строкой.' })
-  @IsNotEmpty({ message: 'card_id обязателен.' })
+  // @IsNotEmpty({ message: 'card_id обязателен.' })
+  @IsOptional()
   @Matches(/^\d+$/, { message: 'card_id должен состоять только из цифр.' })
-  card_id: string;
+  card_id?: string;
 
   @IsString({ message: 'Название сделки должно быть строкой.' })
-  @IsNotEmpty()
-  title: string;
+  // @IsNotEmpty()
+  @IsOptional()
+  title?: string;
 
+  @IsOptional()
   @IsInt({ message: 'price должен быть целым числом (стоимость без допов).' })
   @Min(1, { message: 'Стоимость должна быть больше нуля.' })
-  price: number;
+  price?: number;
 
   @IsIn(statuses, { message: 'Неверный статус' })
-  status: string = statuses[0]; // Значение по умолчанию
+  status?: string = statuses[0]; // Значение по умолчанию
 
   @IsString({ message: 'clothingMethod должно быть строкой (метод закрытия).' })
-  @IsNotEmpty({ message: 'Метод закрытия обязательное поле' })
-  clothingMethod: string;
+  // @IsNotEmpty({ message: 'Метод закрытия обязательное поле' })
+  @IsOptional()
+  clothingMethod?: string;
 
   @IsString({ message: 'description должно быть строкой (description).' })
   @IsOptional() // Разрешает undefined
@@ -71,15 +77,18 @@ export class UpdateDealDto {
   description?: string;
 
   @IsString({ message: 'source должно быть строкой (источник сделки).' })
-  @IsNotEmpty({ message: 'Источник сделки обязательное поле' })
-  source: string;
+  // @IsNotEmpty({ message: 'Источник сделки обязательное поле' })
+  @IsOptional()
+  source?: string;
 
   @IsString({ message: 'adTag должно быть строкой (ТЕГ сделки).' })
-  @IsNotEmpty({ message: 'ТЕГ обязательное поле' })
-  adTag: string;
+  // @IsNotEmpty({ message: 'ТЕГ обязательное поле' })
+  @IsOptional()
+  adTag?: string;
 
+  @IsOptional()
   @IsIn(disconts, { message: 'Не верная скидка' })
-  discont: string;
+  discont?: string;
 
   @IsString({ message: 'sphere должно быть строкой (сфера деятельности).' })
   @IsOptional() // Разрешает undefined
@@ -88,14 +97,14 @@ export class UpdateDealDto {
 
   @IsString({ message: 'city должно быть строкой (город).' })
   @Transform(({ value }) => (value === '' ? undefined : value))
-  @IsNotEmpty()
+  // @IsNotEmpty()
   @IsOptional()
   city?: string;
 
   @IsOptional()
   @IsString({ message: 'region должно быть строкой (регион).' })
   @Transform(({ value }) => (value === '' ? undefined : value))
-  @IsNotEmpty()
+  // @IsNotEmpty()
   region?: string;
 
   @IsBoolean({ message: 'paid должно быть true или false (оплачена?).' })
@@ -106,11 +115,13 @@ export class UpdateDealDto {
   @IsOptional()
   reservation?: boolean = false;
 
+  @IsOptional()
   @IsIn(maketTypes, { message: 'Не верный тип макета' })
-  maketType: string;
+  maketType?: string;
 
   @IsString({ message: 'дата презентации макета должно быть строкой.' })
-  @IsNotEmpty()
+  // @IsNotEmpty()
+  @IsOptional()
   @Matches(
     /^\d{4}-\d{2}-\d{2}$/, // Проверка формата "YYYY-MM-DD"
     { message: 'Дата должна быть в формате YYYY-MM-DD' },
@@ -122,11 +133,12 @@ export class UpdateDealDto {
         'дата презентации макета должна быть валидной датой в формате YYYY-MM-DD',
     },
   )
-  maketPresentation: string;
+  maketPresentation?: string;
 
   @IsString({ message: 'period должно быть строкой (период).' })
   @IsOptional()
-  @IsNotEmpty()
+  // @IsNotEmpty()
+  @IsOptional()
   period?: string;
 
   @IsOptional() // Поле необязательное

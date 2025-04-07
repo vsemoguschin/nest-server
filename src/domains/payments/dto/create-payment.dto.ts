@@ -18,7 +18,7 @@ const paymentMethods = [
   'Долями',
   'Рассрочка',
   'Счет',
-  'Бронь',
+  'Возврат',
 ];
 
 export class CreatePaymentDto {
@@ -46,10 +46,10 @@ export class CreatePaymentDto {
   @IsIn(paymentMethods, { message: 'wrong method' })
   method: string;
 
-  @IsString({ message: 'description должно быть строкой (описание).' })
-  @IsOptional()
-  @IsNotEmpty()
-  description?: string;
+  // @IsString({ message: 'description должно быть строкой (описание).' })
+  // @IsOptional()
+  // @IsNotEmpty()
+  // description?: string;
 
   @IsBoolean({ message: 'reservation должно быть true или false (бронь?).' })
   @IsOptional()
