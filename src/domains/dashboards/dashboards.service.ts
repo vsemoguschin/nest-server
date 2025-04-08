@@ -474,6 +474,506 @@ export class DashboardsService {
             },
           },
         },
+        payments: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
+        dops: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+          },
+        },
+        users: {
+          include: {
+            managersPlans: {
+              where: {
+                period,
+              },
+            },
+            role: true,
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: period,
+                },
+              },
+            },
+          },
+        },
+        adSources: {
+          include: {
+            adExpenses: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
+              },
+            },
+          },
+        },
+        reports: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
+      },
+    });
+
+    const fullData: WorkSpaceData = {
+      workSpaceName: 'Все',
+      chartData: [
+        { name: '01', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '02', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '03', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '04', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '05', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '06', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '07', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '08', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '09', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '10', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '11', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '12', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '13', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '14', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '15', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '16', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '17', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '18', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '19', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '20', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '21', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '22', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '23', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '24', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '25', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '26', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '27', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '28', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '29', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '30', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '31', ['Сделки']: 0, ['Допы']: 0 },
+      ],
+      callsChartData: [
+        { name: '01', ['ВК']: 0, ['B2B']: 0 },
+        { name: '02', ['ВК']: 0, ['B2B']: 0 },
+        { name: '03', ['ВК']: 0, ['B2B']: 0 },
+        { name: '04', ['ВК']: 0, ['B2B']: 0 },
+        { name: '05', ['ВК']: 0, ['B2B']: 0 },
+        { name: '06', ['ВК']: 0, ['B2B']: 0 },
+        { name: '07', ['ВК']: 0, ['B2B']: 0 },
+        { name: '08', ['ВК']: 0, ['B2B']: 0 },
+        { name: '09', ['ВК']: 0, ['B2B']: 0 },
+        { name: '10', ['ВК']: 0, ['B2B']: 0 },
+        { name: '11', ['ВК']: 0, ['B2B']: 0 },
+        { name: '12', ['ВК']: 0, ['B2B']: 0 },
+        { name: '13', ['ВК']: 0, ['B2B']: 0 },
+        { name: '14', ['ВК']: 0, ['B2B']: 0 },
+        { name: '15', ['ВК']: 0, ['B2B']: 0 },
+        { name: '16', ['ВК']: 0, ['B2B']: 0 },
+        { name: '17', ['ВК']: 0, ['B2B']: 0 },
+        { name: '18', ['ВК']: 0, ['B2B']: 0 },
+        { name: '19', ['ВК']: 0, ['B2B']: 0 },
+        { name: '20', ['ВК']: 0, ['B2B']: 0 },
+        { name: '21', ['ВК']: 0, ['B2B']: 0 },
+        { name: '22', ['ВК']: 0, ['B2B']: 0 },
+        { name: '23', ['ВК']: 0, ['B2B']: 0 },
+        { name: '24', ['ВК']: 0, ['B2B']: 0 },
+        { name: '25', ['ВК']: 0, ['B2B']: 0 },
+        { name: '26', ['ВК']: 0, ['B2B']: 0 },
+        { name: '27', ['ВК']: 0, ['B2B']: 0 },
+        { name: '28', ['ВК']: 0, ['B2B']: 0 },
+        { name: '29', ['ВК']: 0, ['B2B']: 0 },
+        { name: '30', ['ВК']: 0, ['B2B']: 0 },
+        { name: '31', ['ВК']: 0, ['B2B']: 0 },
+      ],
+      plan: 0,
+      dealsSales: 0,
+      totalSales: 0,
+      dealsAmount: 0,
+      dopSales: 0,
+      dopsAmount: 0,
+      salesToPlan: 0,
+      remainder: 0,
+      dopsToSales: 0,
+      averageBill: 0,
+      receivedPayments: 0,
+      users: [],
+      maketsSales: [
+        {
+          name: 'Дизайнерский',
+          sales: 0,
+        },
+        {
+          name: 'Заготовка из базы',
+          sales: 0,
+        },
+        {
+          name: 'Рекламный',
+          sales: 0,
+        },
+        {
+          name: 'Визуализатор',
+          sales: 0,
+        },
+        {
+          name: 'Из рассылки',
+          sales: 0,
+        },
+      ],
+      sources: [],
+      adTags: [],
+      adExpenses: [],
+    };
+
+    const workSpacesData = allWorkspaces.map((w) => {
+      const title = w.title;
+      const data: WorkSpaceData = {
+        workSpaceName: title,
+        chartData: [
+          { name: '01', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '02', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '03', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '04', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '05', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '06', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '07', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '08', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '09', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '10', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '11', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '12', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '13', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '14', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '15', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '16', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '17', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '18', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '19', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '20', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '21', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '22', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '23', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '24', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '25', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '26', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '27', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '28', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '29', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '30', ['Сделки']: 0, ['Допы']: 0 },
+          { name: '31', ['Сделки']: 0, ['Допы']: 0 },
+        ],
+        callsChartData: [
+          { name: '01', ['ВК']: 0, ['B2B']: 0 },
+          { name: '02', ['ВК']: 0, ['B2B']: 0 },
+          { name: '03', ['ВК']: 0, ['B2B']: 0 },
+          { name: '04', ['ВК']: 0, ['B2B']: 0 },
+          { name: '05', ['ВК']: 0, ['B2B']: 0 },
+          { name: '06', ['ВК']: 0, ['B2B']: 0 },
+          { name: '07', ['ВК']: 0, ['B2B']: 0 },
+          { name: '08', ['ВК']: 0, ['B2B']: 0 },
+          { name: '09', ['ВК']: 0, ['B2B']: 0 },
+          { name: '10', ['ВК']: 0, ['B2B']: 0 },
+          { name: '11', ['ВК']: 0, ['B2B']: 0 },
+          { name: '12', ['ВК']: 0, ['B2B']: 0 },
+          { name: '13', ['ВК']: 0, ['B2B']: 0 },
+          { name: '14', ['ВК']: 0, ['B2B']: 0 },
+          { name: '15', ['ВК']: 0, ['B2B']: 0 },
+          { name: '16', ['ВК']: 0, ['B2B']: 0 },
+          { name: '17', ['ВК']: 0, ['B2B']: 0 },
+          { name: '18', ['ВК']: 0, ['B2B']: 0 },
+          { name: '19', ['ВК']: 0, ['B2B']: 0 },
+          { name: '20', ['ВК']: 0, ['B2B']: 0 },
+          { name: '21', ['ВК']: 0, ['B2B']: 0 },
+          { name: '22', ['ВК']: 0, ['B2B']: 0 },
+          { name: '23', ['ВК']: 0, ['B2B']: 0 },
+          { name: '24', ['ВК']: 0, ['B2B']: 0 },
+          { name: '25', ['ВК']: 0, ['B2B']: 0 },
+          { name: '26', ['ВК']: 0, ['B2B']: 0 },
+          { name: '27', ['ВК']: 0, ['B2B']: 0 },
+          { name: '28', ['ВК']: 0, ['B2B']: 0 },
+          { name: '29', ['ВК']: 0, ['B2B']: 0 },
+          { name: '30', ['ВК']: 0, ['B2B']: 0 },
+          { name: '31', ['ВК']: 0, ['B2B']: 0 },
+        ],
+        plan: 0,
+        dealsSales: 0,
+        totalSales: 0,
+        dealsAmount: w.deals.length,
+        dopSales: 0,
+        dopsAmount: 0,
+        salesToPlan: 0,
+        remainder: 0,
+        dopsToSales: 0,
+        averageBill: 0,
+        receivedPayments: 0,
+        users: w.users.map((u) => {
+          return {
+            id: u.id,
+            fullName: u.fullName,
+            workSpace: w.title,
+            sales: 0,
+          };
+        }),
+        maketsSales: [
+          {
+            name: 'Дизайнерский',
+            sales: 0,
+          },
+          {
+            name: 'Заготовка из базы',
+            sales: 0,
+          },
+          {
+            name: 'Рекламный',
+            sales: 0,
+          },
+          {
+            name: 'Визуализатор',
+            sales: 0,
+          },
+          {
+            name: 'Из рассылки',
+            sales: 0,
+          },
+        ],
+        sources: [],
+        adTags: [],
+        adExpenses: [],
+      };
+
+      // console.log(w.dealSources);
+      w.adSources.map((ds) => {
+        // console.log(ds);
+        const adExps = ds.adExpenses.reduce((a, b) => a + b.price, 0);
+        if (!data.adExpenses.find((e) => e.name === ds.title)) {
+          data.adExpenses.push({
+            name: ds.title,
+            sales: adExps,
+          });
+        } else {
+          const dsIndex = data.adExpenses.findIndex((s) => s.name === ds.title);
+          data.adExpenses[dsIndex].sales += adExps;
+        }
+        if (!fullData.adExpenses.find((e) => e.name === ds.title)) {
+          fullData.adExpenses.push({
+            name: ds.title,
+            sales: adExps,
+          });
+        } else {
+          const dsIndex = fullData.adExpenses.findIndex(
+            (s) => s.name === ds.title,
+          );
+          fullData.adExpenses[dsIndex].sales += adExps;
+        }
+
+        data.adExpenses.sort((a, b) => b.sales - a.sales);
+      });
+
+      // Считаем сумму сделок
+      w.deals.map((deal) => {
+        const day = deal.saleDate.slice(8, 10);
+        const index = data.chartData.findIndex((d) => d.name === day);
+        data.chartData[index]['Сделки'] += deal.price;
+        fullData.chartData[index]['Сделки'] += deal.price;
+        data.dealsSales += deal.price;
+        data.totalSales += deal.price;
+
+        deal.dealers.map((dealer) => {
+          const userIndex = data.users.findIndex((u) => u.id === dealer.userId);
+          data.users[userIndex].sales += dealer.price;
+        });
+        // console.log(deal.maketType);
+        const maketIndex = data.maketsSales.findIndex(
+          (m) => m.name === deal.maketType,
+        );
+        data.maketsSales[maketIndex].sales += deal.price;
+
+        // sources
+        if (!data.sources.find((s) => s.name === deal.source)) {
+          data.sources.push({ name: deal.source, sales: deal.price });
+        } else {
+          const sourceIndex = data.sources.findIndex(
+            (s) => s.name === deal.source,
+          );
+          data.sources[sourceIndex].sales += deal.price;
+        }
+        if (!fullData.sources.find((s) => s.name === deal.source)) {
+          fullData.sources.push({ name: deal.source, sales: deal.price });
+        } else {
+          const sourceIndex = fullData.sources.findIndex(
+            (s) => s.name === deal.source,
+          );
+          fullData.sources[sourceIndex].sales += deal.price;
+        }
+
+        //adtags
+        if (!data.adTags.find((s) => s.name === deal.adTag)) {
+          data.adTags.push({ name: deal.adTag, sales: deal.price });
+        } else {
+          const adTagIndex = data.adTags.findIndex(
+            (s) => s.name === deal.adTag,
+          );
+          data.adTags[adTagIndex].sales += deal.price;
+        }
+        if (!fullData.adTags.find((s) => s.name === deal.adTag)) {
+          fullData.adTags.push({ name: deal.adTag, sales: deal.price });
+        } else {
+          const adTagIndex = fullData.adTags.findIndex(
+            (s) => s.name === deal.adTag,
+          );
+          fullData.adTags[adTagIndex].sales += deal.price;
+        }
+
+        data.sources.sort((a, b) => b.sales - a.sales);
+        data.adTags.sort((a, b) => b.sales - a.sales);
+        data.maketsSales.sort((a, b) => b.sales - a.sales);
+      });
+
+      // Считаем заявки
+      w.reports.map((r) => {
+        const day = r.date.slice(8, 10);
+        const index = data.callsChartData.findIndex((d) => d.name === day);
+        // console.log(data.callsChartData[index]['ВК']);
+        data.callsChartData[index][w.title] += r.calls;
+        fullData.callsChartData[index][w.title] += r.calls;
+      });
+
+      w.dops.map((dop) => {
+        const day = dop.saleDate.slice(8, 10);
+        const index = data.chartData.findIndex((d) => d.name === day);
+        data.chartData[index]['Допы'] += dop.price;
+        fullData.chartData[index]['Допы'] += dop.price;
+        data.dopSales += dop.price;
+        data.dopsAmount += 1;
+        data.totalSales += dop.price;
+        const userIndex = data.users.findIndex((u) => u.id === dop.userId);
+        data.users[userIndex].sales += dop.price;
+      });
+
+      w.users.map((user) => {
+        if (user.role.shortName === 'DO') {
+          // console.log(user);
+          data.plan = user.managersPlans[0]?.plan || 0;
+        }
+      });
+
+      w.payments.map((payment) => {
+        data.receivedPayments += payment.price;
+        fullData.receivedPayments += payment.price;
+      });
+
+      data.dopsToSales = data.totalSales
+        ? +((data.dopSales / data.totalSales) * 100).toFixed()
+        : 0;
+      data.averageBill = data.dealsAmount
+        ? +(data.dealsSales / data.dealsAmount).toFixed()
+        : 0;
+
+      data.salesToPlan = data.plan
+        ? +((data.totalSales / data.plan) * 100).toFixed()
+        : 0;
+
+      data.remainder = data.plan - data.totalSales;
+      // console.log(fullData.plan);
+
+      fullData.dealsAmount += data.dealsAmount;
+      fullData.dealsSales += data.dealsSales;
+      fullData.totalSales += data.totalSales;
+      fullData.receivedPayments += data.receivedPayments;
+      fullData.dopsAmount += data.dopsAmount;
+      fullData.dopSales += data.dopSales;
+      fullData.plan += data.plan;
+      fullData.maketsSales = fullData.maketsSales.map((m) => {
+        const maketIndex = data.maketsSales.findIndex((d) => d.name === m.name);
+        m.sales += data.maketsSales[maketIndex].sales;
+        return m;
+      });
+
+      data.users = data.users.sort((a, b) => b.sales - a.sales).slice(0, 10);
+      return data;
+    });
+
+    fullData.dopsToSales = fullData.totalSales
+      ? +((fullData.dopSales / fullData.totalSales) * 100).toFixed()
+      : 0;
+    fullData.averageBill = fullData.dealsAmount
+      ? +(fullData.dealsSales / fullData.dealsAmount).toFixed()
+      : 0;
+    fullData.salesToPlan = fullData.plan
+      ? +((fullData.totalSales / fullData.plan) * 100).toFixed()
+      : 0;
+
+    fullData.remainder = fullData.plan - fullData.totalSales;
+
+    fullData.sources.sort((a, b) => b.sales - a.sales);
+    fullData.adTags.sort((a, b) => b.sales - a.sales);
+    fullData.maketsSales.sort((a, b) => b.sales - a.sales);
+    fullData.adExpenses.sort((a, b) => b.sales - a.sales);
+
+    const topManagers = workSpacesData.flatMap((w) => w.users);
+
+    return [
+      {
+        ...fullData,
+        users: topManagers.sort((a, b) => b.sales - a.sales).slice(0, 10),
+      },
+      ...workSpacesData,
+    ];
+  }
+
+  // satistics2
+  async getStatistics2(user: UserDto, period: string) {
+    const workspacesSearch =
+      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+
+    const allWorkspaces = await this.prisma.workSpace.findMany({
+      where: {
+        deletedAt: null,
+        department: 'COMMERCIAL',
+        title: {
+          in: ['B2B', 'ВК'],
+        },
+        id: workspacesSearch,
+      },
+      include: {
+        deals: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            reservation: false,
+            deletedAt: null,
+          },
+          include: {
+            payments: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
+              },
+            },
+            dealers: {
+              include: {
+                user: true,
+              },
+            },
+          },
+        },
+        payments: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
         users: {
           include: {
             managersPlans: {
