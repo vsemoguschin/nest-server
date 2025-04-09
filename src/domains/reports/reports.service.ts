@@ -458,6 +458,10 @@ export class ReportsService {
         ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
         : 0;
 
+      const conversionMaketDayToDay = calls
+        ? +((maketsDayToDay / calls) * 100).toFixed(2)
+        : 0;
+
       // console.log(callCost);
 
       return {
@@ -472,7 +476,135 @@ export class ReportsService {
         totalSales, //общая сумма продаж
         averageBill: +averageBill.toFixed(), //средний чек
         makets, //количество макетов
-        maketsDayToDay, //количество макетов
+        maketsDayToDay, //количество макетов день в день
+        conversionMaketDayToDay, //количество макетов день в день
+        redirectToMSG, //количество редиректов
+        conversion, //конверсия
+        conversionMaket, //конверсия в макет (количество макетов/колво сделок)
+        conversionToSale, //конверсия из макета в продажу(колво сделок/колво макетов)
+        dealsDayToDayCount, // заказов день в день
+        conversionDealsDayToDay, // конверсия заказов день в день (заказы день в день/заявки)
+        callCost, //Стоимость заявки(по формуле)
+        ddr, //ДРР(по формуле)
+        dateExpensesPrice, //стоимость рекламы
+      };
+    });
+  }
+
+  async getRopsReportsFromRange(
+    range: { start: string; end: string },
+    user: UserDto,
+  ) {
+    const workspacesSearch =
+      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+    const reports = await this.prisma.ropReport.findMany({
+      where: {
+        date: {
+          gte: range.start,
+          lte: range.end,
+        },
+        workSpaceId: workspacesSearch,
+      },
+      include: {
+        workSpace: {
+          include: {
+            deals: {
+              where: {
+                saleDate: {
+                  gte: range.start,
+                  lte: range.end,
+                },
+                reservation: false,
+              },
+              include: {
+                client: true,
+              },
+            },
+            dops: {
+              where: {
+                saleDate: {
+                  gte: range.start,
+                  lte: range.end,
+                },
+              },
+            },
+            payments: {
+              where: {
+                date: {
+                  gte: range.start,
+                  lte: range.end,
+                },
+              },
+            },
+            adExpenses: {
+              where: {
+                date: {
+                  gte: range.start,
+                  lte: range.end,
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    });
+
+    return reports.map((r) => {
+      const { date, calls, makets, maketsDayToDay, redirectToMSG } = r;
+      const dateExpenses = r.workSpace.adExpenses.filter(
+        (e) => e.date === date,
+      );
+
+      const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
+      const dateDeals = r.workSpace.deals.filter((d) => d.saleDate === date);
+      const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
+      const dateDops = r.workSpace.dops.filter((d) => d.saleDate === date);
+      const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
+      const totalSales = dopSales + dealSales;
+      const dealsAmount = dateDeals.length;
+      const averageBill = dealsAmount ? totalSales / dealsAmount : 0;
+      const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
+      const conversionMaket = calls ? +((makets / calls) * 100).toFixed(2) : 0;
+      const conversionToSale = makets
+        ? +((dealsAmount / makets) * 100).toFixed(2)
+        : 0;
+
+      const dealsDayToDayCount = dateDeals.filter(
+        (d) => d.saleDate === d.client.firstContact,
+      ).length;
+
+      const conversionDealsDayToDay = calls
+        ? +((dealsDayToDayCount / calls) * 100).toFixed(2)
+        : 0;
+
+      const callCost = calls ? +(dateExpensesPrice / calls).toFixed(2) : 0;
+      const ddr = totalSales
+        ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
+        : 0;
+
+      const conversionMaketDayToDay = calls
+        ? +((maketsDayToDay / calls) * 100).toFixed(2)
+        : 0;
+
+      // console.log(callCost);
+
+      return {
+        id: r.id,
+        date: formatDate(date), //дата
+        workSpaceId: r.workSpaceId,
+        workSpace: r.workSpace.title,
+        calls, // количество заявок
+        dealSales, //сумма сделок
+        dealsAmount, //количество сделок
+        dopSales, //сумма доп продаж
+        totalSales, //общая сумма продаж
+        averageBill: +averageBill.toFixed(), //средний чек
+        makets, //количество макетов
+        maketsDayToDay, //количество макетов день в день
+        conversionMaketDayToDay, //количество макетов день в день
         redirectToMSG, //количество редиректов
         conversion, //конверсия
         conversionMaket, //конверсия в макет (количество макетов/колво сделок)

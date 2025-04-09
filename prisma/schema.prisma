@@ -248,6 +248,8 @@ model Deal {
 
   deliveries        Delivery[]
 
+  review            Review[]
+
   orders            Order[]
 
   statusHistory     DealStatusHistory[]
@@ -306,18 +308,17 @@ model AdExpense {
   date          String
   period        String     @default("")
 
-  adSourceId  Int
-  adSource    AdSource @relation(fields: [adSourceId], references: [id])
+  adSourceId    Int
+  adSource      AdSource   @relation(fields: [adSourceId], references: [id])
 
-  workSpaceId  Int
-  workSpace    WorkSpace  @relation( fields: [workSpaceId], references: [id])
+  workSpaceId   Int
+  workSpace     WorkSpace  @relation( fields: [workSpaceId], references: [id])
 }
 
 // Методы закрытия
 model ClothingMethod {
   id     Int     @id @default(autoincrement()) 
   title  String  @unique
-  
 }
 // Рекламные теги
 model AdTag {
@@ -348,24 +349,24 @@ model DealUser {
 
 // ПЛАТЕЖИ
 model Payment {
-  id          Int           @id @default(autoincrement()) 
-  title       String        // Назначение платежа
-  price       Int           // Сумма
-  date        String        // Дата отплаты (можно заменить на DateTime, если потребуется)
-  method      String // Способ оплаты
-  description String        @default("") // Описание
-  reservation Boolean       @default(false) // Бронь
-  period      String        @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
+  id           Int         @id @default(autoincrement()) 
+  title        String      // Назначение платежа
+  price        Int         // Сумма
+  date         String      // Дата отплаты (можно заменить на DateTime, если потребуется)
+  method       String      // Способ оплаты
+  description  String      @default("") // Описание
+  reservation  Boolean     @default(false) // Бронь
+  period       String      @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
 
-  // Связи
-  userId      Int
-  user        User          @relation(fields: [userId], references: [id])
-  
-  dealId      Int
-  deal        Deal          @relation(fields: [dealId], references: [id])
-  
-  workSpaceId      Int
-  workspace        WorkSpace          @relation(fields: [workSpaceId], references: [id])
+  // Связи 
+  userId       Int
+  user         User       @relation(fields: [userId], references: [id])
+
+  dealId       Int
+  deal         Deal       @relation(fields: [dealId], references: [id])
+
+  workSpaceId  Int
+  workspace    WorkSpace  @relation(fields: [workSpaceId], references: [id])
 }
 
 
@@ -406,8 +407,38 @@ model Delivery {
   price       Int     @default(0)
 
   dealId      Int
-  deal        Deal             @relation(fields: [dealId], references: [id])
+  deal        Deal    @relation(fields: [dealId], references: [id])
 }
+
+// ОТЗЫВЫ
+// model Review {
+//   id      Int     @id @default(autoincrement()) 
+//   date    String  // Обязательное поле "дата отзыва"
+//   url     String
+
+
+//   userId  Int
+//   user    User    @relation(fields: [userId], references: [id])
+
+//   dealId  Int
+//   deal    Deal    @relation(fields: [dealId], references: [id])
+
+//   // fileId  Int
+//   // file    File    @relation(fields: [fileId], references: [id])
+// }
+
+// model File {
+//   id        Int     @id @default(autoincrement()) 
+//   name      String
+//   ya_name   String
+//   size      Int
+//   preview   String
+//   url       String
+//   type      String
+
+//   reviewId  Int
+//   review    Review  @relation(fields: [reviewId], references: [id])
+// }
 
 // СТАДИИ ЗАКАЗОВ
 model Stage {
