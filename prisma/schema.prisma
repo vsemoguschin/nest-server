@@ -107,7 +107,7 @@ model User {
 
   dops           Dop[]
 
-  reviews         Review[]
+  reviews        Review[]
 
   managersPlans  ManagersPlan[]
 
@@ -438,7 +438,7 @@ model File {
   directory      String   @default("")
 
   reviewId  Int        // Связь с отзывом
-  review    Review?  @relation(fields: [reviewId], references: [id])
+  review    Review  @relation(fields: [reviewId], references: [id])
 }
 
 // СТАДИИ ЗАКАЗОВ
