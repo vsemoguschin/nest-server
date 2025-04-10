@@ -21,7 +21,8 @@ import { AdModule } from './domains/ad/ad.module';
 import { SalariesModule } from './domains/salaries/salaries.module';
 import { SalaryPaysModule } from './domains/salary-pays/salary-pays.module';
 import { DeliveriesModule } from './domains/deliveries/deliveries.module';
-
+import { FilesModule } from './domains/files/files.module';
+import { ReviewsModule } from './domains/reviews/reviews.module';
 
 @Module({
   imports: [
@@ -44,6 +45,8 @@ import { DeliveriesModule } from './domains/deliveries/deliveries.module';
     SalariesModule,
     SalaryPaysModule,
     DeliveriesModule,
+    FilesModule,
+    ReviewsModule,
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],

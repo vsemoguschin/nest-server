@@ -363,6 +363,11 @@ export class DealsService {
         client: true,
         deliveries: true,
         workSpace: true,
+        reviews: {
+          include: {
+            file: true,
+          },
+        },
       },
     });
 

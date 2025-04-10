@@ -151,6 +151,9 @@ export class ReportsService {
       where: {
         saleDate: date,
         reservation: false,
+        status: {
+          not: 'Возврат',
+        },
         dealers: {
           some: {
             userId: id,
@@ -215,8 +218,13 @@ export class ReportsService {
             dealSales: {
               where: {
                 deal: {
-                  period,
+                  saleDate: {
+                    startsWith: period,
+                  },
                   reservation: false,
+                  status: {
+                    not: 'Возврат',
+                  },
                 },
               },
               include: {

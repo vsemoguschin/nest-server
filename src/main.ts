@@ -6,6 +6,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { HttpErrorFilter } from './common/filters/http-error.filter';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import * as dotenv from 'dotenv';
+import multer from 'multer';
 dotenv.config();
 
 async function bootstrap() {

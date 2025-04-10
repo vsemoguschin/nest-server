@@ -107,6 +107,8 @@ model User {
 
   dops           Dop[]
 
+  review         Review[]
+
   managersPlans  ManagersPlan[]
 
   managerReports ManagerReport[]
@@ -248,7 +250,7 @@ model Deal {
 
   deliveries        Delivery[]
 
-  review            Review[]
+  reviews            Review[]
 
   orders            Order[]
 
@@ -411,34 +413,33 @@ model Delivery {
 }
 
 // ОТЗЫВЫ
-// model Review {
-//   id      Int     @id @default(autoincrement()) 
-//   date    String  // Обязательное поле "дата отзыва"
-//   url     String
+model Review {
+  id      Int     @id @default(autoincrement()) 
+  date    String  // Обязательное поле "дата отзыва"
 
+  userId  Int
+  user    User    @relation(fields: [userId], references: [id])
 
-//   userId  Int
-//   user    User    @relation(fields: [userId], references: [id])
+  dealId  Int
+  deal    Deal    @relation(fields: [dealId], references: [id])
+  
+  // fileId  Int
+  // file    File    @relation(fields: [fileId], references: [id])
+  file    File[]
+}
 
-//   dealId  Int
-//   deal    Deal    @relation(fields: [dealId], references: [id])
+model File {
+  id        Int      @id @default(autoincrement()) 
+  name      String   @default("")
+  ya_name   String   @default("")
+  size      Int      @default(0)
+  preview   String   @default("")
+  path      String   @default("")
+  directory      String   @default("")
 
-//   // fileId  Int
-//   // file    File    @relation(fields: [fileId], references: [id])
-// }
-
-// model File {
-//   id        Int     @id @default(autoincrement()) 
-//   name      String
-//   ya_name   String
-//   size      Int
-//   preview   String
-//   url       String
-//   type      String
-
-//   reviewId  Int
-//   review    Review  @relation(fields: [reviewId], references: [id])
-// }
+  reviewId  Int        // Связь с отзывом
+  review    Review?  @relation(fields: [reviewId], references: [id])
+}
 
 // СТАДИИ ЗАКАЗОВ
 model Stage {

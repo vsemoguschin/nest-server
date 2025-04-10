@@ -32,4 +32,8 @@ export class AdExpenseCreateDto {
 
   @IsInt({ message: 'adSourceId должен быть целым числом (ID источника).' })
   adSourceId: number;
+
+  // @IsString()
+  // @IsOptional()
+  // newAdSource: string = '';
 }
