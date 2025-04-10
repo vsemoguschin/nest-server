@@ -107,7 +107,7 @@ model User {
 
   dops           Dop[]
 
-  review         Review[]
+  reviews         Review[]
 
   managersPlans  ManagersPlan[]
 
