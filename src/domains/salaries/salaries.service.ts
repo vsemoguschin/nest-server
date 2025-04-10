@@ -549,7 +549,7 @@ export class SalariesService {
           user.topBonus += (-i + 3) * 1000;
           user.totalSalary += (-i + 3) * 1000;
         }
-        return { user: u.manager, sales: u.totalSales };
+        return { user: u.manager, sales: u.dopSales };
       });
     const topDimmerSales = [...usersWithSales]
       .sort((a, b) => b.dimmerSales - a.dimmerSales)
@@ -560,7 +560,7 @@ export class SalariesService {
           user.topBonus += (-i + 3) * 1000;
           user.totalSalary += (-i + 3) * 1000;
         }
-        return { user: u.manager, sales: u.totalSales };
+        return { user: u.manager, sales: u.dimmerSales };
       });
     const topSalesWithoutDesigners = [...usersWithSales]
       .sort((a, b) => b.salesWithoutDesigners - a.salesWithoutDesigners)
@@ -571,7 +571,7 @@ export class SalariesService {
           user.topBonus += (-i + 3) * 1000;
           user.totalSalary += (-i + 3) * 1000;
         }
-        return { user: u.manager, sales: u.totalSales };
+        return { user: u.manager, sales: u.salesWithoutDesigners };
       });
     const topConversionDayToDay = [...usersWithSales]
       .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
@@ -582,7 +582,7 @@ export class SalariesService {
           user.topBonus += (-i + 3) * 1000;
           user.totalSalary += (-i + 3) * 1000;
         }
-        return { user: u.manager, sales: u.totalSales };
+        return { user: u.manager, sales: u.conversionDayToDay };
       });
 
     return {
