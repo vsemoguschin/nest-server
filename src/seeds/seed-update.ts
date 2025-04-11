@@ -5,21 +5,21 @@ const prisma = new PrismaClient();
 async function main() {
   try {
     // Fetch all deals including their associated dealUsers
-    const ds = await prisma.dealSource.findFirst({
+    const ws = await prisma.workSpace.findFirst({
       where: {
-        title: 'вк'
-      }
+        title: 'B2B',
+      },
     });
-    if (!ds) {
+    if (!ws) {
       throw new Error('DealSource not found');
     }
     //delete ds
-    await prisma.dealSource.delete({
-      where: {
-        id: ds.id
-      }
+    await prisma.adSource.create({
+      data: {
+        title: 'ВК для отдела B2B',
+        workSpaceId: ws.id,
+      },
     });
-
   } catch (error) {
     console.error('Error fetching deals:', error);
   } finally {
