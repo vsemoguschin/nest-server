@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -33,5 +44,28 @@ export class PaymentsController {
   })
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.paymentsService.delete(id);
+  }
+
+  @Get('operations')
+  @Roles('ADMIN', 'G', 'KD')
+  async getRopsReportsFromRange(
+    @CurrentUser() user: UserDto,
+    @Query('start') start: string,
+    @Query('end') end: string,
+  ) {
+    if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+      throw new BadRequestException(
+        'Параметр start обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!end || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      throw new BadRequestException(
+        'Параметр end обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.paymentsService.getOperationsFromRange(
+      { from: start, to: end },
+      user,
+    );
   }
 }

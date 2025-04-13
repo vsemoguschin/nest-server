@@ -523,6 +523,13 @@ export class DashboardsService {
             },
           },
         },
+        adExpenses: {
+          where: {
+            date: {
+              startsWith: period,
+            }
+          }
+        }
       },
     });
 

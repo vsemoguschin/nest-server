@@ -388,6 +388,7 @@ export class ReportsService {
 
   async getRopsReports(period: string, user: UserDto) {
     const workspacesSearch =
+      
       user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
     const reports = await this.prisma.ropReport.findMany({
       where: {
