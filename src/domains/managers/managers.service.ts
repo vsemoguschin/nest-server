@@ -9,7 +9,8 @@ export class ManagersService {
 
   async getManagers(currentUser: UserDto) {
     const workspacesSearch =
-      currentUser.role.department === 'administration'
+      currentUser.role.department === 'administration' ||
+      currentUser.role.shortName === 'KD'
         ? { gt: 0 }
         : currentUser.workSpaceId;
     return this.prisma.user.findMany({
@@ -17,7 +18,7 @@ export class ManagersService {
         workSpaceId: workspacesSearch, // Фильтр по рабочему пространству текущего пользователя
         deletedAt: null, // Исключаем удаленных пользователей
         role: {
-          department: 'COMMERCIAL'
+          department: 'COMMERCIAL',
         },
       },
       select: {
@@ -26,8 +27,8 @@ export class ManagersService {
         workSpace: {
           select: {
             title: true,
-          }
-        }
+          },
+        },
       },
       orderBy: {
         fullName: 'asc', // Сортировка по имени (опционально)

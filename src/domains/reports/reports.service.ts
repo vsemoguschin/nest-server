@@ -204,7 +204,9 @@ export class ReportsService {
 
   async getManagersReports(period: string, user: UserDto) {
     const workspacesSearch =
-      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
     const reports = await this.prisma.managerReport.findMany({
       where: {
         period,
@@ -316,7 +318,9 @@ export class ReportsService {
 
   async getWorkSpaces(user: UserDto) {
     const workspacesSearch =
-      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
 
     const workspaces = await this.prisma.workSpace.findMany({
       where: {
@@ -388,8 +392,9 @@ export class ReportsService {
 
   async getRopsReports(period: string, user: UserDto) {
     const workspacesSearch =
-      
-      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
     const reports = await this.prisma.ropReport.findMany({
       where: {
         period,

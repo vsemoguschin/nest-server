@@ -52,18 +52,30 @@ export class PaymentsService {
           'Content-Type': 'application/json',
         },
         params: {
-          accountNumber: '40802810900002414658',
+          accountNumber: '40802810800000977213',
+          operationStatus: 'All',
           from: new Date(range.from),
-          to: new Date(range.to),
+          // to: new Date(range.to),
           // categories: 'contragentPeople',
           // withBalances: true,
+          // limit: 10
         },
         maxBodyLength: Infinity,
       },
     );
 
-    console.log('Response:', response.data);
-    return response.data;
+    // console.log('Response:', response.data);
+    return response.data.operations.map((op) => {
+      return {
+        operationDate: op.operationDate,
+        typeOfOperation: op.typeOfOperation,
+        category: op.category,
+        accountAmount: op.accountAmount,
+        description: op.description,
+        payPurpose: op.payPurpose,
+        counterParty: op.counterParty?.name || '' 
+      };
+    });
   }
 }
 
@@ -163,36 +175,11 @@ const getCompanyInfo = async () => {
   const kpp = '0';
   try {
     const data = JSON.stringify({
-      invoiceNumber: '12234545454',
-      accountNumber: '40802810900002414658',
-      dueDate: '2025-02-22',
-      invoiceDate: '2025-01-23',
-      payer: {
-        name: 'ООО «Название вашей компании»',
-        inn: '598103304535',
-        kpp: '0',
-      },
-      items: [
-        {
-          name: 'Вывеска',
-          price: 1000,
-          unit: 'Шт',
-          vat: 'None',
-          amount: 10,
-        },
-      ],
-      contacts: [
-        {
-          email: 'example@mail.com',
-        },
-      ],
-      contactPhone: '+74996051110',
-      comment: 'Комментарий, например, информанция для контрагента.',
       // categories: 'contragentPeople',
       withBalances: true,
     });
-    const response = await axios.post(
-      'https://business.tbank.ru/openapi/api/v1/invoice/send',
+    const response = await axios.get(
+      'https://business.tbank.ru/openapi/api/v1/counterparty/contracts',
       {
         headers: {
           Authorization: 'Bearer ' + tToken,
@@ -202,7 +189,7 @@ const getCompanyInfo = async () => {
       },
     );
 
-    // console.log('Response:', response.data);
+    console.log('Response:', response.data);
     return response.data;
   } catch (error) {
     console.error(
@@ -215,4 +202,3 @@ const getCompanyInfo = async () => {
 
 // getCompanyInfo();
 console.log(new Date('2025-01-02'));
- 

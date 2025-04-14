@@ -164,7 +164,9 @@ export class DashboardsService {
   // managers
   async getManagersData(user: UserDto, period: string) {
     const workspacesSearch =
-      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
 
     // Находим пользователей с department = 'COMMERCIAL'
     const managers = await this.prisma.user.findMany({
@@ -439,7 +441,9 @@ export class DashboardsService {
   // satistics
   async getStatistics(user: UserDto, period: string) {
     const workspacesSearch =
-      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
 
     const allWorkspaces = await this.prisma.workSpace.findMany({
       where: {
@@ -527,9 +531,9 @@ export class DashboardsService {
           where: {
             date: {
               startsWith: period,
-            }
-          }
-        }
+            },
+          },
+        },
       },
     });
 
@@ -1491,7 +1495,9 @@ export class DashboardsService {
 
   async getPays(user: UserDto, period: string) {
     const workspacesSearch =
-      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
 
     const workspaces = await this.prisma.workSpace.findMany({
       where: {
