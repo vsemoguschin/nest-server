@@ -52,6 +52,7 @@ export class PaymentsController {
     @CurrentUser() user: UserDto,
     @Query('start') start: string,
     @Query('end') end: string,
+    @Query('limit') limit: number,
   ) {
     if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
       throw new BadRequestException(
@@ -65,6 +66,7 @@ export class PaymentsController {
     }
     return this.paymentsService.getOperationsFromRange(
       { from: start, to: end },
+      limit,
       user,
     );
   }

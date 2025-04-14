@@ -4,9 +4,59 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UserDto } from '../users/dto/user.dto';
 import axios from 'axios';
 
+export interface Operation {
+  operationDate: string;
+  accountNumber: string;
+  typeOfOperation: string;
+  category: string;
+  accountAmount: number;
+  description: string;
+  payPurpose: string;
+  counterParty: string;
+}
+
+export interface OperationsResponse {
+  operations: Operation[];
+  contragents: string[];
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
+  private mapOperation(op: any): Operation {
+    let operationType = op.category;
+    if (op.category === 'selfTransferInner') {
+      operationType = 'Перемещение';
+    }
+    if (['incomePeople', 'income'].includes(op.category)) {
+      operationType = 'Поступление';
+    }
+    if (
+      [
+        'salary',
+        'fee',
+        'selfTransferOuter',
+        'cardOperation',
+        'contragentPeople',
+      ].includes(op.category)
+    ) {
+      operationType = 'Выплата';
+    }
+
+    const accountNumberSlice = op.accountNumber?.slice(-4);
+    const accountLabel = accountNumberSlice === '7213' ? 'Основной счет 7213' : accountNumberSlice === '4658' ? 'Кредитный счет 4658' : op.accountNumber
+
+    return {
+      operationDate: op.operationDate,
+      accountNumber: accountLabel,
+      typeOfOperation: operationType,
+      category: op.category,
+      accountAmount: op.accountAmount,
+      description: op.description,
+      payPurpose: op.payPurpose,
+      counterParty: op.counterParty?.name || '',
+    };
+  }
 
   async create(createPaymentDto: CreatePaymentDto, user: UserDto) {
     const existingDeal = await this.prisma.deal.findUnique({
@@ -42,80 +92,81 @@ export class PaymentsService {
 
   async getOperationsFromRange(
     range: { from: string; to: string },
+    limit: number,
     user: UserDto,
   ) {
-    const response = await axios.get(
-      'https://business.tbank.ru/openapi/api/v1/statement',
-      {
-        headers: {
-          Authorization: 'Bearer ' + tToken,
-          'Content-Type': 'application/json',
-        },
-        params: {
-          accountNumber: '40802810800000977213',
-          operationStatus: 'All',
-          from: new Date(range.from),
-          // to: new Date(range.to),
-          // categories: 'contragentPeople',
-          withBalances: true,
-          // limit: 10
-        },
-        maxBodyLength: Infinity,
-      },
-    );
+    try {
+      const bankAccounts = ['40802810800000977213', '40802810900002414658']; // Список банковских счетов
 
-    // console.log(
-    //   'Response:',
-    //   response.data.operations[0],
-    //   response.data.balances,
-    // );
+      // Функция для получения операций по одному счету
+      const fetchOperationsForAccount = async (accountNumber: string) => {
+        const response = await axios.get(
+          'https://business.tbank.ru/openapi/api/v1/statement',
+          {
+            headers: {
+              Authorization: 'Bearer ' + tToken,
+              'Content-Type': 'application/json',
+            },
+            params: {
+              accountNumber,
+              operationStatus: 'All',
+              from: new Date(range.from),
+              to: new Date(range.to),
+              withBalances: true,
+              limit
+            },
+            maxBodyLength: Infinity,
+          },
+        );
 
-    const contragents: string[] = [];
-    // return response.data.operations
-    const operations = response.data.operations.map((op) => {
-      let operationType = op.category;
-      if (op.category === 'selfTransferInner') {
-        operationType = 'Перемещение';
-      }
-      if (['incomePeople', 'income'].includes(op.category)) {
-        operationType = 'Поступление';
-      }
-      if (
-        [
-          'salary',
-          'fee',
-          'selfTransferOuter',
-          'cardOperation',
-          'contragentPeople',
-        ].includes(op.category)
-      ) {
-        operationType = 'Выплата';
-      }
+        return response.data.operations.map((op: any) => {
+          if (op.counterParty?.name) {
+            contragentsSet.add(op.counterParty.name);
+          }
+          return this.mapOperation(op);
+        });
+      };
 
-      if (
-        op.counterParty?.name &&
-        !contragents.includes(op.counterParty?.name)
-      ) {
-        contragents.push(op.counterParty.name);
-      }
+      // Множество для уникальных контрагентов
+      const contragentsSet = new Set<string>();
+
+      // Получаем операции для всех счетов параллельно
+      const operationsArrays = await Promise.all(
+        bankAccounts.map((accountNumber) =>
+          fetchOperationsForAccount(accountNumber),
+        ),
+      );
+
+      // Объединяем все операции в один массив
+      const allOperations = operationsArrays.flat();
+
+      // Сортируем операции по operationDate (в порядке возрастания)
+      allOperations.sort(
+        (a, b) =>
+          new Date(a.operationDate).getTime() -
+          new Date(b.operationDate).getTime(),
+      );
 
       return {
-        operationDate: op.operationDate,
-        accountNumber: 'Основной счет 7213',
-        // typeOfOperation: op.typeOfOperation === 'Debit' ? 'Выплата' : 'Поступление',
-        typeOfOperation: operationType,
-        category: op.category,
-        accountAmount: op.accountAmount,
-        description: op.description,
-        payPurpose: op.payPurpose,
-        counterParty: op.counterParty?.name || '',
+        operations: allOperations,
+        contragents: Array.from(contragentsSet), // Уникальные контрагенты
+        bankAccounts: [
+          'Основной счет ' + bankAccounts[0].slice(-4),
+          'Счет для кредитов ' + bankAccounts[1].slice(-4),
+        ], // Список банковских счетов
       };
-    });
+    } catch (error) {
+      console.error('Ошибка при выполнении запроса:', error);
 
-    return {
-      operations,
-      contragents
-    };
+      if (axios.isAxiosError(error)) {
+        console.error('Axios Error Response:', error.response?.data);
+        throw new NotFoundException(
+          `Ошибка API: ${error.response?.data?.errorMessage}`,
+        );
+      } else {
+        throw new NotFoundException('Неизвестная ошибка');
+      }
+    }
   }
 }
 
