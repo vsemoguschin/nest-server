@@ -23,6 +23,7 @@ import { SalaryPaysModule } from './domains/salary-pays/salary-pays.module';
 import { DeliveriesModule } from './domains/deliveries/deliveries.module';
 import { FilesModule } from './domains/files/files.module';
 import { ReviewsModule } from './domains/reviews/reviews.module';
+import { PlanfactModule } from './domains/planfact/planfact.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ReviewsModule } from './domains/reviews/reviews.module';
     DeliveriesModule,
     FilesModule,
     ReviewsModule,
+    PlanfactModule,
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],

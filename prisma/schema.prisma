@@ -555,3 +555,20 @@ enum NeonColor {
 //   РГБ_подсветка @map("РГБ подсветка")
 //   Смарт
 // }
+
+
+model transactionCategories {
+  id        Int         @id @default(autoincrement()) 
+  type      String
+  title     String
+
+    // Самосвязь: категория может иметь родителя и дочерние категории
+  parentId    Int?                 // ID родительской категории (если есть)
+  parent      transactionCategories? @relation("CategoryRelation", fields: [parentId], references: [id], onDelete: SetNull)
+  children    transactionCategories[] @relation("CategoryRelation")
+}
+
+
+
+
+
