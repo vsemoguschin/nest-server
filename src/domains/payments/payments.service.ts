@@ -4,11 +4,11 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UserDto } from '../users/dto/user.dto';
 import axios from 'axios';
 import { createHash } from 'crypto';
+import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
-
 
   async create(createPaymentDto: CreatePaymentDto, user: UserDto) {
     const existingDeal = await this.prisma.deal.findUnique({
@@ -34,189 +34,57 @@ export class PaymentsService {
     return newPayment;
   }
 
-  async delete(id: number) {
-    const payment = await this.prisma.payment.findUnique({ where: { id } });
-    if (!payment) {
-      throw new NotFoundException(`Платеж с id ${id} не найден.`);
+  async createLink(createPaymentLinkDto: CreatePaymentLinkDto) {
+    function generateToken(Data): string {
+      const hash = createHash('sha256')
+        .update(Data.join(''), 'utf8')
+        .digest('hex');
+      return hash;
     }
-    return await this.prisma.payment.delete({ where: { id } });
-  }
 
+    const { Name, Phone, Email } = createPaymentLinkDto;
+    const Amount = createPaymentLinkDto.Amount * 100;
+    const Description = 'Оплата неоновой вывески';
+    const OrderId = new Date().getMilliseconds();
+    // console.log(OrderId);
 
-}
+    let TerminalKey = '';
+    let password = '';
 
-const tToken = process.env.TB_TOKEN;
+    if (createPaymentLinkDto.terminal === 'Терминал Изинеон СБП') {
+      TerminalKey = process.env.TB_TERMINAL_SPB || '';
+      password = process.env.TB_TERMINAL_PASSWORD_SPB || '';
+    } else {
+      TerminalKey = process.env.TB_TERMINAL || '';
+      password = process.env.TB_TERMINAL_PASSWORD || '';
+    }
 
-const accounts = [
-  {
-    accountNumber: '40802810800000977213',
-    name: 'Рублевый счет',
-    currency: '643',
-    bankBik: '044525974',
-    accountType: 'Current',
-    activationDate: '2019-04-03',
-    balance: {
-      otb: 5762806.01,
-      authorized: 0,
-      pendingPayments: 0,
-      pendingRequisitions: 0,
-    },
-  },
-  {
-    accountNumber: '40802810900002414658',
-    name: 'Easyneon',
-    currency: '643',
-    bankBik: '044525974',
-    accountType: 'Current',
-    activationDate: '2021-07-09',
-    balance: {
-      otb: 566355.17,
-      authorized: 0,
-      pendingPayments: 0,
-      pendingRequisitions: 0,
-    },
-  },
-  {
-    accountNumber: '40802810900002610999',
-    name: 'ИЗИПОДПИСЬ',
-    currency: '643',
-    bankBik: '044525974',
-    accountType: 'Current',
-    activationDate: '2021-09-22',
-    balance: {
-      otb: 368.69,
-      authorized: 0,
-      pendingPayments: 0,
-      pendingRequisitions: 0,
-    },
-  },
-  {
-    accountNumber: '42109810100000117539',
-    name: 'Овернайт',
-    currency: '643',
-    bankBik: '044525974',
-    accountType: 'Overnight',
-    activationDate: '2024-04-08',
-    balance: {
-      otb: 1755703.08,
-      authorized: 0,
-      pendingPayments: 0,
-      pendingRequisitions: 0,
-    },
-  },
-];
+    // Генерация токена
+    const Token = generateToken([
+      Amount,
+      Description,
+      OrderId,
+      password,
+      TerminalKey,
+    ]);
+    // console.log([Amount, Description, OrderId, password, TerminalKey].join(''));
 
-// выписка
-const getCompanyPays = async () => {
-  const inn = '598103304535';
-  const kpp = '0';
-  try {
-    const response = await axios.get(
-      'https://business.tbank.ru/openapi/api/v1/statement',
-      {
-        headers: {
-          Authorization: 'Bearer ' + tToken,
-          'Content-Type': 'application/json',
-        },
-        params: {
-          accountNumber: '40802810900002414658',
-          from: '2025-04-01T21:30:00Z',
-        },
-      },
-    );
-
-    console.log('Response:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error(
-      'Error:',
-      error.response ? error.response.data : error.message,
-    );
-    throw error;
-  }
-};
-
-const getCompanyInfo = async () => {
-  const inn = '598103304535';
-  const kpp = '0';
-  try {
-    const data = JSON.stringify({
-      // categories: 'contragentPeople',
-      withBalances: true,
-    });
-    const response = await axios.get(
-      'https://business.tbank.ru/openapi/api/v1/counterparty/contracts',
-      {
-        headers: {
-          Authorization: 'Bearer ' + tToken,
-          'Content-Type': 'application/json',
-        },
-        params: {
-          limit: 100,
-          offset: 100,
-          ogrn: 318595800030530,
-        },
-      },
-    );
-
-    console.log('Response:', response.data.companyCard);
-    return response.data;
-  } catch (error) {
-    console.error(
-      'Error:',
-      error.response ? error.response.data : error.message,
-    );
-    throw error;
-  }
-};
-
-function generateToken(Data): string {
-  console.log(Data.join(''));
-  // 5. Применяем SHA-256
-  const hash = createHash('sha256').update(Data.join(''), 'utf8').digest('hex');
-
-  return hash;
-}
-
-const TerminalKey = process.env.TB_TERMINAL;
-const password = process.env.TB_TERMINAL_PASSWORD!;
-const createLink = async () => {
-  const Amount = '1000';
-  const OrderId = 'ыизеуые';
-  const Description = 'Hello';
-
-  // Генерация токена
-  const token = generateToken([
-    Amount,
-    Description,
-    OrderId,
-    password,
-    TerminalKey, //
-  ]);
-
-  // Обновление тела запроса с новым токеном
-  const Token = token;
-  // return
-  try {
-    const response = await axios.post('https://securepay.tinkoff.ru/v2/Init', {
-      // headers: {
-      //   'Content-Type': 'application/json',
-      // },
+    const body = {
       TerminalKey, //
       Amount,
       OrderId,
       Description,
       Token,
       Receipt: {
-        Email: 'a@test.ru',
-        Phone: '+79622433486',
+        Email,
+        Phone,
         Taxation: 'osn',
         Items: [
           {
-            Name: 'Наименование товара 1',
-            Price: '1000',
+            Name,
+            Price: Amount,
             Quantity: 1,
-            Amount: '1000',
+            Amount,
             PaymentMethod: 'full_payment',
             PaymentObject: 'service',
             Tax: 'vat5',
@@ -224,23 +92,26 @@ const createLink = async () => {
           },
         ],
       },
-    });
+    };
 
-    console.log('Response:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error(
-      'Error:',
-      error.response ? error.response.data : error.message,
+    const { data } = await axios.post(
+      'https://securepay.tinkoff.ru/v2/Init',
+      body,
     );
-    throw error;
+
+    // console.log(data);
+
+    return { link: data.PaymentURL, PaymentId: data.PaymentId };
   }
-};
 
-// createLink();
-
-// getCompanyInfo();
-// console.log(new Date('2025-01-02'));
+  async delete(id: number) {
+    const payment = await this.prisma.payment.findUnique({ where: { id } });
+    if (!payment) {
+      throw new NotFoundException(`Платеж с id ${id} не найден.`);
+    }
+    return await this.prisma.payment.delete({ where: { id } });
+  }
+}
 
 const operation = {
   operationDate: '2025-04-01T05:16:52Z', //Дата операции. В зависимости от статуса операции равна дате проведения по балансу или дате авторизации.

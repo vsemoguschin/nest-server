@@ -14,6 +14,7 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { PaymentsService } from './payments.service';
+import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('payments')
@@ -41,5 +42,11 @@ export class PaymentsController {
   })
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.paymentsService.delete(id);
+  }
+
+  @Post('link')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  async createPaymentLink(@Body() dto: CreatePaymentLinkDto) {
+    return this.paymentsService.createLink(dto);
   }
 }
