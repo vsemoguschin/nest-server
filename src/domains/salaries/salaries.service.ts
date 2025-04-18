@@ -202,10 +202,10 @@ export class SalariesService {
         return {
           id: u.id,
           manager: u.fullName, //менеджер
-          totalSalary, //ЗП(₽)
+          totalSalary: totalSalary.toFixed(), //ЗП(₽)
           pays, //выплачено(₽)
           bonusPercentage: bonusPercentage * 100, //% с продаж(₽)
-          payments, //факт
+          payments: payments.toFixed(), //факт
           bonus, //премия(₽)
           totalSales, //продажи(₽)
           dealSales, //сделки(₽)
