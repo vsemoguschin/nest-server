@@ -285,7 +285,148 @@ export class ReportsService {
         ? +(totalSales / dealsAmount).toFixed()
         : 0;
       const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
-      const dealsDayToDayCount = r.user.dealSales.filter(
+      const dealsDayToDayCount = dateDeals.filter(
+        (d) => d.deal.saleDate === d.deal.client.firstContact,
+      ).length;
+      console.log(
+        dateDeals
+          .filter((d) => d.deal.saleDate === d.deal.client.firstContact)
+          .map((d) => {
+            return [d.deal.saleDate, d.deal.client.firstContact];
+          }),
+      );
+
+      const ddr = totalSales
+        ? +((calls * callCost) / totalSales).toFixed(2)
+        : 0;
+
+      return {
+        id: r.id,
+        date: formatDate(r.date),
+        manager: r.user.fullName,
+        userId: r.userId,
+        workSpaceId: r.user.workSpaceId,
+        workSpace: r.user.workSpace.title,
+        calls,
+        dealSales,
+        dealsAmount,
+        dopSales,
+        totalSales,
+        averageBill,
+        makets: r.makets,
+        maketsDayToDay: r.maketsDayToDay,
+        conversion,
+        ddr,
+        redirectToMSG,
+        dealsDayToDayCount,
+      };
+    });
+  }
+
+  async getManagersReportsFromRange(
+    range: { start: string; end: string },
+    user: UserDto,
+  ) {
+    const workspacesSearch =
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
+    const reports = await this.prisma.managerReport.findMany({
+      where: {
+        date: {
+          gte: range.start,
+          lt: range.end,
+        },
+        user: {
+          workSpaceId: workspacesSearch,
+        },
+      },
+      include: {
+        user: {
+          include: {
+            dealSales: {
+              where: {
+                deal: {
+                  saleDate: {
+                    gte: range.start,
+                    lt: range.end,
+                  },
+                  reservation: false,
+                  status: {
+                    not: 'Возврат',
+                  },
+                },
+              },
+              include: {
+                deal: {
+                  include: {
+                    client: true,
+                  },
+                },
+              },
+            },
+            dops: {
+              where: {
+                saleDate: {
+                  gte: range.start,
+                  lt: range.end,
+                },
+              },
+            },
+            workSpace: {
+              include: {
+                adExpenses: {
+                  where: {
+                    date: {
+                      gte: range.start,
+                      lt: range.end,
+                    },
+                  },
+                },
+                reports: {
+                  where: {
+                    date: {
+                      gte: range.start,
+                      lt: range.end,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    });
+
+    return reports.map((r) => {
+      const { date, calls, redirectToMSG } = r;
+      const dateDeals = r.user.dealSales.filter(
+        (d) => d.deal.saleDate === date,
+      );
+      const dateExpenses = r.user.workSpace.adExpenses.filter(
+        (e) => e.date === date,
+      );
+      const dateCalls = r.user.workSpace.reports.reduce(
+        (a, b) => a + b.calls,
+        0,
+      );
+      const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
+      const callCost = dateCalls
+        ? +(dateExpensesPrice / dateCalls).toFixed()
+        : 0;
+      const dateDops = r.user.dops.filter((d) => d.saleDate === date);
+      const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
+      const dealSales = dateDeals.reduce((a, b) => a + b.deal.price, 0);
+      const totalSales = dopSales + dealSales;
+      const dealsAmount = dateDeals.length;
+      const averageBill = dealsAmount
+        ? +(totalSales / dealsAmount).toFixed()
+        : 0;
+      const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
+      const dealsDayToDayCount = dateDeals.filter(
         (d) => d.deal.saleDate === d.deal.client.firstContact,
       ).length;
 

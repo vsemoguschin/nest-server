@@ -59,6 +59,7 @@ export class SalariesService {
                 deal: {
                   include: {
                     dops: true,
+                    payments: true,
                   },
                 },
               },
@@ -103,70 +104,112 @@ export class SalariesService {
     const userData = workSpace.users
       .map((u) => {
         let totalSalary = 0;
+        let payments = 0;
+        //выплаты
         const pays = u.salaryPays.reduce((a, b) => a + b.price, 0) || 0;
 
+        //Суммы по продажам сделок, допов, общее
         const dealSales = u.dealSales.reduce((a, b) => a + b.price, 0);
         const dopSales = u.dops.reduce((a, b) => a + b.price, 0);
         const totalSales = dealSales + dopSales;
-        
-        const userDeals = u.dealSales.flatMap((d) => d.deal);
-        const totalCalls = u.managerReports.reduce((a, b) => a + b.calls, 0);
 
-        const conversion = totalCalls
-          ? +((userDeals.length / totalCalls) * 100).toFixed(2)
-          : 0;
-
-        const averageBill = userDeals.length
-          ? +(totalSales / userDeals.length).toFixed()
-          : 0;
-
-        const dopBonus = +(dopSales * 0.1).toFixed();
-
-        let salesBonus = 0;
+        // Процент с продаж в зп
+        let bonusPercentage = 0;
         let bonus = 0;
 
         if (totalSales < 400_000) {
-          salesBonus = +(totalSales * 0.03).toFixed();
+          bonusPercentage = 0.03;
         } else if (totalSales < 560_000) {
-          salesBonus = +(totalSales * 0.035).toFixed();
+          bonusPercentage = 0.035;
         } else if (totalSales < 680_000) {
-          salesBonus = +(totalSales * 0.04).toFixed();
+          bonusPercentage = 0.04;
         } else if (totalSales < 800_000) {
-          salesBonus = +(totalSales * 0.045).toFixed();
-          bonus = 10480;
+          bonusPercentage = 0.045;
+          totalSalary += 10480;
+          bonus += 10480;
         } else if (totalSales < 1_000_000) {
-          salesBonus = +(totalSales * 0.05).toFixed();
-          bonus = 15000;
+          bonusPercentage = 0.05;
+          totalSalary += 15000;
+          bonus += 15000;
         } else if (totalSales < 1_100_000) {
-          salesBonus = +(totalSales * 0.05).toFixed();
-          bonus = 17500;
+          bonusPercentage = 0.05;
+          totalSalary += 17500;
+          bonus += 17500;
         } else if (totalSales < 1_200_000) {
-          salesBonus = +(totalSales * 0.05).toFixed();
-          bonus = 20000;
+          bonusPercentage = 0.05;
+          totalSalary += 20000;
+          bonus += 20000;
         } else if (totalSales < 1_350_000) {
-          salesBonus = +(totalSales * 0.05).toFixed();
-          bonus = 23700;
+          bonusPercentage = 0.05;
+          totalSalary += 23700;
+          bonus += 23700;
         } else if (totalSales < 1_500_000) {
-          salesBonus = +(totalSales * 0.05).toFixed();
-          bonus = 27500;
+          bonusPercentage = 0.05;
+          totalSalary += 27500;
+          bonus += 27500;
         } else if (totalSales < 1_700_000) {
-          salesBonus = +(totalSales * 0.05).toFixed();
-          bonus = 32500;
+          bonusPercentage = 0.05;
+          totalSalary += 32500;
+          bonus += 32500;
         } else if (totalSales < 2_000_000) {
-          salesBonus = +(totalSales * 0.05).toFixed();
-          bonus = 40000;
+          bonusPercentage = 0.05;
+          totalSalary += 40000;
+          bonus += 40000;
         }
+        // оплата за допы
+        u.dops.map((dop) => {
+          const dopPrice = dop.price;
+          const dealDops = dop.deal.dops;
+          const dealDopsPrice = dealDops.reduce((a, b) => a + b.price, 0);
+          //Оплаты по сделке
+          const dealPays = dop.deal.payments.reduce((a, b) => a + b.price, 0);
+          const paysForDops =
+            dealPays > dealDopsPrice ? dealDopsPrice : dealPays;
+          const userPart = dealDopsPrice ? dopPrice / dealDopsPrice : 0;
+          totalSalary += paysForDops * userPart * 0.1;
+          payments += paysForDops * userPart;
+        });
+
+        // Сделки менеджера
+        const userDeals = u.dealSales.flatMap((d) => d.deal);
+
+        u.dealSales.map((dealer) => {
+          const { deal } = dealer;
+          const { payments: dealPayments } = deal;
+          const dealPrice = deal.price;
+          const dealDopsPrice = deal.dops.reduce((a, b) => a + b.price, 0);
+          const paymentsPrice = dealPayments.reduce((a, b) => a + b.price, 0);
+          const dealPays =
+            paymentsPrice > dealDopsPrice ? paymentsPrice - dealDopsPrice : 0;
+          const dealerPart = dealPrice ? dealer.price / dealPrice : 0;
+          totalSalary += dealPays * dealerPart * bonusPercentage;
+          payments += dealPays * dealerPart;
+        });
+
+        // Количество заявок
+        const totalCalls = u.managerReports.reduce((a, b) => a + b.calls, 0);
+        // Конверсия
+        const conversion = totalCalls
+          ? +((userDeals.length / totalCalls) * 100).toFixed(2)
+          : 0;
+        // средний чек
+        const averageBill = userDeals.length
+          ? +(totalSales / userDeals.length).toFixed()
+          : 0;
+        // бонус
+        const dopBonus = +(dopSales * 0.1).toFixed();
 
         return {
           id: u.id,
           manager: u.fullName, //менеджер
-          totalSalary: salesBonus + bonus, //ЗП(₽)
-          pays: u.salaryPays.reduce((a, b) => a + b.price, 0), //выплачено(₽)
-          salesBonus, //% с продаж(₽)
-          dopBonus, //% с допов(₽)
+          totalSalary, //ЗП(₽)
+          pays, //выплачено(₽)
+          bonusPercentage: bonusPercentage * 100, //% с продаж(₽)
+          payments, //факт
           bonus, //премия(₽)
           totalSales, //продажи(₽)
           dealSales, //сделки(₽)
+          dopBonus, //% с допов(₽)
           dopSales, //допы(₽)
           conversion, //конверсия(%)
           averageBill, //средний чек(₽)
@@ -218,25 +261,25 @@ export class SalariesService {
         category: 'Топ конверсия',
       }));
 
-    userData.map((u) => {
-      if (u.id === topDealSales[0].id) {
-        u.topBonus += 2000;
-        u.totalSalary += 2000;
-      }
-      if (u.id === topDopSales[0].id) {
-        u.topBonus += 2000;
-        u.totalSalary += 2000;
-      }
-      if (u.id === topAverageBill[0].id) {
-        u.topBonus += 2000;
-        u.totalSalary += 2000;
-      }
-      if (u.id === topConversion[0].id) {
-        u.topBonus += 2000;
-        u.totalSalary += 2000;
-      }
-      return u;
-    });
+    // userData.map((u) => {
+    //   if (u.id === topDealSales[0].id && topDealSales[0].sales > 0) {
+    //     u.topBonus += 2000;
+    //     u.totalSalary += 2000;
+    //   }
+    //   if (u.id === topDopSales[0].id && topDopSales[0].sales > 0) {
+    //     u.topBonus += 2000;
+    //     u.totalSalary += 2000;
+    //   }
+    //   if (u.id === topAverageBill[0].id && topAverageBill[0].sales > 0) {
+    //     u.topBonus += 2000;
+    //     u.totalSalary += 2000;
+    //   }
+    //   if (u.id === topConversion[0].id && topConversion[0].sales > 0) {
+    //     u.topBonus += 2000;
+    //     u.totalSalary += 2000;
+    //   }
+    //   return u;
+    // });
 
     return {
       userData,

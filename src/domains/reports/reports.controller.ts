@@ -66,6 +66,26 @@ export class ReportsController {
     return this.reportService.getManagersReports(period, user);
   }
 
+  @Get('managers/range')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
+  async getManagersReportsFromRange(
+    @CurrentUser() user: UserDto,
+    @Query('start') start: string,
+    @Query('end') end: string,
+  ) {
+    if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+      throw new BadRequestException(
+        'Параметр start обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!end || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      throw new BadRequestException(
+        'Параметр end обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.reportService.getManagersReportsFromRange({ start, end }, user);
+  }
+
   @Get('rops')
   @Roles('ADMIN', 'G', 'KD', 'DO')
   async getRopsReports(

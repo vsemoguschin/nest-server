@@ -231,6 +231,7 @@ export class DashboardsService {
                   },
                 },
                 dealers: true,
+                client: true,
               },
             },
           },
@@ -402,6 +403,10 @@ export class DashboardsService {
           ? +((managerDeals / makets) * 100).toFixed(2)
           : 0;
 
+        const dealsDayToDayCount = dealUsers.filter(
+          (d) => d.deal.saleDate === d.deal.client.firstContact,
+        ).length;
+
         return {
           id: m.id,
           manager: m.fullName,
@@ -415,6 +420,7 @@ export class DashboardsService {
           dopsToSales,
           dopsAmount,
           dealsWithoutDesigners: dealsWithoutDesigners.length,
+          dealsDayToDayCount,
           dealsSalesWithoutDesigners,
           averageBill,
           receivedPayments: +totalRevenue.toFixed(),
@@ -464,13 +470,7 @@ export class DashboardsService {
             deletedAt: null,
           },
           include: {
-            payments: {
-              where: {
-                date: {
-                  startsWith: period,
-                },
-              },
-            },
+            payments: true,
             dealers: {
               include: {
                 user: true,
@@ -478,13 +478,13 @@ export class DashboardsService {
             },
           },
         },
-        payments: {
-          where: {
-            date: {
-              startsWith: period,
-            },
-          },
-        },
+        // payments: {
+        //   where: {
+        //     date: {
+        //       startsWith: period,
+        //     },
+        //   },
+        // },
         dops: {
           where: {
             saleDate: {
@@ -876,10 +876,12 @@ export class DashboardsService {
         }
       });
 
-      w.payments.map((payment) => {
-        data.receivedPayments += payment.price;
-        fullData.receivedPayments += payment.price;
-      });
+      // w.payments.map((payment) => {
+      //   data.receivedPayments += payment.price;
+      //   fullData.receivedPayments += payment.price;
+      // });
+
+      data.receivedPayments += w.deals.flatMap(d=>d.payments).reduce((a, b)=> a + b.price, 0);
 
       data.dopsToSales = data.totalSales
         ? +((data.dopSales / data.totalSales) * 100).toFixed()
