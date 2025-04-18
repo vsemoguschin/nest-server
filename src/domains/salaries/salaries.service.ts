@@ -204,7 +204,7 @@ export class SalariesService {
           manager: u.fullName, //менеджер
           totalSalary: totalSalary.toFixed(), //ЗП(₽)
           pays, //выплачено(₽)
-          bonusPercentage: bonusPercentage * 100, //% с продаж(₽)
+          bonusPercentage: +(bonusPercentage * 100).toFixed(), //% с продаж(₽)
           payments: payments.toFixed(), //факт
           bonus, //премия(₽)
           totalSales, //продажи(₽)
