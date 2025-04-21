@@ -270,9 +270,9 @@ export class SalariesService {
     userData.push({
       id: 0,
       manager: 'ОБЩЕЕ', //менеджер
-      totalSalary: userData.reduce((a, b) => a + b.totalSalary, 0), //ЗП(₽)
+      totalSalary: +userData.reduce((a, b) => a + b.totalSalary, 0).toFixed(2), //ЗП(₽)
       pays: userData.reduce((a, b) => a + b.pays, 0),
-      rem: userData.reduce((a, b) => a + b.rem, 0),
+      rem: +userData.reduce((a, b) => a + b.rem, 0).toFixed(2),
       bonusPercentage: 0,
       payments: userData.reduce((a, b) => a + b.payments, 0),
       bonus: userData.reduce((a, b) => a + b.bonus, 0),
@@ -943,7 +943,9 @@ export class SalariesService {
       manager: 'ОБЩЕЕ',
       dealSales: usersWithSales.reduce((a, b) => a + b.dealSales, 0),
       dopSales: usersWithSales.reduce((a, b) => a + b.dopSales, 0),
-      totalSales: +usersWithSales.reduce((a, b) => a + b.totalSales, 0).toFixed(2),
+      totalSales: +usersWithSales
+        .reduce((a, b) => a + b.totalSales, 0)
+        .toFixed(2),
       pays: usersWithSales.reduce((a, b) => a + b.pays, 0),
       totalSalary: usersWithSales.reduce((a, b) => a + b.totalSalary, 0),
       bonusPercentage: 0,
