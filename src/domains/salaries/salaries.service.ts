@@ -16,15 +16,15 @@ export class SalariesService {
       },
       include: {
         users: {
-          where: { role: { shortName: 'MOP' } },
+          // where: { role: { shortName: 'MOP' } },
           include: {
+            role: true,
+            workSpace: true,
             salaryPays: {
               where: {
                 period,
               },
             },
-            role: true,
-            workSpace: true,
             dealSales: {
               where: {
                 deal: {
@@ -68,22 +68,6 @@ export class SalariesService {
               where: {
                 period,
               },
-            },
-          },
-        },
-        deals: {
-          where: {
-            saleDate: {
-              startsWith: period,
-            },
-            status: { not: 'Возврат' },
-            reservation: false,
-          },
-        },
-        dops: {
-          where: {
-            saleDate: {
-              startsWith: period,
             },
           },
         },
@@ -156,15 +140,16 @@ export class SalariesService {
           totalSalary += 40000;
           bonus += 40000;
         }
+
         // оплата за допы
         u.dops.map((dop) => {
-          const dopPrice = dop.price;
-          const dealDops = dop.deal.dops;
-          const dealDopsPrice = dealDops.reduce((a, b) => a + b.price, 0);
+          const dopPrice = dop.price; //сумма допа
+          const dealDops = dop.deal.dops; //все допы сделки
+          const dealDopsPrice = dealDops.reduce((a, b) => a + b.price, 0); //стоимость всех допов
           //Оплаты по сделке
           const dealPays = dop.deal.payments.reduce((a, b) => a + b.price, 0);
           const paysForDops =
-            dealPays > dealDopsPrice ? dealDopsPrice : dealPays;
+            dealPays >= dealDopsPrice ? dealDopsPrice : dealPays;
           const userPart = dealDopsPrice ? dopPrice / dealDopsPrice : 0;
           totalSalary += paysForDops * userPart * 0.1;
           payments += paysForDops * userPart;
@@ -175,13 +160,14 @@ export class SalariesService {
 
         u.dealSales.map((dealer) => {
           const { deal } = dealer;
-          const { payments: dealPayments } = deal;
-          const dealPrice = deal.price;
-          const dealDopsPrice = deal.dops.reduce((a, b) => a + b.price, 0);
-          const paymentsPrice = dealPayments.reduce((a, b) => a + b.price, 0);
+          const dealPayments = deal.payments; //платежи
+          const dealPrice = deal.price; //стоимость сделки
+          const dealDopsPrice = deal.dops.reduce((a, b) => a + b.price, 0); //стоимость сделки
+          const paymentsPrice = dealPayments.reduce((a, b) => a + b.price, 0); //сумма платежей
+          //если сумма платежей больше суммы допов, то за сделку в остатке сумма платежей минус сумма допов
           const dealPays =
             paymentsPrice > dealDopsPrice ? paymentsPrice - dealDopsPrice : 0;
-          const dealerPart = dealPrice ? dealer.price / dealPrice : 0;
+          const dealerPart = dealPrice ? dealer.price / dealPrice : 0; //часть менеджера
           totalSalary += dealPays * dealerPart * bonusPercentage;
           payments += dealPays * dealerPart;
         });
@@ -202,10 +188,11 @@ export class SalariesService {
         return {
           id: u.id,
           manager: u.fullName, //менеджер
-          totalSalary: totalSalary.toFixed(), //ЗП(₽)
+          totalSalary: +totalSalary.toFixed(2), //ЗП(₽)
           pays, //выплачено(₽)
+          rem: +(totalSalary - pays).toFixed(2),
           bonusPercentage: +(bonusPercentage * 100).toFixed(), //% с продаж(₽)
-          payments: payments.toFixed(), //факт
+          payments: +payments.toFixed(2), //факт
           bonus, //премия(₽)
           totalSales, //продажи(₽)
           dealSales, //сделки(₽)
@@ -280,6 +267,30 @@ export class SalariesService {
     //   }
     //   return u;
     // });
+    userData.push({
+      id: 0,
+      manager: 'ОБЩЕЕ', //менеджер
+      totalSalary: userData.reduce((a, b) => a + b.totalSalary, 0), //ЗП(₽)
+      pays: userData.reduce((a, b) => a + b.pays, 0),
+      rem: userData.reduce((a, b) => a + b.rem, 0),
+      bonusPercentage: 0,
+      payments: userData.reduce((a, b) => a + b.payments, 0),
+      bonus: userData.reduce((a, b) => a + b.bonus, 0),
+      totalSales: userData.reduce((a, b) => a + b.totalSales, 0),
+      dealSales: userData.reduce((a, b) => a + b.dealSales, 0),
+      dopBonus: userData.reduce((a, b) => a + b.dopBonus, 0),
+      dopSales: userData.reduce((a, b) => a + b.dopSales, 0),
+      conversion: 0,
+      averageBill: 0,
+      topBonus: userData.reduce((a, b) => a + b.topBonus, 0),
+      shift: userData.reduce((a, b) => a + b.shift, 0),
+      fired: false,
+    });
+
+    // console.log(
+    //   userData.reduce((a, b) => a + b.payments, 0),
+    //   2426443 - 2427243,
+    // ); //2426443 2427243 2427243
 
     return {
       userData,
@@ -612,7 +623,7 @@ export class SalariesService {
       where: { title: 'ВК' },
       include: {
         users: {
-          where: { role: { shortName: 'MOP' } },
+          // where: { role: { shortName: 'MOP' } },
           include: {
             salaryPays: {
               where: {
@@ -655,6 +666,7 @@ export class SalariesService {
                 deal: {
                   include: {
                     dops: true,
+                    payments: true,
                   },
                 },
               },
@@ -677,8 +689,23 @@ export class SalariesService {
         },
         dops: {
           where: {
-            saleDate: {
-              startsWith: period,
+            deal: {
+              saleDate: {
+                startsWith: period,
+              },
+              reservation: false,
+              status: { not: 'Возврат' },
+            },
+          },
+        },
+        payments: {
+          where: {
+            deal: {
+              saleDate: {
+                startsWith: period,
+              },
+              reservation: false,
+              status: { not: 'Возврат' },
             },
           },
         },
@@ -760,14 +787,13 @@ export class SalariesService {
         let userPayments = 0;
 
         u.dealSales.map((dealer) => {
-          const { deal } = dealer;
-          const dealPrice = deal.price;
-          const dealDopsPrice = deal.dops.reduce((a, b) => a + b.price, 0);
-          const dealTotalPrice = dealPrice + dealDopsPrice;
-          const dealerPrice = dealTotalPrice
-            ? dealer.price / dealTotalPrice
-            : 0;
-          userPayments += +(dealerPrice * deal.price).toFixed(2);
+          const { deal } = dealer; //сделка
+          const dealPrice = deal.price; //стоимость сделки
+          const dealDopsPrice = deal.dops.reduce((a, b) => a + b.price, 0); //стоимость допов
+          const dealTotalPrice = dealPrice + dealDopsPrice; //общаяя стоимость
+          const dealPayments = deal.payments.reduce((a, b) => a + b.price, 0);
+          const dealerPart = dealTotalPrice ? dealer.price / dealTotalPrice : 0;
+          userPayments += dealerPart * dealPayments;
         });
 
         u.dops.map((dop) => {
@@ -777,7 +803,9 @@ export class SalariesService {
           const dealDopsPrice = deal.dops.reduce((a, b) => a + b.price, 0);
           const dealTotalPrice = dealPrice + dealDopsPrice;
           const dealerPart = dealTotalPrice ? dopPrice / dealTotalPrice : 0;
-          userPayments += +(dealerPart * deal.price).toFixed(2);
+          const dealPayments = deal.payments.reduce((a, b) => a + b.price, 0);
+
+          userPayments += dealerPart * dealPayments;
         });
 
         const calcTops = () => {
@@ -828,11 +856,11 @@ export class SalariesService {
           dopSales,
           totalSales,
           pays,
-          totalSalary: +totalSalary.toFixed(), //ЗП(₽)
+          totalSalary: +totalSalary.toFixed(2), //ЗП(₽)
           bonusPercentage,
           salesBonus,
           payments: +userPayments.toFixed(2), //факт
-          remainder: 0,
+          rem: +totalSalary.toFixed(2) - pays,
           shift,
           shiftBonus,
           topBonus: 0,
@@ -900,6 +928,47 @@ export class SalariesService {
         }
         return { user: u.manager, sales: u.conversionDayToDay };
       });
+
+    // console.log(
+    //   'допы WS ',
+    //   workSpace?.dops.reduce((a, b) => a + b.price, 0),
+    // );
+    // console.log(
+    //   'допы USERS ',
+    //   usersWithSales.reduce((a, b) => a + b.dopSales, 0),
+    // );
+
+    usersWithSales.push({
+      id: 0,
+      manager: 'ОБЩЕЕ',
+      dealSales: usersWithSales.reduce((a, b) => a + b.dealSales, 0),
+      dopSales: usersWithSales.reduce((a, b) => a + b.dopSales, 0),
+      totalSales: usersWithSales.reduce((a, b) => a + b.totalSales, 0),
+      pays: usersWithSales.reduce((a, b) => a + b.pays, 0),
+      totalSalary: usersWithSales.reduce((a, b) => a + b.totalSalary, 0),
+      bonusPercentage: 0,
+      salesBonus: usersWithSales.reduce((a, b) => a + b.salesBonus, 0),
+      payments: usersWithSales.reduce((a, b) => a + b.payments, 0),
+      rem: usersWithSales.reduce((a, b) => a + b.rem, 0),
+      shift: usersWithSales.reduce((a, b) => a + b.shift, 0),
+      shiftBonus: usersWithSales.reduce((a, b) => a + b.shiftBonus, 0),
+      topBonus: usersWithSales.reduce((a, b) => a + b.topBonus, 0),
+      dimmerSales: usersWithSales.reduce((a, b) => a + b.dimmerSales, 0),
+      dealsWithoutDesigners: usersWithSales.reduce(
+        (a, b) => a + b.dealsWithoutDesigners,
+        0,
+      ),
+      salesWithoutDesigners: usersWithSales.reduce(
+        (a, b) => a + b.salesWithoutDesigners,
+        0,
+      ),
+      conversionDayToDay: 0,
+      fired: false,
+      workSpacePlanBonus: usersWithSales.reduce(
+        (a, b) => a + b.workSpacePlanBonus,
+        0,
+      ),
+    });
 
     return {
       users: usersWithSales,

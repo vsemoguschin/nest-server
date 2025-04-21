@@ -210,6 +210,7 @@ export class DashboardsService {
                 startsWith: period,
               },
               reservation: false,
+              status: { not: 'Возврат' },
               deletedAt: null,
             },
           },
@@ -248,14 +249,18 @@ export class DashboardsService {
         const dops = await this.prisma.dop.findMany({
           where: {
             userId: m.id,
-            deal: { period },
+            deal: {
+              saleDate: { startsWith: period },
+            },
           },
           include: {
             deal: {
               include: {
                 payments: {
                   where: {
-                    period,
+                    date: {
+                      startsWith: period,
+                    },
                   },
                 },
                 dealers: true,
@@ -268,7 +273,9 @@ export class DashboardsService {
         const Alldops = await this.prisma.dop.findMany({
           where: {
             userId: m.id,
-            period,
+            saleDate: {
+              startsWith: period,
+            },
           },
         });
 
@@ -293,7 +300,9 @@ export class DashboardsService {
                 'Визуализатор',
               ],
             },
-            period: period.slice(0, 7),
+            saleDate: {
+              startsWith: period,
+            },
             deletedAt: null,
             dealers: {
               some: {
@@ -881,7 +890,9 @@ export class DashboardsService {
       //   fullData.receivedPayments += payment.price;
       // });
 
-      data.receivedPayments += w.deals.flatMap(d=>d.payments).reduce((a, b)=> a + b.price, 0);
+      data.receivedPayments += w.deals
+        .flatMap((d) => d.payments)
+        .reduce((a, b) => a + b.price, 0);
 
       data.dopsToSales = data.totalSales
         ? +((data.dopSales / data.totalSales) * 100).toFixed()
