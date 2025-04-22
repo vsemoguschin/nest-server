@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
 const tToken = process.env.TB_TOKEN;
 
 export interface Operation {
@@ -167,5 +168,15 @@ export class PlanfactService {
         },
       },
     });
+  }
+
+  async createAccount(PlanFactAccountCreateDto: PlanFactAccountCreateDto) {
+    return await this.prisma.planFactAccounts.create({
+      data: PlanFactAccountCreateDto,
+    });
+  }
+
+  async getAccounts() {
+    return await this.prisma.planFactAccounts.findMany();
   }
 }

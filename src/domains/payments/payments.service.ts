@@ -78,7 +78,7 @@ export class PaymentsService {
       Receipt: {
         Email,
         Phone,
-        Taxation: 'osn',
+        Taxation: 'usn_income',
         Items: [
           {
             Name,

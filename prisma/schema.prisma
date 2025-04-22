@@ -568,7 +568,15 @@ model transactionCategories {
   children    transactionCategories[] @relation("CategoryRelation")
 }
 
-
+model planFactAccounts {
+  id             Int      @id @default(autoincrement()) 
+  name           String   // Название
+  accountNumber  String   @unique // Номер счета
+  balance        Int      @default(0) // Остаток
+  type           String   @default("") // безналичны/наличный
+  comment        String   @default("") // коментарий
+  isReal         Boolean  @default(true) // есть доступ по АПИ
+}
 
 
 
