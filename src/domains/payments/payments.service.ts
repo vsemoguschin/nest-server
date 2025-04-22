@@ -88,7 +88,7 @@ export class PaymentsService {
             PaymentMethod: 'full_payment',
             PaymentObject: 'service',
             Tax: 'vat5',
-            Ean13: '30 31 30 32 39 30 30 30 30 63 03 33 43 35',
+            // Ean13: '30 31 30 32 39 30 30 30 30 63 03 33 43 35',
           },
         ],
       },
@@ -99,7 +99,7 @@ export class PaymentsService {
       body,
     );
 
-    // console.log(data);
+    console.log(data);
 
     return { link: data.PaymentURL, PaymentId: data.PaymentId };
   }
