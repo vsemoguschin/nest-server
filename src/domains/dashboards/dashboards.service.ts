@@ -161,6 +161,379 @@ export class DashboardsService {
     return { workSpaces, groups, managers };
   }
 
+  // comercial
+  async getComercialData(user: UserDto, period: string) {
+    const workspacesSearch =
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
+
+    const workSpaces = await this.prisma.workSpace.findMany({
+      where: {
+        id: workspacesSearch,
+        department: 'COMMERCIAL',
+      },
+      include: {
+        users: {
+          where: {
+            role: {
+              shortName: {
+                in: ['MOP', 'MOV'],
+              },
+            },
+          },
+          include: {
+            role: true,
+            managersPlans: {
+              where: {
+                period,
+              },
+            },
+            dealSales: {
+              where: {
+                deal: {
+                  saleDate: {
+                    startsWith: period,
+                  },
+                  reservation: false,
+                  status: { not: 'Возврат' },
+                },
+              },
+              include: {
+                deal: {
+                  include: {
+                    client: true,
+                    payments: true,
+                    dops: true,
+                  },
+                },
+              },
+            },
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: period,
+                },
+              },
+              include: {
+                deal: {
+                  select: {
+                    title: true,
+                  },
+                },
+              },
+            },
+            managerReports: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
+              },
+            },
+            salaryPays: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
+              },
+            },
+          },
+        },
+        payments: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+          include: {
+            deal: {
+              include: {
+                dops: true,
+              },
+            },
+          },
+        },
+        adExpenses: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
+      },
+    });
+
+    // console.log(workSpaces);
+
+    return workSpaces.flatMap((w) => {
+      const adExpenses = w.adExpenses.reduce((a, b) => a + b.price, 0);
+      const calls = w.users
+        .flatMap((u) => u.managerReports)
+        .reduce((a, b) => a + b.calls, 0);
+      const callCost = calls ? adExpenses / calls : 0;
+      const payments = w.payments;
+
+      const userData = w.users
+        .map((m) => {
+          let totalSalary = 0;
+          const pays = m.salaryPays.reduce((a, b) => a + b.price, 0) || 0;
+          const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
+          const dealsAmount = m.dealSales.length;
+          const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
+          const dopsAmount = m.dops.length;
+          const totalSales = dealSales + dopSales;
+          const averageBill = dealsAmount
+            ? +(totalSales / dealsAmount).toFixed()
+            : 0;
+
+          function getDaysInMonth(year: number, month: number): number {
+            return new Date(year, month, 0).getDate();
+          }
+          const daysInMonth = getDaysInMonth(
+            +period.split('-')[0],
+            +period.split('-')[1],
+          );
+          //today
+          const today = new Date().toISOString().slice(8, 10);
+
+          const temp = +((totalSales / +today) * daysInMonth).toFixed();
+
+          const calls = m.managerReports.reduce((a, b) => a + b.calls, 0);
+          const conversionDealsToCalls = calls
+            ? +((dealsAmount / calls) * 100).toFixed(2)
+            : 0;
+          const makets = m.managerReports.reduce((a, b) => a + b.makets, 0);
+          // конверсия из заявки в макет
+          const conversionMaketsToCalls = calls
+            ? +((makets / calls) * 100).toFixed(2)
+            : 0;
+          const maketsDayToDay = m.managerReports.reduce(
+            (a, b) => a + b.maketsDayToDay,
+            0,
+          );
+          // конверсия из макета в подажу
+          const conversionMaketsToSales = makets
+            ? +((dealsAmount / makets) * 100).toFixed(2)
+            : 0;
+          // конверсия из заявки в макет день в день
+          const conversionMaketsDayToDayToCalls = calls
+            ? +((maketsDayToDay / calls) * 100).toFixed(2)
+            : 0;
+          const dealsDayToDay = m.dealSales.filter(
+            (ds) => ds.deal.saleDate === ds.deal.client.firstContact,
+          );
+          const dealsDayToDayPrice = dealsDayToDay.reduce(
+            (a, b) => a + b.price,
+            0,
+          );
+
+          const ddr = totalSales
+            ? +(((calls * callCost) / totalSales) * 100).toFixed(2)
+            : 0;
+
+          // Находим сделки без дизайнеров
+          const dealsWithoutDesigners = m.dealSales
+            .flatMap((ds) => ds.deal)
+            .filter((d) =>
+              [
+                'Заготовка из базы',
+                'Рекламный',
+                'Из рассылки',
+                'Визуализатор',
+              ].includes(d.maketType),
+            );
+
+          const dealsSalesWithoutDesigners = dealsWithoutDesigners.reduce(
+            (sum, deal) => sum + (deal.price || 0),
+            0,
+          );
+
+          const dealsInfo = m.dealSales.map((d) => {
+            const {
+              title,
+              saleDate,
+              price: dealPrice,
+              payments: dealPayments,
+              dops: dealDops,
+            } = d.deal;
+            const dealerPrice = d.price;
+            const dealerPart = +((dealerPrice / dealPrice) * 100).toFixed();
+            const isWithoutDesigner = [
+              'Заготовка из базы',
+              'Рекламный',
+              'Из рассылки',
+              'Визуализатор',
+            ].includes(d.deal.maketType);
+            const dopsPrice = dealDops.reduce((a, b) => a + (b.price || 0), 0);
+            let paid = 0;
+            if (w.title === 'ВК') {
+              const payAmount = dealPayments.reduce(
+                (a, b) => a + (b.price || 0),
+                0,
+              );
+              paid = payAmount > dealPrice ? dealPrice : payAmount;
+            }
+            if (w.title === 'B2B') {
+              const payAmount = dealPayments.reduce(
+                (a, b) => a + (b.price || 0),
+                0,
+              );
+              paid = payAmount > dopsPrice ? payAmount - dopsPrice : 0;
+            }
+            return {
+              id: d.deal.id,
+              title: isWithoutDesigner ? title + '(БЕЗ ДИЗА)' : title,
+              saleDate,
+              dealPrice,
+              dealerPrice,
+              dealerPart,
+              paid,
+              paidPart: +((paid / dealPrice) * 100).toFixed(2),
+            };
+          });
+
+          const redirectToMSG = m.managerReports.reduce(
+            (a, b) => a + b.redirectToMSG,
+            0,
+          );
+
+          const dopsInfo = m.dops.map((d) => {
+            const title = d.type;
+            const dopPrice = d.price;
+            const saleDate = d.saleDate;
+            const dealTitle = d.deal.title;
+            return {
+              title,
+              dopPrice,
+              saleDate,
+              dealTitle,
+              dealId: d.dealId,
+            };
+          });
+
+          const shift = m.managerReports.length;
+          let shiftBonus = 0;
+          let dopPays = 0;
+          let dealPays = 0;
+
+          // Процент с продаж в зп
+          let bonusPercentage = 0;
+          let bonus = 0;
+          if (w.title === 'B2B') {
+            if (totalSales < 400_000) {
+              bonusPercentage = 0.03;
+            } else if (totalSales < 560_000) {
+              bonusPercentage = 0.035;
+            } else if (totalSales < 680_000) {
+              bonusPercentage = 0.04;
+            } else if (totalSales < 800_000) {
+              bonusPercentage = 0.045;
+              totalSalary += 10480;
+              bonus += 10480;
+            } else if (totalSales < 1_000_000) {
+              bonusPercentage = 0.05;
+              totalSalary += 15000;
+              bonus += 15000;
+            } else if (totalSales < 1_100_000) {
+              bonusPercentage = 0.05;
+              totalSalary += 17500;
+              bonus += 17500;
+            } else if (totalSales < 1_200_000) {
+              bonusPercentage = 0.05;
+              totalSalary += 20000;
+              bonus += 20000;
+            } else if (totalSales < 1_350_000) {
+              bonusPercentage = 0.05;
+              totalSalary += 23700;
+              bonus += 23700;
+            } else if (totalSales < 1_500_000) {
+              bonusPercentage = 0.05;
+              totalSalary += 27500;
+              bonus += 27500;
+            } else if (totalSales < 1_700_000) {
+              bonusPercentage = 0.05;
+              totalSalary += 32500;
+              bonus += 32500;
+            } else if (totalSales < 2_000_000) {
+              bonusPercentage = 0.05;
+              totalSalary += 40000;
+              bonus += 40000;
+            }
+            dopPays = +(dopSales * 0.1).toFixed(2);
+            totalSalary += dopPays;
+            dealPays = +(dealSales * bonusPercentage).toFixed(2);
+            totalSalary += dealPays;
+          }
+          if (w.title === 'ВК') {
+            if (totalSales < 400_000) {
+              bonusPercentage = 0.03;
+            } else if (totalSales >= 400_000 && totalSales < 600_000) {
+              bonusPercentage = 0.05;
+            } else if (totalSales >= 600_000 && totalSales < 700_000) {
+              bonusPercentage = 0.06;
+            } else if (totalSales >= 700_000 && totalSales < 1_000_000) {
+              bonusPercentage = 0.07;
+            } else if (totalSales >= 1_000_000) {
+              bonusPercentage = 0.07;
+              totalSalary += 10_000; // Премия за достижение 1 млн
+              bonus += 10_000; // Премия за достижение 1 млн
+            }
+            shiftBonus = shift * 666;
+            totalSalary += shiftBonus;
+            dealPays = +(totalSales * bonusPercentage).toFixed(2);
+            totalSalary += dealPays;
+          }
+
+          return {
+            //основное
+            fullName: m.fullName,
+            id: m.id,
+            workSpace: w.title,
+            plan: m.managersPlans[0]?.plan ?? 0,
+            totalSales,
+            dealSales,
+            dopSales,
+            temp,
+            dealsAmount,
+            dopsAmount,
+            // показатели
+            averageBill,
+            ddr,
+            calls,
+            makets,
+            maketsDayToDay,
+            conversionMaketsToCalls,
+            conversionMaketsDayToDayToCalls,
+            dealsDayToDay: dealsDayToDay.length,
+            dealsDayToDayPrice,
+            conversionDealsToCalls,
+            dealsWithoutDesigners: dealsWithoutDesigners.length,
+            dealsSalesWithoutDesigners,
+            conversionMaketsToSales,
+            redirectToMSG,
+            //зп
+            totalSalary: +totalSalary.toFixed(2),
+            pays,
+            rem: +(totalSalary - pays).toFixed(2),
+            dopPays,
+            dealPays,
+            bonusPercentage,
+            bonus,
+            shiftBonus,
+            shift,
+            // подробнее
+            dealsInfo,
+            dopsInfo,
+            topBonus: 0,
+            fired: m.deletedAt ? true : false,
+          };
+        })
+        .filter((u) => u.totalSales || !u.fired);
+
+      return userData;
+    });
+  }
+
   // managers
   async getManagersData(user: UserDto, period: string) {
     const workspacesSearch =

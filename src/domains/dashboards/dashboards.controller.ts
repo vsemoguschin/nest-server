@@ -33,6 +33,21 @@ export class DashboardsController {
     return this.dashboardsService.getDeals(user);
   }
 
+  @Get('/comercial')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  async getComercialData(
+    @CurrentUser() user: UserDto,
+    @Query('period') period: string,
+  ): Promise<any> {
+    console.log(period);
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.dashboardsService.getComercialData(user, period);
+  }
+
   @Get('/managers')
   @ApiOperation({
     summary: 'Получить данные менеджеров',
@@ -125,12 +140,9 @@ export class DashboardsController {
     return this.dashboardsService.getPays(user, period);
   }
 
-
-  
   //Получить всю базу
   @Get('/datas')
   async getDatas(): Promise<any> {
     return this.dashboardsService.getDatas();
   }
 }
-

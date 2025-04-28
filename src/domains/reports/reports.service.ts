@@ -743,6 +743,7 @@ export class ReportsService {
       const conversionMaketDayToDay = calls
         ? +((maketsDayToDay / calls) * 100).toFixed(2)
         : 0;
+      
 
       // console.log(callCost);
 

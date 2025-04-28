@@ -4,24 +4,18 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    // Fetch all deals including their associated dealUsers
-    const ws = await prisma.workSpace.findFirst({
-      where: {
-        title: 'B2B',
-      },
+    const updatedWorkspace = await prisma.workSpace.update({
+      where: { id: 1 },
+      data: { department: 'administration' },
     });
-    if (!ws) {
-      throw new Error('DealSource not found');
-    }
-    //delete ds
-    await prisma.adSource.create({
-      data: {
-        title: 'ВК для отдела B2B',
-        workSpaceId: ws.id,
-      },
+    const updatedUser = await prisma.user.update({
+      where: { id: 93 },
+      data: { groupId: 10, workSpaceId: 7 },
     });
+    console.log('User updated:', updatedUser);
+    console.log('Workspace updated:', updatedWorkspace);
   } catch (error) {
-    console.error('Error fetching deals:', error);
+    console.error('Error updating workspace:', error);
   } finally {
     await prisma.$disconnect();
   }
