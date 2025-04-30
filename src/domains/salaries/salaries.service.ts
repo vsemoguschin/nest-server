@@ -248,25 +248,25 @@ export class SalariesService {
         category: 'Топ конверсия',
       }));
 
-    // userData.map((u) => {
-    //   if (u.id === topDealSales[0].id && topDealSales[0].sales > 0) {
-    //     u.topBonus += 2000;
-    //     u.totalSalary += 2000;
-    //   }
-    //   if (u.id === topDopSales[0].id && topDopSales[0].sales > 0) {
-    //     u.topBonus += 2000;
-    //     u.totalSalary += 2000;
-    //   }
-    //   if (u.id === topAverageBill[0].id && topAverageBill[0].sales > 0) {
-    //     u.topBonus += 2000;
-    //     u.totalSalary += 2000;
-    //   }
-    //   if (u.id === topConversion[0].id && topConversion[0].sales > 0) {
-    //     u.topBonus += 2000;
-    //     u.totalSalary += 2000;
-    //   }
-    //   return u;
-    // });
+    userData.map((u) => {
+      if (u.id === topDealSales[0].id && topDealSales[0].sales > 0) {
+        u.topBonus += 2000;
+        u.totalSalary += 2000;
+      }
+      if (u.id === topDopSales[0].id && topDopSales[0].sales > 0) {
+        u.topBonus += 2000;
+        u.totalSalary += 2000;
+      }
+      if (u.id === topAverageBill[0].id && topAverageBill[0].sales > 0) {
+        u.topBonus += 2000;
+        u.totalSalary += 2000;
+      }
+      if (u.id === topConversion[0].id && topConversion[0].sales > 0) {
+        u.topBonus += 2000;
+        u.totalSalary += 2000;
+      }
+      return u;
+    });
     userData.push({
       id: 0,
       manager: 'ОБЩЕЕ', //менеджер
@@ -343,12 +343,12 @@ export class SalariesService {
             },
             dops: {
               where: {
+                saleDate: {
+                  startsWith: period,
+                },
                 deal: {
                   status: { not: 'Возврат' },
                   reservation: false,
-                  saleDate: {
-                    startsWith: period,
-                  },
                 },
               },
               include: {
@@ -378,10 +378,10 @@ export class SalariesService {
         },
         dops: {
           where: {
+            saleDate: {
+              startsWith: period,
+            },
             deal: {
-              saleDate: {
-                startsWith: period,
-              },
               reservation: false,
               status: { not: 'Возврат' },
             },
@@ -444,12 +444,22 @@ export class SalariesService {
     // Расчет продаж для каждого пользователя
     const usersWithSales = workSpace.users
       .map((u) => {
+        if (u.fullName.includes('Добротин')) {
+          console.log(u.dops.map((d) => d.saleDate));
+          console.log(
+            u.dops.reduce((a, b) => a + b.price, 0),
+            'ecqrveww',
+          );
+        }
         let totalSalary = 0;
         const pays = u.salaryPays.reduce((a, b) => a + b.price, 0) || 0;
 
         //Смены и премия за план
         const shift = u.managerReports.length;
-        const shiftBonus = shift * 666;
+        const shiftBonus = u.managerReports.reduce(
+          (a, b) => a + b.shiftCost,
+          0,
+        );
         const workSpacePlanBonus = isOverRopPlan ? 3000 : 0;
         totalSalary += shiftBonus + workSpacePlanBonus;
 

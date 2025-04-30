@@ -29,7 +29,13 @@ const maketTypes = [
   'Из рассылки',
 ];
 
-const categories = ['Услуги', 'Товары для бизнеса', 'Мебель', 'Интерьер', ''];
+// const categories = ['Услуги', 'Товары для бизнеса', 'Мебель', 'Интерьер', ''];
+const categories = [
+  'Предложения услуг',
+  'Оборудование для бизнеса',
+  'Мебель и интерьер',
+  '',
+];
 
 export class CreateDealDto {
   @IsString({ message: 'Дата продажи должно быть строкой.' })
@@ -55,7 +61,7 @@ export class CreateDealDto {
 
   @IsInt({ message: 'price должен быть целым числом (стоимость без допов).' })
   @Min(1, { message: 'Стоимость должна быть больше нуля.' })
-  price: number; 
+  price: number;
 
   @IsIn(statuses, { message: 'Неверный статус' })
   status: string = statuses[0]; // Значение по умолчанию
@@ -137,7 +143,7 @@ export class CreateDealDto {
   period?: string;
 
   @IsOptional() // Поле необязательное
-  @IsIn(categories, { message: "Не верная категория" })
+  @IsIn(categories, { message: 'Не верная категория' })
   category?: string | '';
 
   @IsInt({ message: 'clientId должен быть целым числом (ID клиента).' })

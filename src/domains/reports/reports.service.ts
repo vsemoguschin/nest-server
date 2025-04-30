@@ -21,7 +21,7 @@ const formatDate = (dateString: string): string => {
 export class ReportsService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createManagerReportDto: CreateManagerReportDto) {
+  async create(createManagerReportDto: CreateManagerReportDto, user: UserDto) {
     const { calls, makets, maketsDayToDay, userId, date, redirectToMSG } =
       createManagerReportDto;
 
@@ -48,6 +48,7 @@ export class ReportsService {
         date,
         period: date.slice(0, 7),
         redirectToMSG,
+        shiftCost: user.isIntern ? 800 : 666.67,
       },
     });
 
@@ -296,7 +297,7 @@ export class ReportsService {
           }),
       );
 
-      const ddr = totalSales
+      const drr = totalSales
         ? +((calls * callCost) / totalSales).toFixed(2)
         : 0;
 
@@ -316,7 +317,7 @@ export class ReportsService {
         makets: r.makets,
         maketsDayToDay: r.maketsDayToDay,
         conversion,
-        ddr,
+        drr,
         redirectToMSG,
         dealsDayToDayCount,
       };
@@ -430,7 +431,7 @@ export class ReportsService {
         (d) => d.deal.saleDate === d.deal.client.firstContact,
       ).length;
 
-      const ddr = totalSales
+      const drr = totalSales
         ? +((calls * callCost) / totalSales).toFixed(2)
         : 0;
 
@@ -450,7 +451,7 @@ export class ReportsService {
         makets: r.makets,
         maketsDayToDay: r.maketsDayToDay,
         conversion,
-        ddr,
+        drr,
         redirectToMSG,
         dealsDayToDayCount,
       };
@@ -609,7 +610,7 @@ export class ReportsService {
         : 0;
 
       const callCost = calls ? +(dateExpensesPrice / calls).toFixed(2) : 0;
-      const ddr = totalSales
+      const drr = totalSales
         ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
         : 0;
 
@@ -640,7 +641,7 @@ export class ReportsService {
         dealsDayToDayCount, // заказов день в день
         conversionDealsDayToDay, // конверсия заказов день в день (заказы день в день/заявки)
         callCost, //Стоимость заявки(по формуле)
-        ddr, //ДРР(по формуле)
+        drr, //ДРР(по формуле)
         dateExpensesPrice, //стоимость рекламы
       };
     });
@@ -670,6 +671,7 @@ export class ReportsService {
                   lte: range.end,
                 },
                 reservation: false,
+                status: { not: 'Возврат' },
               },
               include: {
                 client: true,
@@ -680,6 +682,10 @@ export class ReportsService {
                 saleDate: {
                   gte: range.start,
                   lte: range.end,
+                },
+                deal: {
+                  reservation: false,
+                  status: { not: 'Возврат' },
                 },
               },
             },
@@ -736,14 +742,13 @@ export class ReportsService {
         : 0;
 
       const callCost = calls ? +(dateExpensesPrice / calls).toFixed(2) : 0;
-      const ddr = totalSales
+      const drr = totalSales
         ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
         : 0;
 
       const conversionMaketDayToDay = calls
         ? +((maketsDayToDay / calls) * 100).toFixed(2)
         : 0;
-      
 
       // console.log(callCost);
 
@@ -768,7 +773,7 @@ export class ReportsService {
         dealsDayToDayCount, // заказов день в день
         conversionDealsDayToDay, // конверсия заказов день в день (заказы день в день/заявки)
         callCost, //Стоимость заявки(по формуле)
-        ddr, //ДРР(по формуле)
+        drr, //ДРР(по формуле)
         dateExpensesPrice, //стоимость рекламы
       };
     });

@@ -1,10 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsNotEmpty,
-  IsString,
-  IsOptional,
-  IsInt,
-} from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsInt } from 'class-validator';
 import { RoleDto } from 'src/domains/roles/dto/role.dto';
 import { WorkSpaceDto } from 'src/domains/workspaces/dto/workspace.dto';
 
@@ -102,4 +97,14 @@ export class UserDto {
   @ApiProperty({ example: 1, description: 'ID группы' })
   @IsInt()
   groupId: number;
+
+  //isIntern, optional, default false
+  @ApiProperty({
+    example: false,
+    description: 'Является ли пользователь стажером',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  isIntern?: boolean = false;
 }

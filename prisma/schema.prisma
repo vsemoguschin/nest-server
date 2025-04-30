@@ -91,6 +91,7 @@ model User {
   // Добавляем связь с ролью:
   roleId         Int
   role           Role      @relation(fields: [roleId], references: [id])
+  isIntern       Boolean   @default(false)
 
   workSpaceId    Int
   workSpace      WorkSpace @relation(fields: [workSpaceId], references: [id])
@@ -129,16 +130,17 @@ model ManagersPlan {
 }
 
 model ManagerReport {
-  id             Int    @id @default(autoincrement())
-  calls          Int    @default(0)
-  makets         Int    @default(0)
-  maketsDayToDay Int    @default(0)
+  id             Int     @id @default(autoincrement())
+  calls          Int     @default(0)
+  makets         Int     @default(0)
+  maketsDayToDay Int     @default(0)
   date           String
-  period         String @default("")
-  redirectToMSG  Int    @default(0) //new
+  period         String  @default("")
+  redirectToMSG  Int     @default(0) //new
+  shiftCost      Float   @default(666.67)
 
   userId         Int
-  user           User  @relation(fields: [userId], references: [id])
+  user           User    @relation(fields: [userId], references: [id])
 }
 
 model RopReport {

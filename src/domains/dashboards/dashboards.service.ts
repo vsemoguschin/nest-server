@@ -214,11 +214,18 @@ export class DashboardsService {
                 saleDate: {
                   startsWith: period,
                 },
+                deal: {
+                  reservation: false,
+                  status: { not: 'Возврат' },
+                },
               },
               include: {
                 deal: {
                   select: {
                     title: true,
+                    price: true,
+                    payments: true,
+                    dops: true,
                   },
                 },
               },
@@ -232,9 +239,7 @@ export class DashboardsService {
             },
             salaryPays: {
               where: {
-                date: {
-                  startsWith: period,
-                },
+                period,
               },
             },
           },
@@ -260,10 +265,41 @@ export class DashboardsService {
             },
           },
         },
+        deals: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            reservation: false,
+            status: { not: 'Возврат' },
+          },
+        },
+        dops: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            deal: {
+              reservation: false,
+              status: { not: 'Возврат' },
+            },
+          },
+        },
       },
     });
 
     // console.log(workSpaces);
+    const ropPlan = await this.prisma.managersPlan.findFirst({
+      where: {
+        period,
+        user: {
+          role: {
+            shortName: 'DO',
+          },
+          fullName: 'Юлия Куштанова',
+        },
+      },
+    });
 
     return workSpaces.flatMap((w) => {
       const adExpenses = w.adExpenses.reduce((a, b) => a + b.price, 0);
@@ -272,6 +308,18 @@ export class DashboardsService {
         .reduce((a, b) => a + b.calls, 0);
       const callCost = calls ? adExpenses / calls : 0;
       const payments = w.payments;
+      const dealPrice = w.deals.reduce((a, b) => a + b.price, 0);
+      console.log(dealPrice, ` сделки пространства ${w.title}`);
+
+      let isOverRopPlan = false;
+      const ropPlanValue = ropPlan?.plan || 0;
+      const workSpaceDealSales = w.deals.reduce((acc, d) => acc + d.price, 0);
+      const workSpaceDopSales = w.dops.reduce((acc, d) => acc + d.price, 0);
+      const workSpaceTotalSales = workSpaceDealSales + workSpaceDopSales;
+
+      if (workSpaceTotalSales > ropPlanValue && ropPlanValue > 0) {
+        isOverRopPlan = true;
+      }
 
       const userData = w.users
         .map((m) => {
@@ -327,7 +375,7 @@ export class DashboardsService {
             0,
           );
 
-          const ddr = totalSales
+          const drr = totalSales
             ? +(((calls * callCost) / totalSales) * 100).toFixed(2)
             : 0;
 
@@ -348,73 +396,94 @@ export class DashboardsService {
             0,
           );
 
+          const conversionDayToDay = calls
+            ? +((dealsDayToDay.length / calls) * 100).toFixed(2)
+            : 0;
+
+          const dimmerSales = m.dops
+            .filter((d) => d.type === 'Диммер')
+            .reduce((a, b) => a + b.price, 0);
+
+          // Конверсия
+          const conversion = calls
+            ? +((dealsAmount / calls) * 100).toFixed(2)
+            : 0;
+
+          //Подробная информация по сделкам
           const dealsInfo = m.dealSales.map((d) => {
             const {
               title,
               saleDate,
               price: dealPrice,
               payments: dealPayments,
-              dops: dealDops,
             } = d.deal;
             const dealerPrice = d.price;
-            const dealerPart = +((dealerPrice / dealPrice) * 100).toFixed();
+            const dealerPart = dealerPrice / dealPrice;
             const isWithoutDesigner = [
               'Заготовка из базы',
               'Рекламный',
               'Из рассылки',
               'Визуализатор',
             ].includes(d.deal.maketType);
-            const dopsPrice = dealDops.reduce((a, b) => a + (b.price || 0), 0);
-            let paid = 0;
-            if (w.title === 'ВК') {
-              const payAmount = dealPayments.reduce(
-                (a, b) => a + (b.price || 0),
-                0,
-              );
-              paid = payAmount > dealPrice ? dealPrice : payAmount;
-            }
-            if (w.title === 'B2B') {
-              const payAmount = dealPayments.reduce(
-                (a, b) => a + (b.price || 0),
-                0,
-              );
-              paid = payAmount > dopsPrice ? payAmount - dopsPrice : 0;
-            }
+            const payAmount = dealPayments.reduce(
+              (a, b) => a + (b.price || 0),
+              0,
+            );
+            const paid =
+              payAmount > dealPrice
+                ? dealPrice * dealerPart
+                : payAmount * dealerPart;
             return {
               id: d.deal.id,
-              title: isWithoutDesigner ? title + '(БЕЗ ДИЗА)' : title,
+              title: isWithoutDesigner
+                ? title.slice(0, 15) + '(БЕЗ ДИЗА)'
+                : title.slice(0, 15),
               saleDate,
               dealPrice,
               dealerPrice,
-              dealerPart,
-              paid,
-              paidPart: +((paid / dealPrice) * 100).toFixed(2),
+              dealerPart: +(dealerPart * 100).toFixed(2),
+              paid: +paid.toFixed(2),
             };
           });
 
-          const redirectToMSG = m.managerReports.reduce(
-            (a, b) => a + b.redirectToMSG,
-            0,
-          );
-
+          // Подробная информация по допам
           const dopsInfo = m.dops.map((d) => {
             const title = d.type;
             const dopPrice = d.price;
             const saleDate = d.saleDate;
             const dealTitle = d.deal.title;
+            const dealPrice = d.deal.price;
+            const dealPayments = d.deal.payments.reduce(
+              (a, b) => a + b.price,
+              0,
+            );
+            const dealDopsPrice = d.deal.dops.reduce((a, b) => a + b.price, 0);
+            const dealDopsPaidPrice =
+              dealPayments > dealPrice ? dealPayments - dealPrice : 0;
+            const dealerPart = dopPrice / dealDopsPrice;
+            const dealerPrice = dealDopsPaidPrice * dealerPart;
             return {
               title,
               dopPrice,
               saleDate,
-              dealTitle,
+              dealTitle: dealTitle.slice(0, 15),
               dealId: d.dealId,
+              paid: +dealerPrice.toFixed(2),
             };
           });
 
           const shift = m.managerReports.length;
-          let shiftBonus = 0;
+          const shiftBonus = m.managerReports.reduce(
+            (a, b) => a + b.shiftCost,
+            0,
+          );
+          const redirectToMSG = m.managerReports.reduce(
+            (a, b) => a + b.redirectToMSG,
+            0,
+          );
           let dopPays = 0;
           let dealPays = 0;
+          totalSalary += shiftBonus;
 
           // Процент с продаж в зп
           let bonusPercentage = 0;
@@ -459,10 +528,9 @@ export class DashboardsService {
               totalSalary += 40000;
               bonus += 40000;
             }
-            dopPays = +(dopSales * 0.1).toFixed(2);
-            totalSalary += dopPays;
-            dealPays = +(dealSales * bonusPercentage).toFixed(2);
-            totalSalary += dealPays;
+            dopPays = dopsInfo.reduce((a, b) => a + b.paid, 0) * 0.1;
+            dealPays =
+              dealsInfo.reduce((a, b) => a + b.paid, 0) * bonusPercentage;
           }
           if (w.title === 'ВК') {
             if (totalSales < 400_000) {
@@ -478,11 +546,15 @@ export class DashboardsService {
               totalSalary += 10_000; // Премия за достижение 1 млн
               bonus += 10_000; // Премия за достижение 1 млн
             }
-            shiftBonus = shift * 666;
-            totalSalary += shiftBonus;
-            dealPays = +(totalSales * bonusPercentage).toFixed(2);
-            totalSalary += dealPays;
+            dopPays =
+              +dopsInfo.reduce((a, b) => a + b.paid, 0) * bonusPercentage;
+            dealPays =
+              dealsInfo.reduce((a, b) => a + b.paid, 0) * bonusPercentage;
+            const workSpacePlanBonus = isOverRopPlan ? 3000 : 0;
+            totalSalary += workSpacePlanBonus;
+            bonus += workSpacePlanBonus;
           }
+          totalSalary += dealPays + dopPays;
 
           return {
             //основное
@@ -498,7 +570,7 @@ export class DashboardsService {
             dopsAmount,
             // показатели
             averageBill,
-            ddr,
+            drr,
             calls,
             makets,
             maketsDayToDay,
@@ -515,8 +587,8 @@ export class DashboardsService {
             totalSalary: +totalSalary.toFixed(2),
             pays,
             rem: +(totalSalary - pays).toFixed(2),
-            dopPays,
-            dealPays,
+            dopPays: +dopPays.toFixed(2),
+            dealPays: +dealPays.toFixed(2),
             bonusPercentage,
             bonus,
             shiftBonus,
@@ -526,9 +598,129 @@ export class DashboardsService {
             dopsInfo,
             topBonus: 0,
             fired: m.deletedAt ? true : false,
+            isIntern: m.isIntern,
+
+            conversionDayToDay,
+            dimmerSales,
+            conversion,
           };
         })
         .filter((u) => u.totalSales || !u.fired);
+
+      // Определение топов
+      const topTotalSales = [...userData]
+        .filter((u) => u.workSpace === 'ВК')
+        .sort((a, b) => b.totalSales - a.totalSales)
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            user.topBonus += (-i + 3) * 1000;
+            user.totalSalary += (-i + 3) * 1000;
+          }
+          return { user: u.fullName, sales: u.totalSales };
+        });
+
+      const topDopSales = [...userData]
+        .filter((u) => u.workSpace === 'ВК')
+        .sort((a, b) => b.dopSales - a.dopSales)
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            user.topBonus += (-i + 3) * 1000;
+            user.totalSalary += (-i + 3) * 1000;
+          }
+          return { user: u.fullName, sales: u.dopSales };
+        });
+      const topDimmerSales = [...userData]
+        .filter((u) => u.workSpace === 'ВК')
+        .sort((a, b) => b.dimmerSales - a.dimmerSales)
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            user.topBonus += (-i + 3) * 1000;
+            user.totalSalary += (-i + 3) * 1000;
+          }
+          return { user: u.fullName, sales: u.dimmerSales };
+        });
+      const topSalesWithoutDesigners = [...userData]
+        .filter((u) => u.workSpace === 'ВК')
+        .sort(
+          (a, b) => b.dealsSalesWithoutDesigners - a.dealsSalesWithoutDesigners,
+        )
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            user.topBonus += (-i + 3) * 1000;
+            user.totalSalary += (-i + 3) * 1000;
+          }
+          return { user: u.fullName, sales: u.dealsSalesWithoutDesigners };
+        });
+      const topConversionDayToDay = [...userData]
+        .filter((u) => u.workSpace === 'ВК')
+        .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            user.topBonus += (-i + 3) * 1000;
+            user.totalSalary += (-i + 3) * 1000;
+          }
+          return { user: u.fullName, sales: u.conversionDayToDay };
+        });
+
+      // АВИТО
+      // - Самая высокая Сумма Заказов в отделе
+      const topDealSalesAvito = [...userData]
+        .filter((u) => u.workSpace === 'B2B')
+        .sort((a, b) => b.dealSales - a.dealSales)
+        .slice(0, 1)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            u.topBonus += 2000;
+            u.totalSalary += 2000;
+          }
+        });
+      // - Самая высокая сумма Допов в отделе
+      const topDopSalesAvito = [...userData]
+        .filter((u) => u.workSpace === 'B2B')
+        .sort((a, b) => b.dopSales - a.dopSales)
+        .slice(0, 1)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            u.topBonus += 2000;
+            u.totalSalary += 2000;
+          }
+        });
+      // - Самый Высокий средний чек в отделе
+      const topAverageBillAvito = [...userData]
+        .filter((u) => u.workSpace === 'B2B')
+        .sort((a, b) => b.averageBill - a.averageBill)
+        .slice(0, 1)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            u.topBonus += 2000;
+            u.totalSalary += 2000;
+          }
+        });
+      // - Самая высокая конверсия в отделе
+      const topConversionAvito = [...userData]
+        .filter((u) => u.workSpace === 'B2B')
+        .sort((a, b) => b.conversion - a.conversion)
+        .slice(0, 1)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            u.topBonus += 2000;
+            u.totalSalary += 2000;
+          }
+        });
 
       return userData;
     });
@@ -872,6 +1064,10 @@ export class DashboardsService {
             saleDate: {
               startsWith: period,
             },
+            deal: {
+              reservation: false,
+              status: { not: 'Возврат' },
+            },
           },
         },
         users: {
@@ -886,6 +1082,10 @@ export class DashboardsService {
               where: {
                 saleDate: {
                   startsWith: period,
+                },
+                deal: {
+                  reservation: false,
+                  status: { not: 'Возврат' },
                 },
               },
             },

@@ -176,7 +176,7 @@ export class PlanfactService {
     });
   }
 
-  async getAccounts() {
+  async getBankAccounts() {
     return await this.prisma.planFactAccounts.findMany();
   }
 }

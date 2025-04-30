@@ -40,6 +40,12 @@ export class PlanfactController {
     );
   }
 
+  @Get('operations')
+  @Roles('ADMIN', 'G', 'KD')
+  async getBankAccounts() {
+    return this.planfactService.getBankAccounts();
+  }
+
   @Get('categories')
   @Roles('ADMIN', 'G', 'KD')
   async getCategories() {

@@ -37,8 +37,11 @@ export class ReportsController {
   @ApiOperation({ summary: 'Создать отчет менеджера' })
   @ApiResponse({ status: 201, description: 'Отчет успешно создан' })
   @ApiResponse({ status: 400, description: 'Неверные данные' })
-  async create(@Body() createManagerReportDto: CreateManagerReportDto) {
-    const report = await this.reportService.create(createManagerReportDto);
+  async create(
+    @Body() createManagerReportDto: CreateManagerReportDto,
+    @CurrentUser() user: UserDto,
+  ) {
+    const report = await this.reportService.create(createManagerReportDto, user);
     return report;
   }
 
