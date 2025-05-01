@@ -309,7 +309,7 @@ export class DashboardsService {
       const callCost = calls ? adExpenses / calls : 0;
       const payments = w.payments;
       const dealPrice = w.deals.reduce((a, b) => a + b.price, 0);
-      console.log(dealPrice, ` сделки пространства ${w.title}`);
+      // console.log(dealPrice, ` сделки пространства ${w.title}`);
 
       let isOverRopPlan = false;
       const ropPlanValue = ropPlan?.plan || 0;
@@ -342,7 +342,8 @@ export class DashboardsService {
             +period.split('-')[1],
           );
           //today
-          const today = new Date().toISOString().slice(8, 10);
+          const isThismounth = period.split('-')[1] === new Date().toISOString().slice(5, 7);
+          const today = isThismounth ? new Date().toISOString().slice(8, 10) : daysInMonth;
 
           const temp = +((totalSales / +today) * daysInMonth).toFixed();
 
