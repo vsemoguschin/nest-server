@@ -657,7 +657,7 @@ export class ReportsService {
       where: {
         date: {
           gte: range.start,
-          lte: range.end,
+          lt: range.end,
         },
         workSpaceId: workspacesSearch,
       },
