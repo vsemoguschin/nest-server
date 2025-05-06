@@ -457,7 +457,10 @@ export class DashboardsService {
             };
           });
           console.log('manager', m.fullName);
-          console.log('dealInfo', dealsInfo.reduce((a, b)=> a + b.dealerPrice, 0));
+          console.log(
+            'dealInfo',
+            dealsInfo.reduce((a, b) => a + b.dealerPrice, 0),
+          );
           console.log('dealSales', dealSales);
 
           // Подробная информация по допам
@@ -499,7 +502,8 @@ export class DashboardsService {
                 price: dealPrice,
                 payments: dealPayments,
               } = p.deal;
-              const dealerPrice = p.deal.price;
+              const dealerPrice =
+                p.deal.dealers.find((d) => d.userId === m.id)?.price || 0;
               const dealerPart = dealerPrice / dealPrice;
               const payAmount = dealPayments.reduce(
                 (a, b) => a + (b.price || 0),
@@ -547,38 +551,40 @@ export class DashboardsService {
             if (totalSales < 400_000) {
               bonusPercentage = 0.03;
             } else if (totalSales < 560_000) {
-              bonusPercentage = 0.035;
+              bonusPercentage = 0.03;
             } else if (totalSales < 680_000) {
-              bonusPercentage = 0.04;
+              bonusPercentage = 0.035;
             } else if (totalSales < 800_000) {
+              bonusPercentage = 0.04;
+            } else if (totalSales < 1_000_000) {
               bonusPercentage = 0.045;
               totalSalary += 10480;
               bonus += 10480;
-            } else if (totalSales < 1_000_000) {
+            } else if (totalSales < 1_100_000) {
               bonusPercentage = 0.05;
               totalSalary += 15000;
               bonus += 15000;
-            } else if (totalSales < 1_100_000) {
+            } else if (totalSales < 1_200_000) {
               bonusPercentage = 0.05;
               totalSalary += 17500;
               bonus += 17500;
-            } else if (totalSales < 1_200_000) {
+            } else if (totalSales < 1_350_000) {
               bonusPercentage = 0.05;
               totalSalary += 20000;
               bonus += 20000;
-            } else if (totalSales < 1_350_000) {
+            } else if (totalSales < 1_500_000) {
               bonusPercentage = 0.05;
               totalSalary += 23700;
               bonus += 23700;
-            } else if (totalSales < 1_500_000) {
+            } else if (totalSales < 1_700_000) {
               bonusPercentage = 0.05;
               totalSalary += 27500;
               bonus += 27500;
-            } else if (totalSales < 1_700_000) {
+            } else if (totalSales < 2_000_000) {
               bonusPercentage = 0.05;
               totalSalary += 32500;
               bonus += 32500;
-            } else if (totalSales < 2_000_000) {
+            } else if (totalSales >= 2_000_000) {
               bonusPercentage = 0.05;
               totalSalary += 40000;
               bonus += 40000;
