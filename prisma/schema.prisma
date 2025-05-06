@@ -108,6 +108,8 @@ model User {
 
   dops           Dop[]
 
+  deliveries     Delivery[]
+
   reviews        Review[]
 
   managersPlans  ManagersPlan[]
@@ -401,17 +403,21 @@ model DopsType {
 
 // ДОСТАВКИ
 model Delivery {
-  id          Int     @id @default(autoincrement()) 
-  date        String  // Обязательное поле "дата отправки"
-  method      String  @default("")
-  type        String  @default("")
-  description String  @default("")
-  track       String  @default("")
-  status      String  @default("")
-  price       Int     @default(0)
+  id             Int     @id @default(autoincrement()) 
+  date           String  // Обязательное поле "дата отправки"
+  method         String  @default("")
+  type           String  @default("")
+  description    String  @default("")
+  track          String  @default("")
+  status         String  @default("")
+  price          Int     @default(0)
+  deliveredDate  String  @default("") // Дата доставки
 
-  dealId      Int
-  deal        Deal    @relation(fields: [dealId], references: [id])
+  dealId         Int
+  deal           Deal    @relation(fields: [dealId], references: [id])
+
+  userId         Int?
+  user           User?   @relation(fields: [userId], references: [id])
 }
 
 // ОТЗЫВЫ
@@ -571,13 +577,14 @@ model transactionCategories {
 }
 
 model planFactAccounts {
-  id             Int      @id @default(autoincrement()) 
-  name           String   // Название
-  accountNumber  String   @unique // Номер счета
-  balance        Int      @default(0) // Остаток
-  type           String   @default("") // безналичны/наличный
-  comment        String   @default("") // коментарий
-  isReal         Boolean  @default(true) // есть доступ по АПИ
+  id                Int      @id @default(autoincrement()) 
+  name              String   // Название
+  accountNumber     String   @unique // Номер счета
+  balance           Int      @default(0) // Остаток
+  type              String   @default("") // безналичны/наличный
+  balanceStartDate  String   @default("") // date
+  comment           String   @default("") // коментарий
+  isReal            Boolean  @default(true) // есть доступ по АПИ
 }
 
 

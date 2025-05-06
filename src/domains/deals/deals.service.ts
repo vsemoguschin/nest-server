@@ -62,6 +62,7 @@ export class DealsService {
       user.role.department === 'administration' ||
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'KD' ||
+      user.role.shortName === 'LOGIST' ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;
@@ -198,6 +199,7 @@ export class DealsService {
     let workspacesSearch =
       user.role.department === 'administration' ||
       user.role.shortName === 'ROV' ||
+      user.role.shortName === 'LOGIST' ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;

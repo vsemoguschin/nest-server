@@ -1,13 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DeliveryCreateDto } from './dto/delivery-create.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { UserDto } from '../users/dto/user.dto';
 
 @Injectable()
 export class DeliveriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   // Создание записи о доставке
-  async create(createDto: DeliveryCreateDto) {
+  async create(createDto: DeliveryCreateDto, user: UserDto) {
     return this.prisma.delivery.create({
       data: {
         date: createDto.date,
@@ -18,6 +19,8 @@ export class DeliveriesService {
         status: createDto.status || 'Создана',
         price: createDto.price || 0,
         dealId: createDto.dealId,
+        deliveredDate: createDto.deliveredDate,
+        userId: user.id,
       },
       include: {
         deal: true, // Включаем данные сделки в ответ
@@ -45,6 +48,7 @@ export class DeliveriesService {
         track: updateDto.track,
         status: updateDto.status,
         price: updateDto.price,
+        deliveredDate: updateDto.deliveredDate,
         dealId: updateDto.dealId,
       },
       include: {

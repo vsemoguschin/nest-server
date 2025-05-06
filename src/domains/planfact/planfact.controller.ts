@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Post,
@@ -10,6 +11,7 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { PlanfactService } from './planfact.service';
 import { ApiTags } from '@nestjs/swagger';
+import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('planfact')
@@ -50,5 +52,17 @@ export class PlanfactController {
   @Roles('ADMIN', 'G', 'KD')
   async getCategories() {
     return this.planfactService.getCategories();
+  }
+
+  @Post('accounts')
+  @Roles('ADMIN', 'G', 'KD')
+  async createAccount(@Body() dto: PlanFactAccountCreateDto) {
+    return this.planfactService.createAccount(dto);
+  }
+
+  @Get('accounts')
+  @Roles('ADMIN', 'G', 'KD')
+  async createPaymentLink() {
+    return this.planfactService.getBankAccounts();
   }
 }

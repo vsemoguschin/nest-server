@@ -177,6 +177,20 @@ export class PlanfactService {
   }
 
   async getBankAccounts() {
+    const bankAccounts = ['40802810800000977213', '40802810900002414658']; // Список банковских счетов
+
+    const response = await axios.get(
+      'https://business.tbank.ru/openapi/api/v4/bank-accounts',
+      {
+        headers: {
+          Authorization: 'Bearer ' + tToken,
+          'Content-Type': 'application/json',
+        },
+        maxBodyLength: Infinity,
+      },
+    );
+    console.log(response);
+
     return await this.prisma.planFactAccounts.findMany();
   }
 }
