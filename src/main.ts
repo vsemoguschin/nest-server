@@ -57,6 +57,6 @@ async function bootstrap() {
   //   return this.toString(); // Преобразуем BigInt в строку
   // };
 
-  await app.listen(5000);
+  await app.listen(5000, '127.0.0.1');
 }
 bootstrap();
