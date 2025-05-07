@@ -1,5 +1,3 @@
-//http-error.filter.ts
-
 import {
   ExceptionFilter,
   Catch,
@@ -17,17 +15,22 @@ export class HttpErrorFilter implements ExceptionFilter {
     const status = exception.getStatus();
     const errorResponse = exception.getResponse();
 
+    // Извлекаем IP-адрес клиента
+    const clientIp = request.ip || request.connection.remoteAddress;
+
     const logError = {
       timestamp: new Date().toISOString(),
       path: request.url,
       method: request.method,
       status,
+      clientIp, // Добавляем IP в объект для логов
       error: errorResponse,
     };
 
     // Логируем ошибку в консоль
     console.error('Ошибка запроса:', JSON.stringify(logError, null, 2));
 
+    // Ответ клиенту (без IP)
     response.status(status).json({
       statusCode: status,
       timestamp: logError.timestamp,
