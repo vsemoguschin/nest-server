@@ -61,36 +61,36 @@ export class WebhooksService {
       const { access_token } = response.data;
 
       //delete webhook
-      //   const deleteWebhookResponse = await axios.delete(
-      //     `${CDEK_API_URL}/webhooks/${wh.entity.uuid}`,
-      //     {
-      //       headers: {
-      //         Authorization: `Bearer ${access_token}`,
-      //         'Content-Type': 'application/json',
-      //       },
-      //     },
-      //   );
-      //     console.log(deleteWebhookResponse.data);
+        const deleteWebhookResponse = await axios.delete(
+          `${CDEK_API_URL}/webhooks/${wh.entity.uuid}`,
+          {
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+          console.log(deleteWebhookResponse.data);
 
       //   Регистрация вебхука
-      const webhookResponse = await axios.post(
-        `${CDEK_API_URL}/webhooks`,
-        {
-          url: WEBHOOK_URL,
-          type: 'ORDER_STATUS',
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${access_token}`,
-            'Content-Type': 'application/json',
-          },
-        },
-      );
+    //   const webhookResponse = await axios.post(
+    //     `${CDEK_API_URL}/webhooks`,
+    //     {
+    //       url: WEBHOOK_URL,
+    //       type: 'ORDER_STATUS',
+    //     },
+    //     {
+    //       headers: {
+    //         Authorization: `Bearer ${access_token}`,
+    //         'Content-Type': 'application/json',
+    //       },
+    //     },
+    //   );
 
-      this.logger.log(
-        `Webhook registered: ${JSON.stringify(webhookResponse.data)}`,
-      );
-      return webhookResponse.data;
+    //   this.logger.log(
+    //     `Webhook registered: ${JSON.stringify(webhookResponse.data)}`,
+    //   );
+    //   return webhookResponse.data;
     } catch (error) {
       this.logger.error(
         `Error registering webhook: ${error.response?.data || error.message}`,

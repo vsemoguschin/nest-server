@@ -35,7 +35,7 @@ export class DeliveriesService {
 
       const responseOrders = await axios.get('https://api.cdek.ru/v2/orders', {
         params: {
-          cdek_number: track,
+          cdek_number: 10111755737,
         },
         headers: {
           Authorization: `Bearer ${access_token}`,
@@ -48,7 +48,7 @@ export class DeliveriesService {
       //   responseOrders.data.entity.delivery_detail.total_sum,
       // );
       return {
-        price: responseOrders.data.entity.delivery_recipient_cost.value,
+        price: responseOrders.data.entity.delivery_detail.total_sum,
       };
     } catch (error) {
       console.error('Error while checking track:', error.message);
