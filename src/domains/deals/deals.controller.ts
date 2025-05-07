@@ -48,7 +48,7 @@ export class DealsController {
     summary: 'Создать сделку',
     description: 'Endpoint: POST /deals. Создает новое сделку.',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
   async create(
     @Body() createDealDto: CreateDealDto,
     @CurrentUser() user: UserDto,

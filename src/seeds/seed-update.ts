@@ -4,24 +4,22 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    const updatedUsersInterns = await prisma.user.findMany({
+    await prisma.deal.update({
       where: {
-        fullName: {
-          in: ['Гасымова Юлия'],
-        },
-      },
-    });
-    console.log('updatedUsersInterns', updatedUsersInterns);
-
-    // console.log('updatedReports', updatedReports);
-    await prisma.user.updateMany({
-      where: {
-        id: {
-          in: updatedUsersInterns.map((user) => user.id),
-        },
+        id: 1440,
       },
       data: {
-        isIntern: false,
+        workSpaceId: 3,
+        groupId: 3,
+      },
+    });
+    await prisma.client.update({
+      where: {
+        id: 1359,
+      },
+      data: {
+        workSpaceId: 3,
+        groupId: 3,
       },
     });
   } catch (error) {
