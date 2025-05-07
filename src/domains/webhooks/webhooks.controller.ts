@@ -17,8 +17,9 @@ export class WebhooksController {
   @Public()
   async handleCdekWebhook(@Body() payload: any, @Res() res: Response) {
     try {
-      await this.webhooksService.processCdekWebhook(payload);
-      return res.status(HttpStatus.OK).send('Webhook received');
+      console.log('Received CDEK webhook:', payload);
+      // await this.webhooksService.processCdekWebhook(payload);
+      // return res.status(HttpStatus.OK).send('Webhook received');
     } catch (error) {
       console.error('Error processing CDEK webhook:', error);
       return res
