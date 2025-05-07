@@ -4,16 +4,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 import axios from 'axios';
 
 const wh = {
-  entity: { uuid: 'f6874843-5c9d-42d9-9635-752eb1c4baa6' },
+  entity: { uuid: '7a4e7021-b2a9-42ad-932d-03007eec3bd7' },
   requests: [
     {
-      request_uuid: 'e4c2bc16-e8c3-43c4-bb6b-a1002f152e62',
+      request_uuid: 'c3a7430a-2e73-47f9-9b6c-2770e56a62cd',
       type: 'CREATE',
-      date_time: '2025-05-07T11:39:39+0000',
+      date_time: '2025-05-07T11:54:59+0000',
       state: 'SUCCESSFUL',
     },
   ],
-};
+}; //10114796260
 
 @Injectable()
 export class WebhooksService {
@@ -61,8 +61,24 @@ export class WebhooksService {
       const { access_token } = response.data;
 
       //delete webhook
-      const deleteWebhookResponse = await axios.delete(
-        `${CDEK_API_URL}/webhooks/${wh.entity.uuid}`,
+      //   const deleteWebhookResponse = await axios.delete(
+      //     `${CDEK_API_URL}/webhooks/${wh.entity.uuid}`,
+      //     {
+      //       headers: {
+      //         Authorization: `Bearer ${access_token}`,
+      //         'Content-Type': 'application/json',
+      //       },
+      //     },
+      //   );
+      //     console.log(deleteWebhookResponse.data);
+
+      //   Регистрация вебхука
+      const webhookResponse = await axios.post(
+        `${CDEK_API_URL}/webhooks`,
+        {
+          url: WEBHOOK_URL,
+          type: 'ORDER_STATUS',
+        },
         {
           headers: {
             Authorization: `Bearer ${access_token}`,
@@ -70,27 +86,11 @@ export class WebhooksService {
           },
         },
       );
-        console.log(deleteWebhookResponse.data);
 
-      //   Регистрация вебхука
-    //   const webhookResponse = await axios.post(
-    //     `${CDEK_API_URL}/webhooks`,
-    //     {
-    //       url: WEBHOOK_URL,
-    //       type: 'ORDER_STATUS',
-    //     },
-    //     {
-    //       headers: {
-    //         Authorization: `Bearer ${access_token}`,
-    //         'Content-Type': 'application/json',
-    //       },
-    //     },
-    //   );
-
-    //   this.logger.log(
-    //     `Webhook registered: ${JSON.stringify(webhookResponse.data)}`,
-    //   );
-    //   return webhookResponse.data;
+      this.logger.log(
+        `Webhook registered: ${JSON.stringify(webhookResponse.data)}`,
+      );
+      return webhookResponse.data;
     } catch (error) {
       this.logger.error(
         `Error registering webhook: ${error.response?.data || error.message}`,

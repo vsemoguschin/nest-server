@@ -2,6 +2,7 @@
 import { Body, Controller, Post, Res, HttpStatus } from '@nestjs/common';
 import { WebhooksService } from './webhooks.service';
 import { Response } from 'express';
+import { Public } from 'src/auth/public.decorator';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -13,6 +14,7 @@ export class WebhooksController {
   }
 
   @Post('cdek')
+  @Public()
   async handleCdekWebhook(@Body() payload: any, @Res() res: Response) {
     try {
       await this.webhooksService.processCdekWebhook(payload);
