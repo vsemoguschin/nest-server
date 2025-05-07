@@ -2,10 +2,59 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { DeliveryCreateDto } from './dto/delivery-create.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserDto } from '../users/dto/user.dto';
+import axios from 'axios';
 
 @Injectable()
 export class DeliveriesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async checkTrack(track: string) {
+    const CDEK_Account = 'DRCqUsjqi1SW9NuqSSg2mkiaH1oAQKmk';
+    const CDEK_password = 'V1OSykuiWzG07SEXUZ6JknBfE4pRt9lo';
+    // console.log(track);
+    const statuses = [
+      'CREATED', // Создана
+      'DELIVERED', // Вручен
+    ]
+
+    try {
+      const response = await axios.post(
+        'https://api.cdek.ru/v2/oauth/token',
+        new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: CDEK_Account, // Тестовый account
+          client_secret: CDEK_password, // Тестовый secure_password
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        },
+      );
+      const { access_token } = response.data;
+
+      const responseOrders = await axios.get('https://api.cdek.ru/v2/orders', {
+        params: {
+          cdek_number: track,
+        },
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+        },
+      });
+      console.log('Response statuses:', responseOrders.data);
+      // console.log('Response statuses:', responseOrders.data.entity.statuses);
+      // console.log(
+      //   'Response sum:',
+      //   responseOrders.data.entity.delivery_detail.total_sum,
+      // );
+      return {
+        price: responseOrders.data.entity.delivery_recipient_cost.value,
+      };
+    } catch (error) {
+      console.error('Error while checking track:', error.message);
+      // throw new Error('Failed to check track information');
+    }
+  }
 
   // Создание записи о доставке
   async create(createDto: DeliveryCreateDto, user: UserDto) {

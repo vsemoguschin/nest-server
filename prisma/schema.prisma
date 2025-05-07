@@ -404,13 +404,13 @@ model DopsType {
 // ДОСТАВКИ
 model Delivery {
   id             Int     @id @default(autoincrement()) 
-  date           String  // Обязательное поле "дата отправки"
+  date           String  @default("")
   method         String  @default("")
   type           String  @default("")
   description    String  @default("")
   track          String  @default("")
   status         String  @default("")
-  price          Int     @default(0)
+  price          Float   @default(0)
   deliveredDate  String  @default("") // Дата доставки
 
   dealId         Int
@@ -587,5 +587,8 @@ model planFactAccounts {
   isReal            Boolean  @default(true) // есть доступ по АПИ
 }
 
-
-
+// model Webhook {
+//   id        Int      @id @default(autoincrement())
+//   uuid      String   @unique
+//   createdAt DateTime @default(now())
+// }

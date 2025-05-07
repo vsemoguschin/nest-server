@@ -29,15 +29,19 @@ const types = ['Нет', 'Платно', 'Бесплатно', 'Досыл'];
 const statuses = ['Создана', 'Доступна', 'Отправлена', 'Вручена', 'Возврат'];
 
 export class DeliveryCreateDto {
-  @IsString({ message: 'Дата продажи должно быть строкой.' })
-  @IsNotEmpty()
+  @IsOptional() // Поле может быть undefined или пустой строкой
+  @ValidateIf((o) => o.date !== '') // Применять валидацию, только если строка не пустая
   @Matches(
-    /^\d{4}-\d{2}-\d{2}$/, // Проверка формата "YYYY-MM-DD"
-    { message: 'Дата должна быть в формате YYYY-MM-DD' },
+    /^\d{4}-\d{2}-\d{2}$/, // Формат YYYY-MM-DD (пустая строка уже исключена через ValidateIf)
+    {
+      message: 'Дата должна быть в формате YYYY-MM-DD',
+    },
   )
   @IsDateString(
-    {},
-    { message: 'Дата продажи должна быть валидной датой в формате YYYY-MM-DD' },
+    { strict: true }, // Проверяет валидность даты в формате YYYY-MM-DD
+    {
+      message: 'Дата должна быть валидной в формате YYYY-MM-DD',
+    },
   )
   date: string;
 
@@ -91,10 +95,9 @@ export class DeliveryCreateDto {
 
   @ApiProperty({
     description: 'Стоимость доставки',
-    example: 1500,
+    example: 1500.50,
     default: 0,
   })
-  @IsInt()
   @IsOptional()
   price?: number;
 

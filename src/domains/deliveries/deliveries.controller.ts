@@ -7,6 +7,8 @@ import {
   Delete,
   ParseIntPipe,
   UseGuards,
+  Get,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -27,6 +29,12 @@ import { UserDto } from '../users/dto/user.dto';
 @Controller('deliveries')
 export class DeliveriesController {
   constructor(private readonly deliveriesService: DeliveriesService) {}
+
+  @Get('/checkTrack')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST')
+  async checkTrack(@Query('track') track: string) {
+    return this.deliveriesService.checkTrack(track);
+  }
 
   // Создание записи
   @Post()

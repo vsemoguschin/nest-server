@@ -8,6 +8,7 @@ import { CreateDealDto } from './dto/deal-create.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { UpdateDealDto } from './dto/deal-update.dto';
 import { UpdateDealersDto } from './dto/dealers-update.dto';
+import axios from 'axios';
 
 @Injectable()
 export class DealsService {
