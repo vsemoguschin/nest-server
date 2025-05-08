@@ -2,92 +2,20 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { DeliveryCreateDto } from './dto/delivery-create.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserDto } from '../users/dto/user.dto';
-import axios from 'axios';
+import { CdekService } from 'src/services/cdek.service';
 
 @Injectable()
 export class DeliveriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cdekService: CdekService,
+  ) {}
 
   async checkTrack(track: string) {
     try {
-      // Получение токена авторизации
-      const response = await axios.post(
-        'https://api.cdek.ru/v2/oauth/token',
-        new URLSearchParams({
-          grant_type: 'client_credentials',
-          client_id: process.env.CDEK_ACCOUNT || '',
-          client_secret: process.env.CDEK_PASSWORD || '',
-        }),
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-        },
-      );
-      const { access_token } = response.data;
-
-      try {
-        // Получение информации о заказе
-        const responseOrders = await axios.get(
-          'https://api.cdek.ru/v2/orders',
-          {
-            params: {
-              cdek_number: track,
-            },
-            headers: {
-              Authorization: `Bearer ${access_token}`,
-            },
-          },
-        );
-
-        const statuses = responseOrders.data.entity.statuses;
-        const is_client_return = responseOrders.data.entity.is_client_return;
-
-        let status = '';
-        let send_date = '';
-        let delivered_date = '';
-
-        if (statuses.find((s) => s.code === 'CREATED')) {
-          status = 'Создана';
-        }
-        if (statuses.find((s) => s.code === 'RECEIVED_AT_SHIPMENT_WAREHOUSE')) {
-          status = 'Отправлена';
-          send_date = statuses
-            .find((s) => s.code === 'RECEIVED_AT_SHIPMENT_WAREHOUSE')
-            .date_time.slice(0, 10);
-        }
-        if (statuses.find((s) => s.code === 'DELIVERED')) {
-          status = 'Вручена';
-          delivered_date = statuses
-            .find((s) => s.code === 'DELIVERED')
-            .date_time.slice(0, 10);
-        }
-        if (is_client_return) {
-          status = 'Возврат';
-        }
-
-        return {
-          price: responseOrders.data.entity.delivery_detail.total_sum,
-          status,
-          send_date,
-          delivered_date,
-        };
-      } catch (orderError) {
-        // Если возникла ошибка при получении информации о заказе, возвращаем пустой объект
-        console.error('Error fetching order information:', orderError.message);
-        return {
-          price: 0,
-          status: 'Создана',
-          send_date: '',
-          delivered_date: '',
-        };
-      }
-    } catch (authError) {
-      // Если возникла ошибка при получении токена авторизации, выбрасываем исключение
-      console.error(
-        'Error while authenticating with CDEK API:',
-        authError.message,
-      );
+      return await this.cdekService.checkTrackInfo(track);
+    } catch (error) {
+      console.error('Ошибка при проверке трека:', error.message);
       throw new NotFoundException(`Доставка с ID ${track} не найдена`);
     }
   }

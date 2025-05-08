@@ -60,45 +60,30 @@ async function bootstrap() {
   //   return this.toString(); // Преобразуем BigInt в строку
   // };
   app.use((req, res, next) => {
-    const allowedPaths = ['/api'];
-    const isAllowed = allowedPaths.some((p) => req.path.startsWith(p));
-
+    const allowedPaths = ['/api', '/api-docs', '/swagger', '/health'];
+    const isAllowed = allowedPaths.some(p => req.path.startsWith(p));
+  
     if (isAllowed) {
-      return next(); // разрешаем служебные и API-запросы
+      return next(); // разрешаем нормальные пути
     }
-
+  
     const suspiciousPatterns = [
-      'wget',
-      'curl',
-      'chmod',
-      'shell',
-      'sh',
-      'ftp',
-      '.asp',
-      '.php',
-      '.pl',
-      '.cgi',
-      '/device.rsp',
-      '/boaform',
-      '/hudson',
-      '/pdown',
-      'cmd=',
-      'eval(',
-      'base64,',
+      'wget', 'curl', 'chmod', 'shell', 'sh', 'ftp', '.asp', '.php', '.pl', '.cgi',
+      '/device.rsp', '/boaform', '/hudson', '/pdown', 'cmd=', 'eval(', 'base64,',
+      '/favicon.ico', '/t4', '/teorema', '/actuator', '/admin', '/env', '/debug'
     ];
-
-    const combined =
-      `${req.originalUrl} ${req.method} ${req.headers['user-agent'] || ''}`.toLowerCase();
-
-    if (suspiciousPatterns.some((p) => combined.includes(p))) {
-      console.warn(
-        `❌ Заблокирован подозрительный запрос: ${req.ip} → ${req.originalUrl}`,
-      );
+  
+    const combined = `${req.originalUrl} ${req.method} ${req.headers['user-agent'] || ''}`.toLowerCase();
+  
+    if (suspiciousPatterns.some(p => combined.includes(p))) {
+      const ip = req.ip;
+      console.warn(`❌ Заблокирован подозрительный запрос от ${ip} → ${req.originalUrl}`);
       return res.status(403).send('Forbidden');
     }
-
+  
     next();
   });
+  
 
   await app.listen(5000, '127.0.0.1');
 }
