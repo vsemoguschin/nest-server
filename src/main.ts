@@ -60,6 +60,13 @@ async function bootstrap() {
   //   return this.toString(); // Преобразуем BigInt в строку
   // };
   app.use((req, res, next) => {
+    const allowedPaths = ['/api'];
+    const isAllowed = allowedPaths.some((p) => req.path.startsWith(p));
+
+    if (isAllowed) {
+      return next(); // разрешаем служебные и API-запросы
+    }
+
     const suspiciousPatterns = [
       'wget',
       'curl',
