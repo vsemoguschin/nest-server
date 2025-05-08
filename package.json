@@ -18,7 +18,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "doc": "npx typedoc --out docs src"
+    "doc": "npx typedoc --out docs src",
+    "git-push": "git add . && read -p 'Commit message: ' msg && git commit -m \"$msg\" && git push origin main"
+
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

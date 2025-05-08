@@ -49,7 +49,7 @@ export class WebhooksService {
           deliveredDate,
         },
       });
-      console.log('Updated delivery:', delivery);
+      console.log('Updated delivery:', cdek_number);
     } catch (error) {
       console.error(`Error in webhook processing: ${error.message}`);
     }
