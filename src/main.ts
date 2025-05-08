@@ -15,12 +15,6 @@ async function bootstrap() {
     logger: winstonLogger,
   });
 
-  app.use((req, res, next) => {
-    console.log('→ IP из req.ip:', req.ip);
-    console.log('→ X-Forwarded-For:', req.headers['x-forwarded-for']);
-    next();
-  });
-
   app.set('trust proxy', true);
 
   app.enableCors({
@@ -65,6 +59,11 @@ async function bootstrap() {
   // (BigInt.prototype as any).toJSON = function () {
   //   return this.toString(); // Преобразуем BigInt в строку
   // };
+  app.use((req, res, next) => {
+    console.log('→ IP из req.ip:', req.ip);
+    console.log('→ X-Forwarded-For:', req.headers['x-forwarded-for']);
+    next();
+  });
 
   await app.listen(5000, '127.0.0.1');
 }

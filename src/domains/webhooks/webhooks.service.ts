@@ -28,7 +28,7 @@ export class WebhooksService {
 
     if (type === 'ORDER_STATUS') {
       const { cdek_number, code, is_return } = attributes;
-      this.logger.log(`Order ${cdek_number} changed status to ${code}`);
+      // this.logger.log(`Order ${cdek_number} changed status to ${code}`);
       // if (cdek_number) {
       //   try {
       //     const response = await axios.post(
@@ -113,7 +113,7 @@ export class WebhooksService {
 
       // Обновляем статус доставки в базе данных
     } else {
-      this.logger.warn(`Unsupported webhook event: ${event}`);
+      this.logger.warn(`Unsupported webhook event: ${type}`);
     }
   }
 
