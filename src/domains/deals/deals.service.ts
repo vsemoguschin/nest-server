@@ -201,6 +201,7 @@ export class DealsService {
       user.role.department === 'administration' ||
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'LOGIST' ||
+      user.role.shortName === 'KD' ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;
