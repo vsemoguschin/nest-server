@@ -41,7 +41,7 @@ export class WebhooksService {
       const { status, sendDate, deliveredDate } =
         this.cdekService.parseOrderStatus(entity);
 
-      const delivery = await this.prisma.delivery.updateMany({
+      await this.prisma.delivery.updateMany({
         where: { track: cdek_number },
         data: {
           status,
@@ -49,7 +49,13 @@ export class WebhooksService {
           deliveredDate,
         },
       });
-      console.log('Updated delivery:', cdek_number);
+      console.log(
+        'Updated delivery:',
+        cdek_number,
+        status,
+        sendDate,
+        deliveredDate,
+      );
     } catch (error) {
       console.error(`Error in webhook processing: ${error.message}`);
     }

@@ -233,6 +233,16 @@ export class DealsService {
               },
             },
           },
+          {
+            deliveries: {
+              some: {
+                track: {
+                  contains: name,
+                  mode: 'insensitive',
+                },
+              },
+            },
+          },
         ],
         workSpaceId: workspacesSearch,
       },
