@@ -42,7 +42,12 @@ export class CdekService {
       this.logger.error(
         `Failed to fetch order info for ${cdek_number}: ${error.message}`,
       );
-      throw new Error('CDEK order fetch error');
+      return {
+        price: 0,
+        status: 'Создана',
+        send_date: '',
+        delivered_date: '',
+      };
     }
   }
 
