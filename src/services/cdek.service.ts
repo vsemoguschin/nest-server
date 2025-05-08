@@ -37,7 +37,7 @@ export class CdekService {
         },
       });
 
-      console.log(response.data.entity.statuses);
+      // console.log(response.data.entity.statuses);
 
       return response.data.entity;
     } catch (error) {
@@ -107,5 +107,24 @@ export class CdekService {
       send_date: sendDate,
       delivered_date: deliveredDate,
     };
+  }
+
+  async getRegisters() {
+    const token = await this.getAccessToken();
+    try {
+      const response = await axios.get('https://api.cdek.ru/v2/payment', {
+        params: {
+          date: '2025-05-08',
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      console.log(response);
+
+      return response.data;
+    } catch (error) {
+      console.log(error);
+    }
   }
 }

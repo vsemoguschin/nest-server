@@ -13,6 +13,7 @@ export class DeliveriesService {
 
   async checkTrack(track: string) {
     try {
+      // await this.cdekService.getRegisters();
       return await this.cdekService.checkTrackInfo(track);
     } catch (error) {
       console.error('Ошибка при проверке трека:', error.message);
