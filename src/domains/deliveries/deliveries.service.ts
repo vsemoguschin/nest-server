@@ -9,21 +9,14 @@ export class DeliveriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async checkTrack(track: string) {
-    const CDEK_Account = 'DRCqUsjqi1SW9NuqSSg2mkiaH1oAQKmk';
-    const CDEK_password = 'V1OSykuiWzG07SEXUZ6JknBfE4pRt9lo';
-    // console.log(track);
-    const statuses = [
-      'CREATED', // Создана
-      'DELIVERED', // Вручен
-    ]
-
     try {
+      // Получение токена авторизации
       const response = await axios.post(
         'https://api.cdek.ru/v2/oauth/token',
         new URLSearchParams({
           grant_type: 'client_credentials',
-          client_id: CDEK_Account, // Тестовый account
-          client_secret: CDEK_password, // Тестовый secure_password
+          client_id: process.env.CDEK_ACCOUNT || '',
+          client_secret: process.env.CDEK_PASSWORD || '',
         }),
         {
           headers: {
@@ -33,26 +26,69 @@ export class DeliveriesService {
       );
       const { access_token } = response.data;
 
-      const responseOrders = await axios.get('https://api.cdek.ru/v2/orders', {
-        params: {
-          cdek_number: track,
-        },
-        headers: {
-          Authorization: `Bearer ${access_token}`,
-        },
-      });
-      console.log('Response statuses:', responseOrders.data);
-      // console.log('Response statuses:', responseOrders.data.entity.statuses);
-      // console.log(
-      //   'Response sum:',
-      //   responseOrders.data.entity.delivery_detail.total_sum,
-      // );
-      return {
-        price: responseOrders.data.entity.delivery_detail.total_sum,
-      };
-    } catch (error) {
-      console.error('Error while checking track:', error.message);
-      // throw new Error('Failed to check track information');
+      try {
+        // Получение информации о заказе
+        const responseOrders = await axios.get(
+          'https://api.cdek.ru/v2/orders',
+          {
+            params: {
+              cdek_number: track,
+            },
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+            },
+          },
+        );
+
+        const statuses = responseOrders.data.entity.statuses;
+        const is_client_return = responseOrders.data.entity.is_client_return;
+
+        let status = '';
+        let send_date = '';
+        let delivered_date = '';
+
+        if (statuses.find((s) => s.code === 'CREATED')) {
+          status = 'Создана';
+        }
+        if (statuses.find((s) => s.code === 'RECEIVED_AT_SHIPMENT_WAREHOUSE')) {
+          status = 'Отправлена';
+          send_date = statuses
+            .find((s) => s.code === 'RECEIVED_AT_SHIPMENT_WAREHOUSE')
+            .date_time.slice(0, 10);
+        }
+        if (statuses.find((s) => s.code === 'DELIVERED')) {
+          status = 'Вручена';
+          delivered_date = statuses
+            .find((s) => s.code === 'DELIVERED')
+            .date_time.slice(0, 10);
+        }
+        if (is_client_return) {
+          status = 'Возврат';
+        }
+
+        return {
+          price: responseOrders.data.entity.delivery_detail.total_sum,
+          status,
+          send_date,
+          delivered_date,
+        };
+      } catch (orderError) {
+        // Если возникла ошибка при получении информации о заказе, возвращаем пустой объект
+        console.error('Error fetching order information:', orderError.message);
+        return {
+          price: 0,
+          status: 'Создана',
+          send_date: '',
+          delivered_date: '',
+        };
+      }
+    } catch (authError) {
+      // Если возникла ошибка при получении токена авторизации, выбрасываем исключение
+      console.error(
+        'Error while authenticating with CDEK API:',
+        authError.message,
+      );
+      throw new NotFoundException(`Доставка с ID ${track} не найдена`);
     }
   }
 

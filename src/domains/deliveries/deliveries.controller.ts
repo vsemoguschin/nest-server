@@ -66,7 +66,7 @@ export class DeliveriesController {
   @ApiOperation({ summary: 'Удалить запись о доставке' })
   @ApiParam({ name: 'id', description: 'ID доставки', type: 'integer' })
   @ApiNoContentResponse({ description: 'Запись успешно удалена' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'LOGIST')
   async delete(@Param('id', ParseIntPipe) id: number) {
     await this.deliveriesService.delete(id);
   }

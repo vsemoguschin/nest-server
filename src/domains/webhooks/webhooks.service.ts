@@ -4,16 +4,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 import axios from 'axios';
 
 const wh = {
-  entity: { uuid: '7a4e7021-b2a9-42ad-932d-03007eec3bd7' },
+  entity: { uuid: '3bc34e6e-7254-404e-b705-984de152ee1f' },
   requests: [
     {
-      request_uuid: 'c3a7430a-2e73-47f9-9b6c-2770e56a62cd',
+      request_uuid: '299a6e66-485d-4211-8ec9-af9789fa8f06',
       type: 'CREATE',
-      date_time: '2025-05-07T11:54:59+0000',
+      date_time: '2025-05-08T12:08:58+0000',
       state: 'SUCCESSFUL',
     },
   ],
-}; //10114796260
+};
 
 @Injectable()
 export class WebhooksService {
@@ -39,9 +39,6 @@ export class WebhooksService {
   // src/domains/webhooks/webhooks.service.ts
   async registerCdekWebhook() {
     const CDEK_API_URL = 'https://api.cdek.ru/v2';
-    const CDEK_ACCOUNT = 'DRCqUsjqi1SW9NuqSSg2mkiaH1oAQKmk'; // Добавьте в .env
-    const CDEK_PASSWORD = 'V1OSykuiWzG07SEXUZ6JknBfE4pRt9lo'; // Добавьте в .env
-    const WEBHOOK_URL = 'https://app.easy-crm.pro/api/webhooks/cdek';
 
     try {
       // Получение токена
@@ -49,8 +46,8 @@ export class WebhooksService {
         'https://api.cdek.ru/v2/oauth/token',
         new URLSearchParams({
           grant_type: 'client_credentials',
-          client_id: CDEK_ACCOUNT, // Тестовый account
-          client_secret: CDEK_PASSWORD, // Тестовый secure_password
+          client_id: process.env.CDEK_ACCOUNT || '', // Тестовый account
+          client_secret: process.env.CDEK_PASSWORD || '', // Тестовый secure_password
         }),
         {
           headers: {
@@ -61,36 +58,36 @@ export class WebhooksService {
       const { access_token } = response.data;
 
       //delete webhook
-        const deleteWebhookResponse = await axios.delete(
-          `${CDEK_API_URL}/webhooks/${wh.entity.uuid}`,
-          {
-            headers: {
-              Authorization: `Bearer ${access_token}`,
-              'Content-Type': 'application/json',
-            },
-          },
-        );
-          console.log(deleteWebhookResponse.data);
+      // const deleteWebhookResponse = await axios.delete(
+      //   `${CDEK_API_URL}/webhooks/${wh.entity.uuid}`,
+      //   {
+      //     headers: {
+      //       Authorization: `Bearer ${access_token}`,
+      //       'Content-Type': 'application/json',
+      //     },
+      //   },
+      // );
+      //   console.log(deleteWebhookResponse.data);
 
       //   Регистрация вебхука
-    //   const webhookResponse = await axios.post(
-    //     `${CDEK_API_URL}/webhooks`,
-    //     {
-    //       url: WEBHOOK_URL,
-    //       type: 'ORDER_STATUS',
-    //     },
-    //     {
-    //       headers: {
-    //         Authorization: `Bearer ${access_token}`,
-    //         'Content-Type': 'application/json',
-    //       },
-    //     },
-    //   );
+      const webhookResponse = await axios.post(
+        `${CDEK_API_URL}/webhooks`,
+        {
+          url: process.env.WEBHOOK_URL,
+          type: 'ORDER_STATUS',
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${access_token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
 
-    //   this.logger.log(
-    //     `Webhook registered: ${JSON.stringify(webhookResponse.data)}`,
-    //   );
-    //   return webhookResponse.data;
+      this.logger.log(
+        `Webhook registered: ${JSON.stringify(webhookResponse.data)}`,
+      );
+      return webhookResponse.data;
     } catch (error) {
       this.logger.error(
         `Error registering webhook: ${error.response?.data || error.message}`,

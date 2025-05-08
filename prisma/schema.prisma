@@ -172,6 +172,9 @@ model salaryPay {
   workSpace      WorkSpace @relation(fields: [workSpaceId], references: [id])
 }
 
+// Корректировка зарплаты(штрафы/бонусы)
+// model
+
 // КЛИЕНТ
 model Client {
   id           Int       @id @default(autoincrement())

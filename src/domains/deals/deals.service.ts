@@ -99,7 +99,7 @@ export class DealsService {
       },
     });
 
-    console.log(deals.length);
+    // console.log(deals.length);
 
     const dealsList = deals.map((el) => {
       const { id } = el;
@@ -250,7 +250,7 @@ export class DealsService {
       },
     });
 
-    console.log(deals.length);
+    // console.log(deals.length);
 
     const dealsList = deals.map((el) => {
       const { id } = el;
@@ -422,7 +422,7 @@ export class DealsService {
         },
       });
     }
-    console.log(updateDealDto.status);
+    // console.log(updateDealDto.status);
     // Обновляем сделку
     const updatedDeal = await this.prisma.deal.update({
       where: { id },

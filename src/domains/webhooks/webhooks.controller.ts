@@ -14,7 +14,7 @@ export class WebhooksController {
   }
 
   @Post('cdek')
-  // @Public()
+  @Public()
   async handleCdekWebhook(@Body() payload: any, @Res() res: Response) {
     try {
       console.log('Received CDEK webhook:', payload);

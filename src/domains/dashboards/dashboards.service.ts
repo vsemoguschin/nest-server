@@ -456,12 +456,12 @@ export class DashboardsService {
               paid: +paid.toFixed(2),
             };
           });
-          console.log('manager', m.fullName);
-          console.log(
-            'dealInfo',
-            dealsInfo.reduce((a, b) => a + b.dealerPrice, 0),
-          );
-          console.log('dealSales', dealSales);
+          // console.log('manager', m.fullName);
+          // console.log(
+          //   'dealInfo',
+          //   dealsInfo.reduce((a, b) => a + b.dealerPrice, 0),
+          // );
+          // console.log('dealSales', dealSales);
 
           // Подробная информация по допам
           const dopsInfo = m.dops.map((d) => {
