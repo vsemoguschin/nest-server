@@ -5,14 +5,17 @@ import { winstonLogger } from './logger';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpErrorFilter } from './common/filters/http-error.filter';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import * as dotenv from 'dotenv';
 import multer from 'multer';
 dotenv.config();
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: winstonLogger,
-  });
+  });  
+
+  app.set('trust proxy', true);
 
   app.enableCors({
     origin: [
