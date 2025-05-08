@@ -66,22 +66,20 @@ export class CdekService {
     let sendDate = '';
     let deliveredDate = '';
 
-    const statusMap = {
-      CREATED: 'Создана',
-      RECEIVED_AT_SHIPMENT_WAREHOUSE: 'Отправлена',
-      DELIVERED: 'Вручена',
-    };
+    const hasDelivered = statuses.find((s) => s.code === 'DELIVERED');
+    const hasShipped = statuses.find(
+      (s) => s.code === 'RECEIVED_AT_SHIPMENT_WAREHOUSE',
+    );
+    const hasCreated = statuses.find((s) => s.code === 'CREATED');
 
-    for (const s of statuses) {
-      if (s.code === 'RECEIVED_AT_SHIPMENT_WAREHOUSE') {
-        sendDate = s.date_time?.slice(0, 10);
-      }
-      if (s.code === 'DELIVERED') {
-        deliveredDate = s.date_time?.slice(0, 10);
-      }
-      if (statusMap[s.code]) {
-        status = statusMap[s.code];
-      }
+    if (hasDelivered) {
+      status = 'Вручена';
+      deliveredDate = hasDelivered.date_time?.slice(0, 10);
+    } else if (hasShipped) {
+      status = 'Отправлена';
+      sendDate = hasShipped.date_time?.slice(0, 10);
+    } else if (hasCreated) {
+      status = 'Создана';
     }
 
     if (isClientReturn) {
@@ -100,9 +98,9 @@ export class CdekService {
     const token = await this.getAccessToken();
     const entity = await this.getOrderInfo(cdek_number, token);
     const { status, sendDate, deliveredDate } = this.parseOrderStatus(entity);
-  
+
     const price = entity?.delivery_detail?.total_sum || 0;
-  
+
     return {
       price,
       status,
