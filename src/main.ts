@@ -13,7 +13,13 @@ dotenv.config();
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: winstonLogger,
-  });  
+  });
+
+  app.use((req, res, next) => {
+    console.log('→ IP из req.ip:', req.ip);
+    console.log('→ X-Forwarded-For:', req.headers['x-forwarded-for']);
+    next();
+  });
 
   app.set('trust proxy', true);
 
