@@ -60,8 +60,36 @@ async function bootstrap() {
   //   return this.toString(); // Преобразуем BigInt в строку
   // };
   app.use((req, res, next) => {
-    console.log('→ IP из req.ip:', req.ip);
-    console.log('→ X-Forwarded-For:', req.headers['x-forwarded-for']);
+    const suspiciousPatterns = [
+      'wget',
+      'curl',
+      'chmod',
+      'shell',
+      'sh',
+      'ftp',
+      '.asp',
+      '.php',
+      '.pl',
+      '.cgi',
+      '/device.rsp',
+      '/boaform',
+      '/hudson',
+      '/pdown',
+      'cmd=',
+      'eval(',
+      'base64,',
+    ];
+
+    const combined =
+      `${req.originalUrl} ${req.method} ${req.headers['user-agent'] || ''}`.toLowerCase();
+
+    if (suspiciousPatterns.some((p) => combined.includes(p))) {
+      console.warn(
+        `❌ Заблокирован подозрительный запрос: ${req.ip} → ${req.originalUrl}`,
+      );
+      return res.status(403).send('Forbidden');
+    }
+
     next();
   });
 
