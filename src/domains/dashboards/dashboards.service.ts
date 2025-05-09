@@ -243,6 +243,11 @@ export class DashboardsService {
                 period,
               },
             },
+            salaryCorrections: {
+              where: {
+                period,
+              },
+            },
           },
         },
         payments: {
@@ -308,14 +313,29 @@ export class DashboardsService {
       },
     });
 
-    return workSpaces.flatMap((w) => {
+    const vkTop: {
+      topTotalSales: { user: string; sales: number }[];
+      topDopSales: { user: string; sales: number }[];
+      topDimmerSales: { user: string; sales: number }[];
+      topSalesWithoutDesigners: { user: string; sales: number }[];
+      topConversionDayToDay: { user: string; sales: number }[];
+    } = {
+      topTotalSales: [],
+      topDopSales: [],
+      topDimmerSales: [],
+      topSalesWithoutDesigners: [],
+      topConversionDayToDay: [],
+    };
+    const b2bTop: { user: string; sales: number; category: string }[] = [];
+
+    const wdata = workSpaces.flatMap((w) => {
       const adExpenses = w.adExpenses.reduce((a, b) => a + b.price, 0);
       const calls = w.users
         .flatMap((u) => u.managerReports)
         .reduce((a, b) => a + b.calls, 0);
       const callCost = calls ? adExpenses / calls : 0;
       const workSpacePayments = w.payments;
-      const dealPrice = w.deals.reduce((a, b) => a + b.price, 0);
+      // const dealPrice = w.deals.reduce((a, b) => a + b.price, 0);
       // console.log(dealPrice, ` сделки пространства ${w.title}`);
 
       let isOverRopPlan = false;
@@ -332,6 +352,10 @@ export class DashboardsService {
         .map((m) => {
           let totalSalary = 0;
           const pays = m.salaryPays.reduce((a, b) => a + b.price, 0) || 0;
+          const salaryCorrections = m.salaryCorrections;
+          
+          // totalSalary += salaryCorrectionPlus;
+          // totalSalary -= salaryCorrectionMinus;
           const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
           const dealsAmount = m.dealSales.length;
           const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
@@ -654,6 +678,7 @@ export class DashboardsService {
             bonus,
             shiftBonus: shiftBonus.toFixed(2),
             shift,
+            salaryCorrections,
             // подробнее
             dealsInfo,
             dealInfoPrevMounth,
@@ -679,8 +704,11 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
+            vkTop.topTotalSales.push({
+              user: u.fullName,
+              sales: u.totalSales,
+            });
           }
-          return { user: u.fullName, sales: u.totalSales };
         });
 
       const topDopSales = [...userData]
@@ -692,8 +720,11 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
+            vkTop.topDopSales.push({
+              user: u.fullName,
+              sales: u.dopSales,
+            });
           }
-          return { user: u.fullName, sales: u.dopSales };
         });
       const topDimmerSales = [...userData]
         .filter((u) => u.workSpace === 'ВК')
@@ -704,8 +735,11 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
+            vkTop.topDimmerSales.push({
+              user: u.fullName,
+              sales: u.dimmerSales,
+            });
           }
-          return { user: u.fullName, sales: u.dimmerSales };
         });
       const topSalesWithoutDesigners = [...userData]
         .filter((u) => u.workSpace === 'ВК')
@@ -718,8 +752,11 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
+            vkTop.topSalesWithoutDesigners.push({
+              user: u.fullName,
+              sales: u.dealsSalesWithoutDesigners,
+            });
           }
-          return { user: u.fullName, sales: u.dealsSalesWithoutDesigners };
         });
       const topConversionDayToDay = [...userData]
         .filter((u) => u.workSpace === 'ВК')
@@ -730,8 +767,11 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
+            vkTop.topConversionDayToDay.push({
+              user: u.fullName,
+              sales: u.conversionDayToDay,
+            });
           }
-          return { user: u.fullName, sales: u.conversionDayToDay };
         });
 
       // АВИТО
@@ -745,6 +785,11 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             u.topBonus += 2000;
             u.totalSalary += 2000;
+            b2bTop.push({
+              user: u.fullName,
+              sales: u.dealSales,
+              category: 'Топ суммы заказов',
+            });
           }
         });
       // - Самая высокая сумма Допов в отделе
@@ -757,6 +802,11 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             u.topBonus += 2000;
             u.totalSalary += 2000;
+            b2bTop.push({
+              user: u.fullName,
+              sales: u.dopSales,
+              category: 'Топ сумма допов',
+            });
           }
         });
       // - Самый Высокий средний чек в отделе
@@ -769,6 +819,11 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             u.topBonus += 2000;
             u.totalSalary += 2000;
+            b2bTop.push({
+              user: u.fullName,
+              sales: u.averageBill,
+              category: 'Топ средний чек',
+            });
           }
         });
       // - Самая высокая конверсия в отделе
@@ -781,11 +836,18 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             u.topBonus += 2000;
             u.totalSalary += 2000;
+            b2bTop.push({
+              user: u.fullName,
+              sales: u.conversion,
+              category: 'Топ конверсия',
+            });
           }
         });
 
       return userData;
     });
+
+    return { users: wdata, vkTop, b2bTop };
   }
 
   // managers

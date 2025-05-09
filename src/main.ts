@@ -47,14 +47,14 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpErrorFilter());
 
   // Настройка Swagger
-  const config = new DocumentBuilder()
-    .setTitle('CRM API')
-    .setDescription('Документация API CRM-системы')
-    .setVersion('1.0')
-    .addTag('crm')
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api-docs', app, document);
+  // const config = new DocumentBuilder()
+  //   .setTitle('CRM API')
+  //   .setDescription('Документация API CRM-системы')
+  //   .setVersion('1.0')
+  //   .addTag('crm')
+  //   .build();
+  // const document = SwaggerModule.createDocument(app, config);
+  // SwaggerModule.setup('api-docs', app, document);
 
   // (BigInt.prototype as any).toJSON = function () {
   //   return this.toString(); // Преобразуем BigInt в строку

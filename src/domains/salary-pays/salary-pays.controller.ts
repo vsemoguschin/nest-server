@@ -24,6 +24,7 @@ import {
 import { SalaryPaysService } from './salary-pays.service';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { salaryCorrection } from './dto/salary-correction-create.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('salary-pay')
@@ -38,6 +39,25 @@ export class SalaryPaysController {
   @ApiResponse({ status: 201, description: 'Запись успешно создана' })
   async create(@Body() createDto: SalaryPayCreateDto) {
     return this.salaryPaysService.create(createDto);
+  }
+
+  // корректировка
+  @Post('correction')
+  @Roles('ADMIN', 'G', 'KD', 'DO')
+  @ApiOperation({ summary: 'Создать запись о корректировке' })
+  @ApiResponse({ status: 201, description: 'Запись успешно создана' })
+  async createCorrection(@Body() createDto: salaryCorrection) {
+    return this.salaryPaysService.createCorrection(createDto);
+  }
+
+  //удаление корректировки
+  @Delete('correction/:id')
+  @Roles('ADMIN', 'G', 'KD', 'DO')
+  @ApiOperation({ summary: 'Удалить запись о корректировке' })
+  @ApiParam({ name: 'id', description: 'ID записи', type: 'integer' })
+  @ApiNoContentResponse({ description: 'Запись успешно удалена' })
+  async deleteCorrection(@Param('id', ParseIntPipe) id: number) {
+    await this.salaryPaysService.deleteCorrection(id);
   }
 
   // Получение записей по периоду

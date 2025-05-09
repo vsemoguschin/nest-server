@@ -28,22 +28,23 @@ model RefreshToken {
 
 // ПРОСТРАНСТВО
 model WorkSpace {
-  id              Int        @id @default(autoincrement()) 
-  title           String     @unique
-  department      String
-  deletedAt       DateTime?  // Поле для мягкого удаления
-  createdAt       DateTime     @default(now())
-  groups          Group[]
-  users           User[]
-  clients         Client[]
-  deals           Deal[]
-  dops            Dop[]
-  payments        Payment[]
-  dealSources     DealSource[]
-  adSources       AdSource[]
-  reports         RopReport[]
-  adExpenses      AdExpense[]
-  salaryPays      salaryPay[]
+  id                 Int          @id @default(autoincrement()) 
+  title              String       @unique
+  department         String
+  deletedAt          DateTime?  // Поле для мягкого удаления
+  createdAt          DateTime     @default(now())
+  groups             Group[]
+  users              User[]
+  clients            Client[]
+  deals              Deal[]
+  dops               Dop[]
+  payments           Payment[]
+  dealSources        DealSource[]
+  adSources          AdSource[]
+  reports            RopReport[]
+  adExpenses         AdExpense[]
+  salaryPays         salaryPay[]
+  salaryCorrections  salaryCorrection[]
 }
 
 
@@ -117,6 +118,8 @@ model User {
   managerReports ManagerReport[]
 
   salaryPays     salaryPay[]
+
+  salaryCorrections salaryCorrection[]
 }
 model ManagersPlan {
   id         Int        @id @default(autoincrement()) 
@@ -173,7 +176,19 @@ model salaryPay {
 }
 
 // Корректировка зарплаты(штрафы/бонусы)
-// model
+model salaryCorrection {
+  id             Int    @id @default(autoincrement())
+  date           String @default("")
+  period         String @default("")
+  price          Int
+  type           String // Штраф/Бонус
+  
+  userId         Int
+  user           User   @relation(fields: [userId], references: [id])
+
+  workSpaceId    Int
+  workSpace      WorkSpace @relation(fields: [workSpaceId], references: [id])
+}
 
 // КЛИЕНТ
 model Client {
