@@ -640,6 +640,7 @@ export class DashboardsService {
             bonus += workSpacePlanBonus;
           }
           totalSalary += dealPays + dopPays;
+          const rem = +(totalSalary - pays).toFixed(2);
 
           return {
             //основное
@@ -671,7 +672,7 @@ export class DashboardsService {
             //зп
             totalSalary: +totalSalary.toFixed(2),
             pays,
-            rem: +(totalSalary - pays).toFixed(2),
+            // rem,
             dopPays: +dopPays.toFixed(2),
             dealPays: +dealPays.toFixed(2),
             bonusPercentage,
@@ -704,6 +705,7 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
+            
             vkTop.topTotalSales.push({
               user: u.fullName,
               sales: u.totalSales,

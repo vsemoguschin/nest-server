@@ -112,15 +112,15 @@ export class CdekService {
   async getRegisters() {
     const token = await this.getAccessToken();
     try {
-      const response = await axios.get('https://api.cdek.ru/v2/payment', {
+      const response = await axios.get('https://api.cdek.ru/v2/registries', {
         params: {
-          date: '2025-05-08',
+          date: '2025-05-07',
         },
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-      console.log(response);
+      console.log(response.data);
 
       return response.data;
     } catch (error) {
