@@ -30,7 +30,7 @@ async function bootstrap() {
     credentials: true, // Разрешаем передачу cookies и аутентификационных данных
   });
 
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix('vsemo');
 
   // Устанавливаем глобальный guard для проверки JWT
   const reflector = app.get(Reflector);
@@ -60,7 +60,7 @@ async function bootstrap() {
   //   return this.toString(); // Преобразуем BigInt в строку
   // };
   app.use((req, res, next) => {
-    const allowedPaths = ['/api'];
+    const allowedPaths = ['/vsemo'];
     const isAllowed = allowedPaths.some((p) => req.path.startsWith(p));
 
     if (isAllowed) {

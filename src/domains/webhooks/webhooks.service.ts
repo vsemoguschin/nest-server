@@ -5,12 +5,12 @@ import axios from 'axios';
 import { CdekService } from 'src/services/cdek.service';
 
 const wh = {
-  entity: { uuid: '3bc34e6e-7254-404e-b705-984de152ee1f' },
+  entity: { uuid: 'd99e6368-7cc1-4c16-92b5-324e3e62447b' },
   requests: [
     {
-      request_uuid: '299a6e66-485d-4211-8ec9-af9789fa8f06',
+      request_uuid: '6b48c124-139f-430a-be2c-69775c40db2b',
       type: 'CREATE',
-      date_time: '2025-05-08T12:08:58+0000',
+      date_time: '2025-05-09T13:38:18+0000',
       state: 'SUCCESSFUL',
     },
   ],
@@ -55,7 +55,7 @@ export class WebhooksService {
         status,
         sendDate,
         deliveredDate,
-        del
+        del,
       );
     } catch (error) {
       console.error(`Error in webhook processing: ${error.message}`);
@@ -83,6 +83,15 @@ export class WebhooksService {
       );
       const { access_token } = response.data;
 
+      // const getWebhooks = await axios.get('https://api.cdek.ru/v2/webhooks', {
+      //   headers: {
+      //     Authorization: `Bearer ${access_token}`,
+      //     'Content-Type': 'application/json',
+      //   },
+      // });
+
+      // console.log(getWebhooks.data);
+
       //delete webhook
       // const deleteWebhookResponse = await axios.delete(
       //   `${CDEK_API_URL}/webhooks/${wh.entity.uuid}`,
@@ -93,7 +102,7 @@ export class WebhooksService {
       //     },
       //   },
       // );
-      //   console.log(deleteWebhookResponse.data);
+      // console.log(deleteWebhookResponse.data);
 
       //   Регистрация вебхука
       const webhookResponse = await axios.post(
