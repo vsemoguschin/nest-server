@@ -70,6 +70,8 @@ export interface WorkSpaceData {
   plan: number;
   dealsSales: number;
   totalSales: number;
+  temp: number;
+  tempToPlan: number;
   dealsAmount: number;
   dopSales: number;
   dopsAmount: number;
@@ -78,6 +80,21 @@ export interface WorkSpaceData {
   dopsToSales: number;
   averageBill: number;
   receivedPayments: number;
+  calls: number;
+  adExpensesPrice: number;
+  callCost: number;
+  drr: number;
+  dealsWithoutDesigners: number;
+  dealsSalesWithoutDesigners: number;
+  makets: number;
+  maketsDayToDay: number;
+  redirectToMSG: number;
+  conversionDealsToCalls: number;
+  conversionMaketsToCalls: number;
+  conversionMaketsToSales: number;
+  conversionMaketsDayToDayToCalls: number;
+  dealsDayToDay: number;
+  dealsDayToDayPrice: number;
   users: User[];
   maketsSales: MaketsSales[];
   sources: Sources[];
@@ -179,7 +196,7 @@ export class DashboardsService {
           where: {
             role: {
               shortName: {
-                in: ['MOP', 'MOV'],
+                in: ['MOP', 'MOV', 'DO'],
               },
             },
           },
@@ -353,7 +370,7 @@ export class DashboardsService {
           let totalSalary = 0;
           const pays = m.salaryPays.reduce((a, b) => a + b.price, 0) || 0;
           const salaryCorrections = m.salaryCorrections;
-          
+
           // totalSalary += salaryCorrectionPlus;
           // totalSalary -= salaryCorrectionMinus;
           const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
@@ -705,7 +722,7 @@ export class DashboardsService {
           if (user.totalSales !== 0) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
-            
+
             vkTop.topTotalSales.push({
               user: u.fullName,
               sales: u.totalSales,
@@ -1151,12 +1168,16 @@ export class DashboardsService {
         ? { gt: 0 }
         : user.workSpaceId;
 
+    function getDaysInMonth(year: number, month: number): number {
+      return new Date(year, month, 0).getDate();
+    }
+
     const allWorkspaces = await this.prisma.workSpace.findMany({
       where: {
         deletedAt: null,
         department: 'COMMERCIAL',
         title: {
-          in: ['B2B', 'ВК'],
+          in: ['B2B', 'ВК', 'Ведение'],
         },
         id: workspacesSearch,
       },
@@ -1176,6 +1197,7 @@ export class DashboardsService {
                 user: true,
               },
             },
+            client: true,
           },
         },
         // payments: {
@@ -1316,6 +1338,8 @@ export class DashboardsService {
       plan: 0,
       dealsSales: 0,
       totalSales: 0,
+      temp: 0,
+      tempToPlan: 0,
       dealsAmount: 0,
       dopSales: 0,
       dopsAmount: 0,
@@ -1324,6 +1348,21 @@ export class DashboardsService {
       dopsToSales: 0,
       averageBill: 0,
       receivedPayments: 0,
+      calls: 0,
+      adExpensesPrice: 0,
+      callCost: 0,
+      drr: 0,
+      dealsWithoutDesigners: 0,
+      dealsSalesWithoutDesigners: 0,
+      makets: 0,
+      maketsDayToDay: 0,
+      redirectToMSG: 0,
+      conversionDealsToCalls: 0,
+      conversionMaketsToCalls: 0,
+      conversionMaketsToSales: 0,
+      conversionMaketsDayToDayToCalls: 0,
+      dealsDayToDay: 0,
+      dealsDayToDayPrice: 0,
       users: [],
       maketsSales: [
         {
@@ -1430,6 +1469,8 @@ export class DashboardsService {
         plan: 0,
         dealsSales: 0,
         totalSales: 0,
+        temp: 0,
+        tempToPlan: 0,
         dealsAmount: w.deals.length,
         dopSales: 0,
         dopsAmount: 0,
@@ -1438,6 +1479,21 @@ export class DashboardsService {
         dopsToSales: 0,
         averageBill: 0,
         receivedPayments: 0,
+        calls: 0,
+        adExpensesPrice: 0,
+        callCost: 0,
+        drr: 0,
+        dealsWithoutDesigners: 0,
+        dealsSalesWithoutDesigners: 0,
+        makets: 0,
+        maketsDayToDay: 0,
+        redirectToMSG: 0,
+        conversionDealsToCalls: 0,
+        conversionMaketsToCalls: 0,
+        conversionMaketsToSales: 0,
+        conversionMaketsDayToDayToCalls: 0,
+        dealsDayToDay: 0,
+        dealsDayToDayPrice: 0,
         users: w.users.map((u) => {
           return {
             id: u.id,
@@ -1514,6 +1570,25 @@ export class DashboardsService {
         fullData.chartData[index]['Сделки'] += deal.price;
         data.dealsSales += deal.price;
         data.totalSales += deal.price;
+        if (
+          [
+            'Заготовка из базы',
+            'Рекламный',
+            'Из рассылки',
+            'Визуализатор',
+          ].includes(deal.maketType)
+        ) {
+          data.dealsWithoutDesigners += 1;
+          data.dealsSalesWithoutDesigners += deal.price;
+          fullData.dealsWithoutDesigners += 1;
+          fullData.dealsSalesWithoutDesigners += deal.price;
+        }
+        if (deal.saleDate === deal.client.firstContact) {
+          data.dealsDayToDay += 1;
+          data.dealsDayToDayPrice += deal.price;
+          fullData.dealsDayToDay += 1;
+          fullData.dealsDayToDayPrice += deal.price;
+        }
 
         deal.dealers.map((dealer) => {
           const userIndex = data.users.findIndex((u) => u.id === dealer.userId);
@@ -1567,14 +1642,50 @@ export class DashboardsService {
         data.maketsSales.sort((a, b) => b.sales - a.sales);
       });
 
+      const adExpensesPrice = w.adExpenses.reduce((acc, item) => {
+        return acc + item.price;
+      }, 0);
+      data.adExpensesPrice = adExpensesPrice;
+      fullData.adExpensesPrice += adExpensesPrice;
+
       // Считаем заявки
       w.reports.map((r) => {
         const day = r.date.slice(8, 10);
         const index = data.callsChartData.findIndex((d) => d.name === day);
         // console.log(data.callsChartData[index]['ВК']);
         data.callsChartData[index][w.title] += r.calls;
+        data.calls += r.calls;
+        data.makets += r.makets;
+        data.maketsDayToDay += r.maketsDayToDay;
+        data.redirectToMSG += r.redirectToMSG;
         fullData.callsChartData[index][w.title] += r.calls;
+        fullData.calls += r.calls;
+        fullData.makets += r.makets;
+        fullData.maketsDayToDay += r.maketsDayToDay;
+        fullData.redirectToMSG += r.redirectToMSG;
       });
+
+      data.callCost = data.calls
+        ? +(data.adExpensesPrice / data.calls).toFixed(2)
+        : 0;
+
+      data.drr = data.totalSales
+        ? +(((data.calls * data.callCost) / data.totalSales) * 100).toFixed(2)
+        : 0;
+
+      data.conversionDealsToCalls = data.calls
+        ? +((data.dealsAmount / data.calls) * 100).toFixed(2)
+        : 0;
+      data.conversionMaketsToCalls = data.calls
+        ? +((data.makets / data.calls) * 100).toFixed(2)
+        : 0;
+
+      data.conversionMaketsToSales = data.makets
+        ? +((data.dealsAmount / data.makets) * 100).toFixed(2)
+        : 0;
+      data.conversionMaketsDayToDayToCalls = data.calls
+        ? +((data.maketsDayToDay / data.calls) * 100).toFixed(2)
+        : 0;
 
       w.dops.map((dop) => {
         const day = dop.saleDate.slice(8, 10);
@@ -1632,6 +1743,23 @@ export class DashboardsService {
         return m;
       });
 
+      const daysInMonth = getDaysInMonth(
+        +period.split('-')[0],
+        +period.split('-')[1],
+      );
+      //today
+      const isThismounth =
+        period.split('-')[1] === new Date().toISOString().slice(5, 7);
+      const today = isThismounth
+        ? new Date().toISOString().slice(8, 10)
+        : daysInMonth;
+
+      data.temp = +((data.totalSales / +today) * daysInMonth).toFixed();
+
+      data.tempToPlan = data.plan
+        ? +((data.temp / data.plan) * 100).toFixed()
+        : 0;
+
       data.users = data.users.sort((a, b) => b.sales - a.sales).slice(0, 10);
       return data;
     });
@@ -1654,6 +1782,44 @@ export class DashboardsService {
     fullData.adExpenses.sort((a, b) => b.sales - a.sales);
 
     const topManagers = workSpacesData.flatMap((w) => w.users);
+
+    const daysInMonth = getDaysInMonth(
+      +period.split('-')[0],
+      +period.split('-')[1],
+    );
+    //today
+    const isThismounth =
+      period.split('-')[1] === new Date().toISOString().slice(5, 7);
+    const today = isThismounth
+      ? new Date().toISOString().slice(8, 10)
+      : daysInMonth;
+
+    fullData.temp = +((fullData.totalSales / +today) * daysInMonth).toFixed();
+    fullData.tempToPlan = fullData.plan
+      ? +((fullData.temp / fullData.plan) * 100).toFixed()
+      : 0;
+    fullData.callCost = fullData.calls
+      ? +(fullData.adExpensesPrice / fullData.calls).toFixed(2)
+      : 0;
+    fullData.drr = fullData.totalSales
+      ? +(
+          ((fullData.calls * fullData.callCost) / fullData.totalSales) *
+          100
+        ).toFixed(2)
+      : 0;
+    fullData.conversionDealsToCalls = fullData.calls
+      ? +((fullData.dealsAmount / fullData.calls) * 100).toFixed(2)
+      : 0;
+    fullData.conversionMaketsToCalls = fullData.calls
+      ? +((fullData.makets / fullData.calls) * 100).toFixed(2)
+      : 0;
+
+    fullData.conversionMaketsToSales = fullData.makets
+      ? +((fullData.dealsAmount / fullData.makets) * 100).toFixed(2)
+      : 0;
+    fullData.conversionMaketsDayToDayToCalls = fullData.calls
+      ? +((fullData.maketsDayToDay / fullData.calls) * 100).toFixed(2)
+      : 0;
 
     return [
       {

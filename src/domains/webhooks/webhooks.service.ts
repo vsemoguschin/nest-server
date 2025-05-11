@@ -5,12 +5,12 @@ import axios from 'axios';
 import { CdekService } from 'src/services/cdek.service';
 
 const wh = {
-  entity: { uuid: 'd99e6368-7cc1-4c16-92b5-324e3e62447b' },
+  entity: { uuid: 'fc504789-dce2-4299-9404-d466a46bb084' },
   requests: [
     {
-      request_uuid: '6b48c124-139f-430a-be2c-69775c40db2b',
+      request_uuid: '5b7133e1-0e8c-4a98-9fe0-20fc3a7c89aa',
       type: 'CREATE',
-      date_time: '2025-05-09T13:38:18+0000',
+      date_time: '2025-05-11T14:27:32+0000',
       state: 'SUCCESSFUL',
     },
   ],
@@ -83,14 +83,14 @@ export class WebhooksService {
       );
       const { access_token } = response.data;
 
-      // const getWebhooks = await axios.get('https://api.cdek.ru/v2/webhooks', {
-      //   headers: {
-      //     Authorization: `Bearer ${access_token}`,
-      //     'Content-Type': 'application/json',
-      //   },
-      // });
+      const getWebhooks = await axios.get('https://api.cdek.ru/v2/webhooks', {
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-      // console.log(getWebhooks.data);
+      console.log(getWebhooks.data);
 
       //delete webhook
       // const deleteWebhookResponse = await axios.delete(
@@ -105,24 +105,24 @@ export class WebhooksService {
       // console.log(deleteWebhookResponse.data);
 
       //   Регистрация вебхука
-      const webhookResponse = await axios.post(
-        `${CDEK_API_URL}/webhooks`,
-        {
-          url: process.env.WEBHOOK_URL,
-          type: 'ORDER_STATUS',
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${access_token}`,
-            'Content-Type': 'application/json',
-          },
-        },
-      );
+      // const webhookResponse = await axios.post(
+      //   `${CDEK_API_URL}/webhooks`,
+      //   {
+      //     url: process.env.WEBHOOK_URL,
+      //     type: 'ORDER_STATUS',
+      //   },
+      //   {
+      //     headers: {
+      //       Authorization: `Bearer ${access_token}`,
+      //       'Content-Type': 'application/json',
+      //     },
+      //   },
+      // );
 
-      this.logger.log(
-        `Webhook registered: ${JSON.stringify(webhookResponse.data)}`,
-      );
-      return webhookResponse.data;
+      // this.logger.log(
+      //   `Webhook registered: ${JSON.stringify(webhookResponse.data)}`,
+      // );
+      // return webhookResponse.data;
     } catch (error) {
       this.logger.error(
         `Error registering webhook: ${error.response?.data || error.message}`,
