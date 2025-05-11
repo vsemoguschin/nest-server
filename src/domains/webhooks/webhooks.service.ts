@@ -44,6 +44,7 @@ export class WebhooksService {
       const del = await this.prisma.delivery.updateMany({
         where: { track: cdek_number },
         data: {
+          price: entity.delivery_detail.total_sum ?? 0,
           status,
           date: sendDate,
           deliveredDate,

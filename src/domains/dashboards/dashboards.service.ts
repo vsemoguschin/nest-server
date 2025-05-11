@@ -95,6 +95,9 @@ export interface WorkSpaceData {
   conversionMaketsDayToDayToCalls: number;
   dealsDayToDay: number;
   dealsDayToDayPrice: number;
+  sendDeliveries: number;
+  freeDeliveries: number;
+  freeDeliveriesPrice: number;
   users: User[];
   maketsSales: MaketsSales[];
   sources: Sources[];
@@ -1198,6 +1201,7 @@ export class DashboardsService {
               },
             },
             client: true,
+            deliveries: true,
           },
         },
         // payments: {
@@ -1363,6 +1367,9 @@ export class DashboardsService {
       conversionMaketsDayToDayToCalls: 0,
       dealsDayToDay: 0,
       dealsDayToDayPrice: 0,
+      sendDeliveries: 0,
+      freeDeliveries: 0,
+      freeDeliveriesPrice: 0,
       users: [],
       maketsSales: [
         {
@@ -1494,6 +1501,9 @@ export class DashboardsService {
         conversionMaketsDayToDayToCalls: 0,
         dealsDayToDay: 0,
         dealsDayToDayPrice: 0,
+        sendDeliveries: 0,
+        freeDeliveries: 0,
+        freeDeliveriesPrice: 0,
         users: w.users.map((u) => {
           return {
             id: u.id,
@@ -1641,6 +1651,22 @@ export class DashboardsService {
         data.adTags.sort((a, b) => b.sales - a.sales);
         data.maketsSales.sort((a, b) => b.sales - a.sales);
       });
+
+      // доставки
+      const deliveries = w.deals.flatMap((d) => d.deliveries);
+      data.sendDeliveries = deliveries.filter((d) =>
+        ['Отправлена', 'Вручена'].includes(d.status),
+      ).length;
+      data.freeDeliveries = deliveries.filter(
+        (d) => d.type === 'Платно',
+      ).length;
+      data.freeDeliveriesPrice = deliveries
+        .filter((d) => d.type === 'Платно')
+        .reduce((a, b) => a + b.price, 0);
+      
+      fullData.sendDeliveries += data.sendDeliveries;
+      fullData.freeDeliveries += data.freeDeliveries;
+      fullData.freeDeliveriesPrice += data.freeDeliveriesPrice;
 
       const adExpensesPrice = w.adExpenses.reduce((acc, item) => {
         return acc + item.price;
