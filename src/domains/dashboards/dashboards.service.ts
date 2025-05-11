@@ -1663,7 +1663,7 @@ export class DashboardsService {
       data.freeDeliveriesPrice = deliveries
         .filter((d) => d.type === 'Платно')
         .reduce((a, b) => a + b.price, 0);
-      
+
       fullData.sendDeliveries += data.sendDeliveries;
       fullData.freeDeliveries += data.freeDeliveries;
       fullData.freeDeliveriesPrice += data.freeDeliveriesPrice;
@@ -1691,27 +1691,7 @@ export class DashboardsService {
         fullData.redirectToMSG += r.redirectToMSG;
       });
 
-      data.callCost = data.calls
-        ? +(data.adExpensesPrice / data.calls).toFixed(2)
-        : 0;
-
-      data.drr = data.totalSales
-        ? +(((data.calls * data.callCost) / data.totalSales) * 100).toFixed(2)
-        : 0;
-
-      data.conversionDealsToCalls = data.calls
-        ? +((data.dealsAmount / data.calls) * 100).toFixed(2)
-        : 0;
-      data.conversionMaketsToCalls = data.calls
-        ? +((data.makets / data.calls) * 100).toFixed(2)
-        : 0;
-
-      data.conversionMaketsToSales = data.makets
-        ? +((data.dealsAmount / data.makets) * 100).toFixed(2)
-        : 0;
-      data.conversionMaketsDayToDayToCalls = data.calls
-        ? +((data.maketsDayToDay / data.calls) * 100).toFixed(2)
-        : 0;
+      
 
       w.dops.map((dop) => {
         const day = dop.saleDate.slice(8, 10);
@@ -1754,6 +1734,29 @@ export class DashboardsService {
 
       data.remainder = data.plan - data.totalSales;
       // console.log(fullData.plan);
+
+      data.callCost = data.calls
+        ? +(data.adExpensesPrice / data.calls).toFixed(2)
+        : 0;
+      console.log(data.adExpensesPrice, 'adExpensesPrice');
+      console.log(data.totalSales, 'totalSales');
+      data.drr = data.totalSales
+        ? +((data.adExpensesPrice / data.totalSales) * 100).toFixed(2)
+        : 0;
+
+      data.conversionDealsToCalls = data.calls
+        ? +((data.dealsAmount / data.calls) * 100).toFixed(2)
+        : 0;
+      data.conversionMaketsToCalls = data.calls
+        ? +((data.makets / data.calls) * 100).toFixed(2)
+        : 0;
+
+      data.conversionMaketsToSales = data.makets
+        ? +((data.dealsAmount / data.makets) * 100).toFixed(2)
+        : 0;
+      data.conversionMaketsDayToDayToCalls = data.calls
+        ? +((data.maketsDayToDay / data.calls) * 100).toFixed(2)
+        : 0;
 
       fullData.dealsAmount += data.dealsAmount;
       fullData.dealsSales += data.dealsSales;
@@ -1828,10 +1831,7 @@ export class DashboardsService {
       ? +(fullData.adExpensesPrice / fullData.calls).toFixed(2)
       : 0;
     fullData.drr = fullData.totalSales
-      ? +(
-          ((fullData.calls * fullData.callCost) / fullData.totalSales) *
-          100
-        ).toFixed(2)
+      ? +((fullData.adExpensesPrice / fullData.totalSales) * 100).toFixed(2)
       : 0;
     fullData.conversionDealsToCalls = fullData.calls
       ? +((fullData.dealsAmount / fullData.calls) * 100).toFixed(2)
