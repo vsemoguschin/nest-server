@@ -800,6 +800,7 @@ export class DashboardsService {
       // - Самая высокая Сумма Заказов в отделе
       const topDealSalesAvito = [...userData]
         .filter((u) => u.workSpace === 'B2B')
+        .filter((u) => u.shift > 12)
         .sort((a, b) => b.dealSales - a.dealSales)
         .slice(0, 1)
         .map((u, i) => {
@@ -817,6 +818,7 @@ export class DashboardsService {
       // - Самая высокая сумма Допов в отделе
       const topDopSalesAvito = [...userData]
         .filter((u) => u.workSpace === 'B2B')
+        .filter((u) => u.shift > 12)
         .sort((a, b) => b.dopSales - a.dopSales)
         .slice(0, 1)
         .map((u, i) => {
@@ -834,6 +836,7 @@ export class DashboardsService {
       // - Самый Высокий средний чек в отделе
       const topAverageBillAvito = [...userData]
         .filter((u) => u.workSpace === 'B2B')
+        .filter((u) => u.shift > 12)
         .sort((a, b) => b.averageBill - a.averageBill)
         .slice(0, 1)
         .map((u, i) => {
@@ -851,6 +854,7 @@ export class DashboardsService {
       // - Самая высокая конверсия в отделе
       const topConversionAvito = [...userData]
         .filter((u) => u.workSpace === 'B2B')
+        .filter((u) => u.shift > 12)
         .sort((a, b) => b.conversion - a.conversion)
         .slice(0, 1)
         .map((u, i) => {
@@ -1690,8 +1694,6 @@ export class DashboardsService {
         fullData.maketsDayToDay += r.maketsDayToDay;
         fullData.redirectToMSG += r.redirectToMSG;
       });
-
-      
 
       w.dops.map((dop) => {
         const day = dop.saleDate.slice(8, 10);
