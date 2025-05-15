@@ -98,6 +98,9 @@ export interface WorkSpaceData {
   sendDeliveries: number;
   freeDeliveries: number;
   freeDeliveriesPrice: number;
+  sendDeliveriesPrice: number;
+  deliveredDeliveriesPrice: number;
+  deliveredDeliveries: number;
   users: User[];
   maketsSales: MaketsSales[];
   sources: Sources[];
@@ -216,6 +219,9 @@ export class DashboardsService {
                   saleDate: {
                     startsWith: period,
                   },
+                  // id: {
+                  //   gt: 1440,  lte: 14099
+                  // },
                   reservation: false,
                   status: { not: 'Возврат' },
                 },
@@ -238,6 +244,9 @@ export class DashboardsService {
                 deal: {
                   reservation: false,
                   status: { not: 'Возврат' },
+                  // id: {
+                  //   gt: 1440,  lte: 14099
+                  // },
                 },
               },
               include: {
@@ -278,6 +287,9 @@ export class DashboardsService {
             deal: {
               reservation: false,
               status: { not: 'Возврат' },
+              // id: {
+              //   gt: 1440,  lte: 14099
+              // },
             },
           },
           include: {
@@ -320,6 +332,296 @@ export class DashboardsService {
       },
     });
 
+    //все платежи поступившие в этом месяце(period) за сделки не этого месяца
+    const prevPayments = await this.prisma.payment.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+        deal: {
+          status: { not: 'Возврат' },
+          reservation: false,
+          saleDate: {
+            not: {
+              startsWith: period,
+            },
+          },
+          // id: {
+          //   gt: 1440,  lte: 14099
+          // },
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dealers: true,
+            payments: true,
+          },
+        },
+      },
+    });
+    // массив уникальных периодов по которым будут расчеты
+    const prevPeriods = Array.from(
+      new Set(prevPayments.map((p) => p.deal.saleDate.slice(0, 7))),
+    ).filter((p) => p < period);
+    // console.log(prevPeriods);
+    //  массив уникальных id пользователей чьи сделки в платежах
+    const usersIds = Array.from(
+      new Set(prevPayments.flatMap((p) => p.deal.dealers.map((d) => d.userId))),
+    );
+    // по всем периодам ищем пользователей по id и находим % в зп
+    const res = await Promise.all(
+      prevPeriods.map(async (per) => {
+        // ищем все сделки и допы этого периода
+        // для пользователя чтобы найти процент в зп
+        const userSales = await this.prisma.user.findMany({
+          where: {
+            id: {
+              in: usersIds,
+            },
+            deals: {
+              some: {
+                // id: {
+                //   gt: 1440,  lte: 14099
+                // },
+                reservation: false,
+                status: { not: 'Возврат' },
+                saleDate: {
+                  startsWith: per,
+                },
+              },
+            },
+          },
+          include: {
+            dealSales: {
+              where: {
+                deal: {
+                  reservation: false,
+                  status: { not: 'Возврат' },
+                  saleDate: {
+                    startsWith: per,
+                  },
+                },
+              },
+              include: {
+                deal: {
+                  include: {
+                    payments: true,
+                  },
+                },
+              },
+            },
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: per,
+                },
+              },
+              include: {
+                deal: {
+                  include: {
+                    payments: true,
+                    dops: true,
+                  },
+                },
+              },
+            },
+            workSpace: true,
+            managerReports: {
+              where: {
+                date: {
+                  startsWith: per,
+                },
+              },
+            },
+          },
+        });
+
+        return userSales.map((m) => {
+          const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
+          const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
+          const totalSales = dealSales + dopSales;
+          let bonusPercentage = 0;
+          const isIntern = m.managerReports.find((r) => r.shiftCost === 800);
+          if (m.workSpace.title === 'B2B') {
+            if (!isIntern) {
+              if (totalSales < 400_000) {
+                bonusPercentage = 0.03;
+              } else if (totalSales < 560_000) {
+                bonusPercentage = 0.03;
+              } else if (totalSales < 680_000) {
+                bonusPercentage = 0.035;
+              } else if (totalSales < 800_000) {
+                bonusPercentage = 0.04;
+              } else if (totalSales < 1_000_000) {
+                bonusPercentage = 0.045;
+              } else if (totalSales < 1_100_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 1_200_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 1_350_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 1_500_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 1_700_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 2_000_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales >= 2_000_000) {
+                bonusPercentage = 0.05;
+              }
+            } else {
+              if (totalSales < 800_000) {
+                bonusPercentage = 0.04;
+              } else if (totalSales < 1_000_000) {
+                bonusPercentage = 0.045;
+              } else if (totalSales < 1_100_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 1_200_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 1_350_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 1_500_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 1_700_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales < 2_000_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales >= 2_000_000) {
+                bonusPercentage = 0.05;
+              }
+            }
+          }
+          if (m.workSpace.title === 'ВК') {
+            if (totalSales < 400_000) {
+              bonusPercentage = 0.03;
+            } else if (totalSales >= 400_000 && totalSales < 600_000) {
+              bonusPercentage = 0.05;
+            } else if (totalSales >= 600_000 && totalSales < 700_000) {
+              bonusPercentage = 0.06;
+            } else if (totalSales >= 700_000 && totalSales < 1_000_000) {
+              bonusPercentage = 0.07;
+            } else if (totalSales >= 1_000_000) {
+              bonusPercentage = 0.07;
+            }
+          }
+
+          return {
+            bonusPercentage,
+            manager: m.fullName,
+            userId: m.id,
+            period: per,
+            totalSales,
+          };
+        });
+      }),
+    );
+
+    const prevPeriodDatas = res.flat();
+    //id платежей
+    const prevPaymentsDealsIds = Array.from(
+      new Set(prevPayments.map((p) => p.deal.id)),
+    );
+    //сделки по платежам за пред сделки
+    const prevPaymentsDeals = await this.prisma.deal.findMany({
+      where: {
+        id: {
+          in: prevPaymentsDealsIds,
+        },
+        reservation: false,
+        status: { not: 'Возврат' },
+      },
+      include: {
+        payments: true,
+        dealers: true,
+        dops: true,
+      },
+    });
+
+    const datas = prevPaymentsDeals.map((deal) => {
+      const {
+        title,
+        saleDate,
+        dealers,
+        payments,
+        price: dealPrice,
+        dops,
+      } = deal;
+
+      //платежи до выбраного периода
+      const dealPaymentsLastPeriod = payments
+        .filter((p) => p.date.slice(0, 7) < period)
+        .reduce((a, b) => a + b.price, 0);
+      //платежи за выбранный период
+      const dealPaymentsThisPeriod = payments
+        .filter((p) => p.date.slice(0, 7) === period)
+        .reduce((a, b) => a + b.price, 0);
+
+      let dealPaid = 0;
+      let dopPaid = 0;
+      // елси сделка оплачена, остаток в допы
+      if (dealPrice < dealPaymentsLastPeriod + dealPaymentsThisPeriod) {
+        dopPaid = dealPaymentsLastPeriod + dealPaymentsThisPeriod - dealPrice;
+        dealPaid = dealPrice - dealPaymentsLastPeriod;
+      }
+      //елси сделка неоплачена, остаток в сделку
+      if (dealPrice >= dealPaymentsLastPeriod + dealPaymentsThisPeriod) {
+        dealPaid = dealPaymentsThisPeriod;
+        dopPaid = 0;
+      }
+      //2_493_760
+
+      const dealDopsPrice = dops.reduce((a, b) => a + b.price, 0);
+      const dopsInfo = dops
+        .map((dop) => {
+          const dealerPart = dop.price / dealDopsPrice;
+
+          return {
+            title: dop.type,
+            dopPrice: dop.price,
+            saleDate: dop.saleDate,
+            dealTitle: title,
+            dealId: deal.id,
+            paid: +(dopPaid * dealerPart).toFixed(2),
+            userId: dop.userId,
+          };
+        })
+        .filter((d) => prevPeriods.includes(d.saleDate.slice(0, 7)));
+
+      const dealInfo = dealers.map((dealer) => {
+        const dealerPrice = dealer.price;
+        const dealerPart = dealerPrice / dealPrice;
+
+        return {
+          id: deal.id,
+          title,
+          saleDate,
+          dealPrice,
+          dealerPrice,
+          dealerPart: +(dealerPart * 100).toFixed(),
+          paid: +(dealPaid * dealerPart).toFixed(2),
+          usersId: dealer.userId,
+        };
+      });
+
+      return {
+        dealId: deal.id,
+        // title,
+        // saleDate,
+        // dealPrice,
+        dopsPrice: dops.reduce((a, b) => a + b.price, 0),
+        dopsIds: dops.map((d) => d.id),
+        // dealPaymentsLastPeriod,
+        // dealPaymentsThisPeriod,
+        dealPaid,
+        dopPaid,
+        dealInfo: dealPaid ? dealInfo : [],
+        dopsInfo: dopPaid ? dopsInfo : [],
+      };
+    });
+
+    // console.log(datas);
+
     // console.log(workSpaces);
     const ropPlan = await this.prisma.managersPlan.findFirst({
       where: {
@@ -355,6 +657,8 @@ export class DashboardsService {
         .reduce((a, b) => a + b.calls, 0);
       const callCost = calls ? adExpenses / calls : 0;
       const workSpacePayments = w.payments;
+      let dealsPayments = 0;
+
       // const dealPrice = w.deals.reduce((a, b) => a + b.price, 0);
       // console.log(dealPrice, ` сделки пространства ${w.title}`);
 
@@ -485,9 +789,10 @@ export class DashboardsService {
               0,
             );
             const paid =
-              payAmount > dealPrice
+              payAmount >= dealPrice
                 ? dealPrice * dealerPart
                 : payAmount * dealerPart;
+            dealsPayments += paid;
             return {
               id: d.deal.id,
               title: isWithoutDesigner
@@ -523,6 +828,7 @@ export class DashboardsService {
               dealPayments > dealPrice ? dealPayments - dealPrice : 0;
             const dealerPart = dopPrice / dealDopsPrice;
             const dealerPrice = dealDopsPaidPrice * dealerPart;
+            dealsPayments += dealerPrice;
             return {
               title,
               dopPrice,
@@ -533,40 +839,45 @@ export class DashboardsService {
             };
           });
 
-          const dealInfoPrevMounth = workSpacePayments
-            .filter(
-              (p) =>
-                !p.deal.saleDate.includes(period) &&
-                p.deal.dealers.find((d) => d.userId === m.id),
-            )
-            .map((p) => {
-              const {
-                title,
-                saleDate,
-                price: dealPrice,
-                payments: dealPayments,
-              } = p.deal;
-              const dealerPrice =
-                p.deal.dealers.find((d) => d.userId === m.id)?.price || 0;
-              const dealerPart = dealerPrice / dealPrice;
-              const payAmount = dealPayments.reduce(
-                (a, b) => a + (b.price || 0),
-                0,
-              );
-              const paid =
-                payAmount > dealPrice
-                  ? p.price * dealerPart
-                  : payAmount * dealerPart;
-              return {
-                id: p.deal.id,
-                title,
-                saleDate,
-                dealPrice,
-                dealerPrice,
-                dealerPart: +(dealerPart * 100).toFixed(2),
-                paid: +paid.toFixed(2),
-              };
-            });
+          // const dealInfoPrevMounth = workSpacePayments
+          //   .filter(
+          //     (p) =>
+          //       !p.deal.saleDate.includes(period) &&
+          //       p.deal.dealers.find((d) => d.userId === m.id),
+          //   )
+          //   .map((p) => {
+          //     const {
+          //       title,
+          //       saleDate,
+          //       price: dealPrice,
+          //       payments: dealPayments,
+          //     } = p.deal;
+          //     const dealerPrice =
+          //       p.deal.dealers.find((d) => d.userId === m.id)?.price || 0;
+          //     const dealerPart = dealerPrice / dealPrice;
+          //     const payAmount = dealPayments.reduce(
+          //       (a, b) => a + (b.price || 0),
+          //       0,
+          //     );
+          //     const paid =
+          //       payAmount > dealPrice
+          //         ? p.price * dealerPart
+          //         : payAmount * dealerPart;
+          //     const periodBonusPercent = prevBonusPersents.find(
+          //       (e) => e.userId === m.id,
+          //     );
+
+          //     return {
+          //       id: p.deal.id,
+          //       title,
+          //       saleDate,
+          //       dealPrice,
+          //       dealerPrice,
+          //       dealerPart: +(dealerPart * 100).toFixed(2),
+          //       paid: +paid.toFixed(2),
+          //       periodBonusPercent,
+          //     };
+          //   });
 
           const shift = m.managerReports.length;
           const shiftBonus = m.managerReports.reduce(
@@ -584,54 +895,87 @@ export class DashboardsService {
           // Процент с продаж в зп
           let bonusPercentage = 0;
           let bonus = 0;
-          //           до 399999 - 3%
-          // от 560000 до 679999 - 3,5%
-          // от 680000 до 799999 - 4%
-          // от 800000 до 999999 - 4,5% + премия 10480
-          // от 1000000 до 1099999 - 5% + премия 15000
-
-          // от 1100000 до 1199999 - 5% + премия 17500
           if (w.title === 'B2B') {
-            if (totalSales < 400_000) {
-              bonusPercentage = 0.03;
-            } else if (totalSales < 560_000) {
-              bonusPercentage = 0.03;
-            } else if (totalSales < 680_000) {
-              bonusPercentage = 0.035;
-            } else if (totalSales < 800_000) {
-              bonusPercentage = 0.04;
-            } else if (totalSales < 1_000_000) {
-              bonusPercentage = 0.045;
-              totalSalary += 10480;
-              bonus += 10480;
-            } else if (totalSales < 1_100_000) {
-              bonusPercentage = 0.05;
-              totalSalary += 15000;
-              bonus += 15000;
-            } else if (totalSales < 1_200_000) {
-              bonusPercentage = 0.05;
-              totalSalary += 17500;
-              bonus += 17500;
-            } else if (totalSales < 1_350_000) {
-              bonusPercentage = 0.05;
-              totalSalary += 20000;
-              bonus += 20000;
-            } else if (totalSales < 1_500_000) {
-              bonusPercentage = 0.05;
-              totalSalary += 23700;
-              bonus += 23700;
-            } else if (totalSales < 1_700_000) {
-              bonusPercentage = 0.05;
-              totalSalary += 27500;
-              bonus += 27500;
-            } else if (totalSales < 2_000_000) {
-              bonusPercentage = 0.05;
-              totalSalary += 32500;
-              bonus += 32500;
-            } else if (totalSales >= 2_000_000) {
-              bonusPercentage = 0.05;
-              totalSalary += 40000;
-              bonus += 40000;
+            if (!m.isIntern) {
+              if (totalSales < 400_000) {
+                bonusPercentage = 0.03;
+              } else if (totalSales < 560_000) {
+                bonusPercentage = 0.03;
+              } else if (totalSales < 680_000) {
+                bonusPercentage = 0.035;
+              } else if (totalSales < 800_000) {
+                bonusPercentage = 0.04;
+              } else if (totalSales < 1_000_000) {
+                bonusPercentage = 0.045;
+                totalSalary += 10480;
+                bonus += 10480;
+              } else if (totalSales < 1_100_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 15000;
+                bonus += 15000;
+              } else if (totalSales < 1_200_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 17500;
+                bonus += 17500;
+              } else if (totalSales < 1_350_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 20000;
+                bonus += 20000;
+              } else if (totalSales < 1_500_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 23700;
+                bonus += 23700;
+              } else if (totalSales < 1_700_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 27500;
+                bonus += 27500;
+              } else if (totalSales < 2_000_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 32500;
+                bonus += 32500;
+              } else if (totalSales >= 2_000_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 40000;
+                bonus += 40000;
+              }
+            } else {
+              if (totalSales > 600_000) {
+                bonus += 2000;
+              } else if (totalSales < 800_000) {
+                bonusPercentage = 0.04;
+              } else if (totalSales < 1_000_000) {
+                bonusPercentage = 0.045;
+                totalSalary += 10480;
+                bonus += 10480;
+              } else if (totalSales < 1_100_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 15000;
+                bonus += 15000;
+              } else if (totalSales < 1_200_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 17500;
+                bonus += 17500;
+              } else if (totalSales < 1_350_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 20000;
+                bonus += 20000;
+              } else if (totalSales < 1_500_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 23700;
+                bonus += 23700;
+              } else if (totalSales < 1_700_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 27500;
+                bonus += 27500;
+              } else if (totalSales < 2_000_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 32500;
+                bonus += 32500;
+              } else if (totalSales >= 2_000_000) {
+                bonusPercentage = 0.05;
+                totalSalary += 40000;
+                bonus += 40000;
+              }
             }
             dopPays = dopsInfo.reduce((a, b) => a + b.paid, 0) * 0.1;
             dealPays =
@@ -661,6 +1005,26 @@ export class DashboardsService {
           }
           totalSalary += dealPays + dopPays;
           const rem = +(totalSalary - pays).toFixed(2);
+
+          // const dealsInfoPrevMounth = prevPeriodDatas
+          //   .filter((data) => data.userId === m.id)
+          //   .flatMap((data) => data.dealsInfo)
+          //   .filter((data) => data.paid);
+          // // console.log(dealsInfoPrevMounth);
+          // const dopsInfoPrevMounth = prevPeriodDatas
+          //   .filter((data) => data.userId === m.id)
+          //   .flatMap((data) => data.dopsInfo)
+          //   .filter((data) => data.paid);
+
+          const dealsInfoPrevMounth = datas
+            .flatMap((d) => d.dealInfo)
+            .filter((d) => d.usersId === m.id);
+          // console.log(dealsInfoPrevMounth);
+          dealsPayments += dealsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
+          const dopsInfoPrevMounth = datas
+            .flatMap((d) => d.dopsInfo)
+            .filter((d) => d.userId === m.id);
+          dealsPayments += dopsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
 
           return {
             //основное
@@ -702,7 +1066,8 @@ export class DashboardsService {
             salaryCorrections,
             // подробнее
             dealsInfo,
-            dealInfoPrevMounth,
+            dealsInfoPrevMounth,
+            dopsInfoPrevMounth,
             dopsInfo,
             topBonus: 0,
             fired: m.deletedAt ? true : false,
@@ -714,6 +1079,16 @@ export class DashboardsService {
           };
         })
         .filter((u) => u.totalSales || !u.fired);
+      console.log('dealspays', dealsPayments);
+      console.log(
+        'ws: ' + w.title,
+        workSpacePayments.reduce((a, b) => a + b.price, 0),
+      );
+      console.log(
+        'разница',
+        dealsPayments - workSpacePayments.reduce((a, b) => a + b.price, 0),
+      );
+      console.log('--------------');
 
       // Определение топов
       const topTotalSales = [...userData]
@@ -800,14 +1175,15 @@ export class DashboardsService {
       // - Самая высокая Сумма Заказов в отделе
       const topDealSalesAvito = [...userData]
         .filter((u) => u.workSpace === 'B2B')
-        .filter((u) => u.shift > 12)
         .sort((a, b) => b.dealSales - a.dealSales)
         .slice(0, 1)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
           if (user.totalSales !== 0) {
-            u.topBonus += 2000;
-            u.totalSalary += 2000;
+            if (user.shift > 12) {
+              u.topBonus += 2000;
+              u.totalSalary += 2000;
+            }
             b2bTop.push({
               user: u.fullName,
               sales: u.dealSales,
@@ -818,14 +1194,16 @@ export class DashboardsService {
       // - Самая высокая сумма Допов в отделе
       const topDopSalesAvito = [...userData]
         .filter((u) => u.workSpace === 'B2B')
-        .filter((u) => u.shift > 12)
+
         .sort((a, b) => b.dopSales - a.dopSales)
         .slice(0, 1)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
           if (user.totalSales !== 0) {
-            u.topBonus += 2000;
-            u.totalSalary += 2000;
+            if (user.shift > 12) {
+              u.topBonus += 2000;
+              u.totalSalary += 2000;
+            }
             b2bTop.push({
               user: u.fullName,
               sales: u.dopSales,
@@ -836,14 +1214,16 @@ export class DashboardsService {
       // - Самый Высокий средний чек в отделе
       const topAverageBillAvito = [...userData]
         .filter((u) => u.workSpace === 'B2B')
-        .filter((u) => u.shift > 12)
+
         .sort((a, b) => b.averageBill - a.averageBill)
         .slice(0, 1)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
           if (user.totalSales !== 0) {
-            u.topBonus += 2000;
-            u.totalSalary += 2000;
+            if (user.shift > 12) {
+              u.topBonus += 2000;
+              u.totalSalary += 2000;
+            }
             b2bTop.push({
               user: u.fullName,
               sales: u.averageBill,
@@ -854,14 +1234,16 @@ export class DashboardsService {
       // - Самая высокая конверсия в отделе
       const topConversionAvito = [...userData]
         .filter((u) => u.workSpace === 'B2B')
-        .filter((u) => u.shift > 12)
+
         .sort((a, b) => b.conversion - a.conversion)
         .slice(0, 1)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
           if (user.totalSales !== 0) {
-            u.topBonus += 2000;
-            u.totalSalary += 2000;
+            if (user.shift > 12) {
+              u.topBonus += 2000;
+              u.totalSalary += 2000;
+            }
             b2bTop.push({
               user: u.fullName,
               sales: u.conversion,
@@ -1179,6 +1561,28 @@ export class DashboardsService {
       return new Date(year, month, 0).getDate();
     }
 
+    //допы этого месяца за сделки прошлого  месяца
+    const lastDops = await this.prisma.dop.findMany({
+      where: {
+        deal: {
+          saleDate: {
+            startsWith: '2025-04',
+          },
+          reservation: false,
+          status: {
+            not: 'Возврат',
+          },
+        },
+        saleDate: {
+          startsWith: period,
+        },
+      },
+    });
+    console.log(
+      'dops',
+      lastDops.reduce((acc, dop) => acc + dop.price, 0),
+    );
+
     const allWorkspaces = await this.prisma.workSpace.findMany({
       where: {
         deletedAt: null,
@@ -1206,6 +1610,13 @@ export class DashboardsService {
             },
             client: true,
             deliveries: true,
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: period,
+                },
+              },
+            },
           },
         },
         // payments: {
@@ -1270,6 +1681,16 @@ export class DashboardsService {
             date: {
               startsWith: period,
             },
+          },
+        },
+        deliveries: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+          include: {
+            deal: true,
           },
         },
       },
@@ -1374,6 +1795,9 @@ export class DashboardsService {
       sendDeliveries: 0,
       freeDeliveries: 0,
       freeDeliveriesPrice: 0,
+      sendDeliveriesPrice: 0,
+      deliveredDeliveriesPrice: 0,
+      deliveredDeliveries: 0,
       users: [],
       maketsSales: [
         {
@@ -1508,6 +1932,9 @@ export class DashboardsService {
         sendDeliveries: 0,
         freeDeliveries: 0,
         freeDeliveriesPrice: 0,
+        sendDeliveriesPrice: 0,
+        deliveredDeliveriesPrice: 0,
+        deliveredDeliveries: 0,
         users: w.users.map((u) => {
           return {
             id: u.id,
@@ -1584,6 +2011,7 @@ export class DashboardsService {
         fullData.chartData[index]['Сделки'] += deal.price;
         data.dealsSales += deal.price;
         data.totalSales += deal.price;
+        const dopsPrice = deal.dops.reduce((a, b) => a + b.price, 0);
         if (
           [
             'Заготовка из базы',
@@ -1593,15 +2021,15 @@ export class DashboardsService {
           ].includes(deal.maketType)
         ) {
           data.dealsWithoutDesigners += 1;
-          data.dealsSalesWithoutDesigners += deal.price;
+          data.dealsSalesWithoutDesigners += deal.price + dopsPrice;
           fullData.dealsWithoutDesigners += 1;
-          fullData.dealsSalesWithoutDesigners += deal.price;
+          fullData.dealsSalesWithoutDesigners += deal.price + dopsPrice;
         }
         if (deal.saleDate === deal.client.firstContact) {
           data.dealsDayToDay += 1;
-          data.dealsDayToDayPrice += deal.price;
+          data.dealsDayToDayPrice += deal.price + dopsPrice;
           fullData.dealsDayToDay += 1;
-          fullData.dealsDayToDayPrice += deal.price;
+          fullData.dealsDayToDayPrice += deal.price + dopsPrice;
         }
 
         deal.dealers.map((dealer) => {
@@ -1612,43 +2040,52 @@ export class DashboardsService {
         const maketIndex = data.maketsSales.findIndex(
           (m) => m.name === deal.maketType,
         );
-        data.maketsSales[maketIndex].sales += deal.price;
+        data.maketsSales[maketIndex].sales += deal.price + dopsPrice;
         data.maketsSales[maketIndex].amount += 1;
 
         // sources
         if (!data.sources.find((s) => s.name === deal.source)) {
-          data.sources.push({ name: deal.source, sales: deal.price });
+          data.sources.push({
+            name: deal.source,
+            sales: deal.price + dopsPrice,
+          });
         } else {
           const sourceIndex = data.sources.findIndex(
             (s) => s.name === deal.source,
           );
-          data.sources[sourceIndex].sales += deal.price;
+          data.sources[sourceIndex].sales += deal.price + dopsPrice;
         }
         if (!fullData.sources.find((s) => s.name === deal.source)) {
-          fullData.sources.push({ name: deal.source, sales: deal.price });
+          fullData.sources.push({
+            name: deal.source,
+            sales: deal.price + dopsPrice,
+          });
         } else {
           const sourceIndex = fullData.sources.findIndex(
             (s) => s.name === deal.source,
           );
-          fullData.sources[sourceIndex].sales += deal.price;
+          fullData.sources[sourceIndex].sales += deal.price + dopsPrice;
         }
 
         //adtags
         if (!data.adTags.find((s) => s.name === deal.adTag)) {
-          data.adTags.push({ name: deal.adTag, sales: deal.price });
+          data.adTags.push({ name: deal.adTag, sales: deal.price + dopsPrice });
         } else {
           const adTagIndex = data.adTags.findIndex(
             (s) => s.name === deal.adTag,
           );
-          data.adTags[adTagIndex].sales += deal.price;
+          data.adTags[adTagIndex].sales += deal.price + dopsPrice;
         }
         if (!fullData.adTags.find((s) => s.name === deal.adTag)) {
-          fullData.adTags.push({ name: deal.adTag, sales: deal.price });
+          fullData.adTags.push({
+            name: deal.adTag,
+            sales: deal.price + dopsPrice,
+          });
         } else {
           const adTagIndex = fullData.adTags.findIndex(
             (s) => s.name === deal.adTag,
           );
-          fullData.adTags[adTagIndex].sales += deal.price;
+          fullData.adTags[adTagIndex].sales += deal.price + dopsPrice;
         }
 
         data.sources.sort((a, b) => b.sales - a.sales);
@@ -1657,20 +2094,33 @@ export class DashboardsService {
       });
 
       // доставки
-      const deliveries = w.deals.flatMap((d) => d.deliveries);
+      const deliveries = w.deliveries;
+      data.sendDeliveriesPrice = deliveries
+        .filter((d) => ['Отправлена'].includes(d.status))
+        .reduce((acc, d) => acc + d.deal.price, 0);
+      data.deliveredDeliveriesPrice = deliveries
+        .filter((d) => ['Вручена'].includes(d.status))
+        .reduce((acc, d) => acc + d.deal.price, 0);
+
       data.sendDeliveries = deliveries.filter((d) =>
-        ['Отправлена', 'Вручена'].includes(d.status),
+        ['Отправлена'].includes(d.status),
+      ).length;
+      data.deliveredDeliveries = deliveries.filter((d) =>
+        ['Вручена'].includes(d.status),
       ).length;
       data.freeDeliveries = deliveries.filter(
-        (d) => d.type === 'Платно',
+        (d) => d.type === 'Бесплатно',
       ).length;
       data.freeDeliveriesPrice = deliveries
-        .filter((d) => d.type === 'Платно')
+        .filter((d) => d.type === 'Бесплатно')
         .reduce((a, b) => a + b.price, 0);
 
       fullData.sendDeliveries += data.sendDeliveries;
+      fullData.deliveredDeliveries += data.deliveredDeliveries;
       fullData.freeDeliveries += data.freeDeliveries;
       fullData.freeDeliveriesPrice += data.freeDeliveriesPrice;
+      fullData.sendDeliveriesPrice += data.sendDeliveriesPrice;
+      fullData.deliveredDeliveriesPrice += data.deliveredDeliveriesPrice;
 
       const adExpensesPrice = w.adExpenses.reduce((acc, item) => {
         return acc + item.price;
@@ -1740,8 +2190,8 @@ export class DashboardsService {
       data.callCost = data.calls
         ? +(data.adExpensesPrice / data.calls).toFixed(2)
         : 0;
-      console.log(data.adExpensesPrice, 'adExpensesPrice');
-      console.log(data.totalSales, 'totalSales');
+      // console.log(data.adExpensesPrice, 'adExpensesPrice');
+      // console.log(data.totalSales, 'totalSales');
       data.drr = data.totalSales
         ? +((data.adExpensesPrice / data.totalSales) * 100).toFixed(2)
         : 0;

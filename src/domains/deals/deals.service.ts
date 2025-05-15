@@ -130,10 +130,12 @@ export class DealsService {
       const maketType = el.maketType;
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
+      const payments = el.payments;
       // console.log(saleDate.toISOString().slice(0, 10), 234356);
 
       return {
         id,
+        payments,
         title,
         totalPrice,
         price,
@@ -291,9 +293,11 @@ export class DealsService {
       const maketType = el.maketType;
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
+      const payments = el.payments;
       // console.log(saleDate.toISOString().slice(0, 10), 234356);
 
       return {
+        payments,
         id,
         title,
         totalPrice,

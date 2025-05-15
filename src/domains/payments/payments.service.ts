@@ -45,7 +45,7 @@ export class PaymentsService {
     const { Name, Phone, Email } = createPaymentLinkDto;
     const Amount = createPaymentLinkDto.Amount * 100;
     const Description = 'Оплата неоновой вывески';
-    const OrderId = new Date().getMilliseconds();
+    const OrderId = new Date().getTime();
     // console.log(OrderId);
 
     let TerminalKey = '';

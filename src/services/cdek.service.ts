@@ -75,6 +75,7 @@ export class CdekService {
     if (hasDelivered) {
       status = 'Вручена';
       deliveredDate = hasDelivered.date_time?.slice(0, 10);
+      sendDate = hasShipped.date_time?.slice(0, 10);
     } else if (hasShipped) {
       status = 'Отправлена';
       sendDate = hasShipped.date_time?.slice(0, 10);
@@ -100,7 +101,7 @@ export class CdekService {
     const { status, sendDate, deliveredDate } = this.parseOrderStatus(entity);
 
     const price = entity?.delivery_detail?.total_sum || 0;
-
+    console.log(entity);
     return {
       price,
       status,
@@ -112,15 +113,16 @@ export class CdekService {
   async getRegisters() {
     const token = await this.getAccessToken();
     try {
-      const response = await axios.get('https://api.cdek.ru/v2/payment', {
+      const response = await axios.get('https://api.cdek.ru/v2/registries', {
         params: {
-          date: '2025-05-10',
+          date: '2025-05-12',
         },
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-      console.log(response.data);
+      // console.log(response.data);
+      
 
       return response.data;
     } catch (error) {

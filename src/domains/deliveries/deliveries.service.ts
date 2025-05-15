@@ -13,16 +13,34 @@ export class DeliveriesService {
 
   async checkTrack(track: string) {
     try {
-      await this.cdekService.getRegisters();
+      // const data = await this.cdekService.getRegisters();
+      // const orders = data.registries
+      //   .flatMap((r) => r.orders)
+      //   .map((o) => o.cdek_number);
+      // console.log(orders);
+      // const dels = await this.prisma.delivery.findMany({
+      //   where: {
+      //     track: {
+      //       in: orders,
+      //     },
+      //   },
+      // });
+      // console.log(dels);
       return await this.cdekService.checkTrackInfo(track);
     } catch (error) {
       console.error('Ошибка при проверке трека:', error.message);
-      throw new NotFoundException(`Доставка с ID ${track} не найдена`);
+      throw new NotFoundException(`Ошибка при проверке трека ${track} не найдена`);
     }
   }
 
   // Создание записи о доставке
   async create(createDto: DeliveryCreateDto, user: UserDto) {
+    const deal = await this.prisma.deal.findUnique({
+      where: { id: createDto.dealId },
+    });
+    if (!deal) {
+      throw new NotFoundException(`Сделка с ID ${createDto.dealId} не найдена`);
+    }
     return this.prisma.delivery.create({
       data: {
         date: createDto.date,
@@ -35,6 +53,7 @@ export class DeliveriesService {
         dealId: createDto.dealId,
         deliveredDate: createDto.deliveredDate,
         userId: user.id,
+        workSpaceId: deal.workSpaceId,
       },
       include: {
         deal: true, // Включаем данные сделки в ответ

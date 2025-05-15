@@ -45,6 +45,7 @@ model WorkSpace {
   adExpenses         AdExpense[]
   salaryPays         salaryPay[]
   salaryCorrections  salaryCorrection[]
+  deliveries         Delivery[]
 }
 
 
@@ -433,6 +434,9 @@ model Delivery {
 
   dealId         Int
   deal           Deal    @relation(fields: [dealId], references: [id])
+
+  workSpaceId    Int?
+  workSpace      WorkSpace?    @relation(fields: [workSpaceId], references: [id])
 
   userId         Int?
   user           User?   @relation(fields: [userId], references: [id])
