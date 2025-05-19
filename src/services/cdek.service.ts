@@ -101,7 +101,7 @@ export class CdekService {
     const { status, sendDate, deliveredDate } = this.parseOrderStatus(entity);
 
     const price = entity?.delivery_detail?.total_sum || 0;
-    console.log(entity);
+    console.log({ status, sendDate, deliveredDate, price });
     return {
       price,
       status,

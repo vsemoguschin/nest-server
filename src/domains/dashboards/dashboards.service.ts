@@ -230,7 +230,13 @@ export class DashboardsService {
                 deal: {
                   include: {
                     client: true,
-                    payments: true,
+                    payments: {
+                      where: {
+                        date: {
+                          startsWith: period,
+                        },
+                      },
+                    },
                     dops: true,
                   },
                 },
@@ -254,7 +260,13 @@ export class DashboardsService {
                   select: {
                     title: true,
                     price: true,
-                    payments: true,
+                    payments: {
+                      where: {
+                        date: {
+                          startsWith: period,
+                        },
+                      },
+                    },
                     dops: true,
                   },
                 },
@@ -360,6 +372,11 @@ export class DashboardsService {
         },
       },
     });
+    console.log(
+      'workSpacesPayments',
+      workSpaces.flatMap((w) => w.payments).reduce((a, b) => a + b.price, 0),
+    );
+
     // массив уникальных периодов по которым будут расчеты
     const prevPeriods = Array.from(
       new Set(prevPayments.map((p) => p.deal.saleDate.slice(0, 7))),
@@ -378,18 +395,6 @@ export class DashboardsService {
           where: {
             id: {
               in: usersIds,
-            },
-            deals: {
-              some: {
-                // id: {
-                //   gt: 1440,  lte: 14099
-                // },
-                reservation: false,
-                status: { not: 'Возврат' },
-                saleDate: {
-                  startsWith: per,
-                },
-              },
             },
           },
           include: {
@@ -417,14 +422,14 @@ export class DashboardsService {
                   startsWith: per,
                 },
               },
-              include: {
-                deal: {
-                  include: {
-                    payments: true,
-                    dops: true,
-                  },
-                },
-              },
+              // include: {
+              //   deal: {
+              //     include: {
+              //       payments: true,
+              //       dops: true,
+              //     },
+              //   },
+              // },
             },
             workSpace: true,
             managerReports: {
@@ -436,6 +441,7 @@ export class DashboardsService {
             },
           },
         });
+        // console.log(userSales);
 
         return userSales.map((m) => {
           const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
@@ -443,6 +449,7 @@ export class DashboardsService {
           const totalSales = dealSales + dopSales;
           let bonusPercentage = 0;
           const isIntern = m.managerReports.find((r) => r.shiftCost === 800);
+          // console.log(isIntern, m.fullName);
           if (m.workSpace.title === 'B2B') {
             if (!isIntern) {
               if (totalSales < 400_000) {
@@ -506,6 +513,8 @@ export class DashboardsService {
             }
           }
 
+          // console.log('bonusPercentage', bonusPercentage);
+
           return {
             bonusPercentage,
             manager: m.fullName,
@@ -518,6 +527,7 @@ export class DashboardsService {
     );
 
     const prevPeriodDatas = res.flat();
+    // console.log(prevPeriodDatas.find((p) => p.userId === 23));
     //id платежей
     const prevPaymentsDealsIds = Array.from(
       new Set(prevPayments.map((p) => p.deal.id)),
@@ -535,6 +545,7 @@ export class DashboardsService {
         payments: true,
         dealers: true,
         dops: true,
+        workSpace: true,
       },
     });
 
@@ -562,7 +573,13 @@ export class DashboardsService {
       // елси сделка оплачена, остаток в допы
       if (dealPrice < dealPaymentsLastPeriod + dealPaymentsThisPeriod) {
         dopPaid = dealPaymentsLastPeriod + dealPaymentsThisPeriod - dealPrice;
-        dealPaid = dealPrice - dealPaymentsLastPeriod;
+        if (dealPrice < dealPaymentsLastPeriod) {
+          dopPaid = dealPaymentsThisPeriod;
+        }
+        dealPaid =
+          dealPrice - dealPaymentsLastPeriod < 0
+            ? 0
+            : dealPrice - dealPaymentsLastPeriod;
       }
       //елси сделка неоплачена, остаток в сделку
       if (dealPrice >= dealPaymentsLastPeriod + dealPaymentsThisPeriod) {
@@ -576,14 +593,25 @@ export class DashboardsService {
         .map((dop) => {
           const dealerPart = dop.price / dealDopsPrice;
 
+          const bonusPercentage =
+            deal.workSpace.title === 'B2B'
+              ? 0.1
+              : prevPeriodDatas.find(
+                  (p) =>
+                    p.period === dop.saleDate.slice(0, 7) &&
+                    p.userId === dop.userId,
+                )?.bonusPercentage || 0;
+          const paid = +(dopPaid * dealerPart).toFixed(2);
           return {
             title: dop.type,
             dopPrice: dop.price,
             saleDate: dop.saleDate,
-            dealTitle: title,
+            dealTitle: title.slice(0, 15),
             dealId: deal.id,
-            paid: +(dopPaid * dealerPart).toFixed(2),
+            paid,
             userId: dop.userId,
+            bonusPercentage,
+            toSalary: paid * bonusPercentage,
           };
         })
         .filter((d) => prevPeriods.includes(d.saleDate.slice(0, 7)));
@@ -591,16 +619,31 @@ export class DashboardsService {
       const dealInfo = dealers.map((dealer) => {
         const dealerPrice = dealer.price;
         const dealerPart = dealerPrice / dealPrice;
+        // console.log(prevPeriodDatas.find(
+        //   (p) =>
+        //     p.period === deal.saleDate.slice(0, 7) &&
+        //     p.userId === dealer.userId,
+        // )?.bonusPercentage);
+        // console.log({userId: dealer.userId, period: deal.saleDate.slice(0, 7)});
 
+        const bonusPercentage =
+          prevPeriodDatas.find(
+            (p) =>
+              p.period === deal.saleDate.slice(0, 7) &&
+              p.userId === dealer.userId,
+          )?.bonusPercentage || 0;
+        const paid = +(dealPaid * dealerPart).toFixed(2);
         return {
           id: deal.id,
-          title,
+          title: title.slice(0, 15),
           saleDate,
           dealPrice,
           dealerPrice,
           dealerPart: +(dealerPart * 100).toFixed(),
-          paid: +(dealPaid * dealerPart).toFixed(2),
+          paid,
           usersId: dealer.userId,
+          bonusPercentage,
+          toSalary: paid * bonusPercentage,
         };
       });
 
@@ -792,7 +835,7 @@ export class DashboardsService {
               payAmount >= dealPrice
                 ? dealPrice * dealerPart
                 : payAmount * dealerPart;
-            dealsPayments += paid;
+            // dealsPayments += paid;
             return {
               id: d.deal.id,
               title: isWithoutDesigner
@@ -828,7 +871,7 @@ export class DashboardsService {
               dealPayments > dealPrice ? dealPayments - dealPrice : 0;
             const dealerPart = dopPrice / dealDopsPrice;
             const dealerPrice = dealDopsPaidPrice * dealerPart;
-            dealsPayments += dealerPrice;
+            // dealsPayments += dealerPrice;
             return {
               title,
               dopPrice,
@@ -838,46 +881,6 @@ export class DashboardsService {
               paid: +dealerPrice.toFixed(2),
             };
           });
-
-          // const dealInfoPrevMounth = workSpacePayments
-          //   .filter(
-          //     (p) =>
-          //       !p.deal.saleDate.includes(period) &&
-          //       p.deal.dealers.find((d) => d.userId === m.id),
-          //   )
-          //   .map((p) => {
-          //     const {
-          //       title,
-          //       saleDate,
-          //       price: dealPrice,
-          //       payments: dealPayments,
-          //     } = p.deal;
-          //     const dealerPrice =
-          //       p.deal.dealers.find((d) => d.userId === m.id)?.price || 0;
-          //     const dealerPart = dealerPrice / dealPrice;
-          //     const payAmount = dealPayments.reduce(
-          //       (a, b) => a + (b.price || 0),
-          //       0,
-          //     );
-          //     const paid =
-          //       payAmount > dealPrice
-          //         ? p.price * dealerPart
-          //         : payAmount * dealerPart;
-          //     const periodBonusPercent = prevBonusPersents.find(
-          //       (e) => e.userId === m.id,
-          //     );
-
-          //     return {
-          //       id: p.deal.id,
-          //       title,
-          //       saleDate,
-          //       dealPrice,
-          //       dealerPrice,
-          //       dealerPart: +(dealerPart * 100).toFixed(2),
-          //       paid: +paid.toFixed(2),
-          //       periodBonusPercent,
-          //     };
-          //   });
 
           const shift = m.managerReports.length;
           const shiftBonus = m.managerReports.reduce(
@@ -1006,25 +1009,26 @@ export class DashboardsService {
           totalSalary += dealPays + dopPays;
           const rem = +(totalSalary - pays).toFixed(2);
 
-          // const dealsInfoPrevMounth = prevPeriodDatas
-          //   .filter((data) => data.userId === m.id)
-          //   .flatMap((data) => data.dealsInfo)
-          //   .filter((data) => data.paid);
-          // // console.log(dealsInfoPrevMounth);
-          // const dopsInfoPrevMounth = prevPeriodDatas
-          //   .filter((data) => data.userId === m.id)
-          //   .flatMap((data) => data.dopsInfo)
-          //   .filter((data) => data.paid);
-
           const dealsInfoPrevMounth = datas
             .flatMap((d) => d.dealInfo)
             .filter((d) => d.usersId === m.id);
           // console.log(dealsInfoPrevMounth);
-          dealsPayments += dealsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
+          // dealsPayments += dealsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
+          dealsPayments += dealsInfo.reduce((a, b) => a + b.paid, 0);
           const dopsInfoPrevMounth = datas
             .flatMap((d) => d.dopsInfo)
             .filter((d) => d.userId === m.id);
-          dealsPayments += dopsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
+          // dealsPayments += dopsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
+          dealsPayments += dopsInfo.reduce((a, b) => a + b.paid, 0);
+
+          const prevPeriodsDealsPays = dealsInfoPrevMounth.reduce(
+            (a, b) => a + b.toSalary,
+            0,
+          );
+          const prevPeriodsDopsPays = dopsInfoPrevMounth.reduce(
+            (a, b) => a + b.toSalary,
+            0,
+          );
 
           return {
             //основное
@@ -1064,6 +1068,8 @@ export class DashboardsService {
             shiftBonus: shiftBonus.toFixed(2),
             shift,
             salaryCorrections,
+            prevPeriodsDealsPays,
+            prevPeriodsDopsPays,
             // подробнее
             dealsInfo,
             dealsInfoPrevMounth,
