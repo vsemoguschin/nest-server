@@ -614,3 +614,30 @@ model planFactAccounts {
 //   uuid      String   @unique
 //   createdAt DateTime @default(now())
 // }
+
+model supplies {
+  id              Int      @id @default(autoincrement())
+  date            String  
+  shipmentDate    String  @default("")
+  category        String  //категории
+  description     String
+  quantity        Int
+  price           Float
+  supplier        String  //поставщик
+  paymentMethod   String  //счет, перевод, наличка
+  orderStatus     String  //Оформлен заказ, В пути, Отгружен нам
+  paymentStatus   String  //Оплачен, Не оплачен
+  deliveryMethod  String  //Сдек, Самовывоз, Доставка от поставщика, Курьерская доставка
+  invoice         String?
+  track           String?
+}
+
+model suppliers {
+  id              Int      @id @default(autoincrement())
+  name            String   @unique
+}
+
+model suppliesCategories  {
+  id              Int      @id @default(autoincrement())
+  name            String
+}

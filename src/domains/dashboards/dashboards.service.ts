@@ -219,9 +219,6 @@ export class DashboardsService {
                   saleDate: {
                     startsWith: period,
                   },
-                  // id: {
-                  //   gt: 1440,  lte: 14099
-                  // },
                   reservation: false,
                   status: { not: 'Возврат' },
                 },
@@ -232,12 +229,11 @@ export class DashboardsService {
                     client: true,
                     payments: {
                       where: {
-                        date: {
-                          startsWith: period,
-                        },
+                        // date: {
+                        //   startsWith: period,
+                        // },
                       },
                     },
-                    dops: true,
                   },
                 },
               },
@@ -261,11 +257,11 @@ export class DashboardsService {
                     title: true,
                     price: true,
                     payments: {
-                      where: {
-                        date: {
-                          startsWith: period,
-                        },
-                      },
+                      // where: {
+                      //   date: {
+                      //     startsWith: period,
+                      //   },
+                      // },
                     },
                     dops: true,
                   },
@@ -344,51 +340,34 @@ export class DashboardsService {
       },
     });
 
-    //все платежи поступившие в этом месяце(period) за сделки не этого месяца
-    const prevPayments = await this.prisma.payment.findMany({
-      where: {
-        date: {
-          startsWith: period,
-        },
-        deal: {
-          status: { not: 'Возврат' },
-          reservation: false,
-          saleDate: {
-            not: {
-              startsWith: period,
-            },
-          },
-          // id: {
-          //   gt: 1440,  lte: 14099
-          // },
-        },
-      },
-      include: {
-        deal: {
-          include: {
-            dealers: true,
-            payments: true,
-          },
-        },
-      },
-    });
     console.log(
       'workSpacesPayments',
       workSpaces.flatMap((w) => w.payments).reduce((a, b) => a + b.price, 0),
     );
 
-    // массив уникальных периодов по которым будут расчеты
+    // все платежи за сделки за период прошлый
+    const allPaymentsPrevDeals = workSpaces
+      .flatMap((w) => w.payments)
+      .filter((p) => !p.deal.saleDate.includes(period));
+
+    // периоды сделок(уникальные)
     const prevPeriods = Array.from(
-      new Set(prevPayments.map((p) => p.deal.saleDate.slice(0, 7))),
-    ).filter((p) => p < period);
-    // console.log(prevPeriods);
+      new Set(allPaymentsPrevDeals.map((p) => p.deal.saleDate.slice(0, 7))),
+    ).filter((p) => p < period); //['2025-04', '2025-03']
+
     //  массив уникальных id пользователей чьи сделки в платежах
     const usersIds = Array.from(
-      new Set(prevPayments.flatMap((p) => p.deal.dealers.map((d) => d.userId))),
+      new Set(
+        allPaymentsPrevDeals.flatMap((p) =>
+          p.deal.dealers.map((d) => d.userId),
+        ),
+      ),
     );
-    // по всем периодам ищем пользователей по id и находим % в зп
+
+    // по всем периодам ищем продажи пользователей по id и находим % в зп
     const res = await Promise.all(
       prevPeriods.map(async (per) => {
+        // console.log(per);
         // ищем все сделки и допы этого периода
         // для пользователя чтобы найти процент в зп
         const userSales = await this.prisma.user.findMany({
@@ -409,11 +388,7 @@ export class DashboardsService {
                 },
               },
               include: {
-                deal: {
-                  include: {
-                    payments: true,
-                  },
-                },
+                deal: true,
               },
             },
             dops: {
@@ -421,15 +396,14 @@ export class DashboardsService {
                 saleDate: {
                   startsWith: per,
                 },
+                deal: {
+                  reservation: false,
+                  status: { not: 'Возврат' },
+                  // id: {
+                  //   gt: 1440,  lte: 14099
+                  // },
+                },
               },
-              // include: {
-              //   deal: {
-              //     include: {
-              //       payments: true,
-              //       dops: true,
-              //     },
-              //   },
-              // },
             },
             workSpace: true,
             managerReports: {
@@ -527,10 +501,10 @@ export class DashboardsService {
     );
 
     const prevPeriodDatas = res.flat();
-    // console.log(prevPeriodDatas.find((p) => p.userId === 23));
+
     //id платежей
     const prevPaymentsDealsIds = Array.from(
-      new Set(prevPayments.map((p) => p.deal.id)),
+      new Set(allPaymentsPrevDeals.map((p) => p.deal.id)),
     );
     //сделки по платежам за пред сделки
     const prevPaymentsDeals = await this.prisma.deal.findMany({
@@ -827,10 +801,11 @@ export class DashboardsService {
               'Из рассылки',
               'Визуализатор',
             ].includes(d.deal.maketType);
-            const payAmount = dealPayments.reduce(
-              (a, b) => a + (b.price || 0),
-              0,
-            );
+            const pa = dealPayments.filter((p) => p.date.slice(0, 7) <= period);
+            // console.log(pa.map((p) => p.date.slice(0, 7)));
+            const payAmount = dealPayments
+              .filter((p) => p.date.slice(0, 7) <= period)
+              .reduce((a, b) => a + (b.price || 0), 0);
             const paid =
               payAmount >= dealPrice
                 ? dealPrice * dealerPart
@@ -862,10 +837,10 @@ export class DashboardsService {
             const saleDate = d.saleDate;
             const dealTitle = d.deal.title;
             const dealPrice = d.deal.price;
-            const dealPayments = d.deal.payments.reduce(
-              (a, b) => a + b.price,
-              0,
-            );
+
+            const dealPayments = d.deal.payments
+              .filter((p) => p.date.slice(0, 7) <= period)
+              .reduce((a, b) => a + b.price, 0);
             const dealDopsPrice = d.deal.dops.reduce((a, b) => a + b.price, 0);
             const dealDopsPaidPrice =
               dealPayments > dealPrice ? dealPayments - dealPrice : 0;
@@ -1013,12 +988,12 @@ export class DashboardsService {
             .flatMap((d) => d.dealInfo)
             .filter((d) => d.usersId === m.id);
           // console.log(dealsInfoPrevMounth);
-          // dealsPayments += dealsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
+          dealsPayments += dealsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
           dealsPayments += dealsInfo.reduce((a, b) => a + b.paid, 0);
           const dopsInfoPrevMounth = datas
             .flatMap((d) => d.dopsInfo)
             .filter((d) => d.userId === m.id);
-          // dealsPayments += dopsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
+          dealsPayments += dopsInfoPrevMounth.reduce((a, b) => a + b.paid, 0);
           dealsPayments += dopsInfo.reduce((a, b) => a + b.paid, 0);
 
           const prevPeriodsDealsPays = dealsInfoPrevMounth.reduce(
