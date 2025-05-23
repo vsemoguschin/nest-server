@@ -382,6 +382,8 @@ model Payment {
   description  String      @default("") // Описание
   reservation  Boolean     @default(false) // Бронь
   period       String      @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
+  stutus       String      @default("") 
+  paymentId    String      @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
 
   // Связи 
   userId       Int
@@ -557,26 +559,26 @@ model Neon {
   orderId   Int
   order     Order       @relation(fields: [orderId], references: [id])
 }
-enum NeonWidth {
-  мм6    @map("6мм")
-  мм8    @map("8мм")
-  Подсветка
-}
-enum NeonColor {
-  красный
-  синий
-  голубой
-  оранжевый
-  фиолетовый
-  розовый
-  бирюзовый
-  желтый
-  зеленый
-  холодный_белый @map("холодный белый")
-  теплый_белый   @map("теплый белый")
-  смарт
-  rgb
-}
+// enum NeonWidth {
+//   мм6    @map("6мм")
+//   мм8    @map("8мм")
+//   Подсветка
+// }
+// enum NeonColor {
+//   красный
+//   синий
+//   голубой
+//   оранжевый
+//   фиолетовый
+//   розовый
+//   бирюзовый
+//   желтый
+//   зеленый
+//   холодный_белый @map("холодный белый")
+//   теплый_белый   @map("теплый белый")
+//   смарт
+//   rgb
+// }
 // enum NeonType {
 //   Стандарт
 //   Улица
@@ -615,14 +617,10 @@ model planFactAccounts {
 //   createdAt DateTime @default(now())
 // }
 
-model supplies {
+model Supplie {
   id              Int      @id @default(autoincrement())
   date            String  
   shipmentDate    String  @default("")
-  category        String  //категории
-  description     String
-  quantity        Int
-  price           Float
   supplier        String  //поставщик
   paymentMethod   String  //счет, перевод, наличка
   orderStatus     String  //Оформлен заказ, В пути, Отгружен нам
@@ -630,14 +628,26 @@ model supplies {
   deliveryMethod  String  //Сдек, Самовывоз, Доставка от поставщика, Курьерская доставка
   invoice         String?
   track           String?
+  positions       SuppliePosition[]
 }
 
-model suppliers {
-  id              Int      @id @default(autoincrement())
-  name            String   @unique
-}
-
-model suppliesCategories  {
+model SuppliePosition {
   id              Int      @id @default(autoincrement())
   name            String
+  priceForItem    Float
+  quantity        Int
+  category        String  @default("")
+
+  supplieId       Int
+  supplie         Supplie  @relation(fields: [supplieId], references: [id])
+}
+
+model Suppliers {
+  id      Int      @id @default(autoincrement())
+  name    String   @unique
+}
+
+model SuppliesCategories  {
+  id    Int      @id @default(autoincrement())
+  name  String
 }

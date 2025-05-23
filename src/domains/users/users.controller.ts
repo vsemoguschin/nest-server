@@ -32,7 +32,7 @@ export class UsersController {
 
   @Post()
   @ApiOperation({ summary: 'Создать нового пользователя' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'ROV', 'DP')
   async createUser(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
@@ -59,13 +59,13 @@ export class UsersController {
   @ApiOperation({ summary: 'Удалить пользователя по ID' })
   @ApiParam({ name: 'id', type: 'integer', description: 'ID пользователя' })
   @ApiNoContentResponse({ description: 'Пользователь успешно удален' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'ROD')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'ROD', "DP")
   async deleteUser(@Param('id', ParseIntPipe) userId: number): Promise<void> {
     await this.usersService.deleteUser(userId);
   }
 
   @Patch(':id/new-pass')
-  @Roles('ADMIN', 'G', 'KD', 'DO')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'DP')
   @ApiOperation({ summary: 'Обновить пароль пользователя' })
   @ApiParam({ name: 'id', type: 'integer', description: 'ID пользователя' })
   @ApiBody({

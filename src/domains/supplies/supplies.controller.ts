@@ -13,27 +13,25 @@ import {
 } from '@nestjs/common';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { SuppliesService } from './supplies.service';
-import { SuppliesCreateDto } from './dto/supplies-create.dto';
+import { SupplieCreateDto } from './dto/supplie-create.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 
 @UseGuards(RolesGuard)
 @Controller('supplies')
 export class SuppliesController {
-  constructor(private readonly suppliesService: SuppliesService) {}
+  constructor(private readonly supplieService: SuppliesService) {}
 
   @Post()
-  @Roles('ADMIN', 'G', 'LOGIST')
-  async create(
-    @Body() suppliesCreateDto: SuppliesCreateDto,
-  ): Promise<SuppliesCreateDto> {
-    return this.suppliesService.create(suppliesCreateDto);
+  @Roles('ADMIN', 'G', 'LOGIST', 'DP')
+  async create(@Body() supplieCreateDto: SupplieCreateDto) {
+    return this.supplieService.create(supplieCreateDto);
   }
 
   @Get()
-  @Roles('ADMIN', 'G', 'LOGIST')
+  @Roles('ADMIN', 'G', 'LOGIST', 'DP')
   async getSupplies(
     @Query('period') period: string,
-  ): Promise<SuppliesCreateDto[]> {
+  ): Promise<SupplieCreateDto[]> {
     if (
       !period ||
       (!/^\d{4}-\d{2}-\d{2}$/.test(period) && !/^\d{4}-\d{2}$/.test(period))
@@ -42,27 +40,32 @@ export class SuppliesController {
         'Параметры period обязательны и должны быть в формате YYYY-MM-DD',
       );
     }
-    return this.suppliesService.getSupplies(period);
+    return this.supplieService.getSupplies(period);
   }
 
   // Delete
   @Delete(':id')
-  @Roles('ADMIN', 'G', 'LOGIST')
+  @Roles('ADMIN', 'G', 'LOGIST', 'DP')
   async delete(@Param('id', ParseIntPipe) id: number) {
-    return this.suppliesService.delete(id);
+    return this.supplieService.delete(id);
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'G', 'LOGIST')
+  @Roles('ADMIN', 'G', 'LOGIST', 'DP')
   async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() suppliesCreateDto: SuppliesCreateDto,
+    @Body() supplieCreateDto: SupplieCreateDto,
   ) {
-    return this.suppliesService.update(id, suppliesCreateDto);
+    return this.supplieService.update(id, supplieCreateDto);
   }
 
   @Get('suppliers')
-  async getSources() {
-    return this.suppliesService.getSuppliers();
+  async getSuppliers() {
+    return this.supplieService.getSuppliers();
+  }
+
+  @Get('positions')
+  async getPositions() {
+    return this.supplieService.getPositions();
   }
 }
