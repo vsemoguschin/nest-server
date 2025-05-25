@@ -259,7 +259,7 @@ export class DealsService {
         payments: true,
         dealers: true,
         client: true,
-        // deliveries: true,
+        deliveries: true,
         // workSpace: true,
       },
       orderBy: {
@@ -287,7 +287,6 @@ export class DealsService {
       const chatLink = el.client.chatLink;
       const sphere = el.sphere;
       const discont = el.discont;
-      const status = el.status;
       const paid = el.paid;
       // const delivery = el.deliveries; //полностью
       // const workspace = el.workSpace.title;
@@ -299,6 +298,10 @@ export class DealsService {
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
       const payments = el.payments;
+      const deliveryStatus = el.deliveries
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 1)[0]?.status;
+      const status = deliveryStatus ?? 'Создана';
       // console.log(saleDate.toISOString().slice(0, 10), 234356);
 
       return {
@@ -398,6 +401,11 @@ export class DealsService {
     if (!deal) {
       throw new NotFoundException(`Сделка с id ${id} не найдено.`);
     }
+
+    const deliveryStatus = deal.deliveries
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 1)[0]?.status;
+    deal.status = deliveryStatus ?? 'Создана';
 
     return deal;
   }
