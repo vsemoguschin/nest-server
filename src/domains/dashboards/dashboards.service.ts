@@ -350,9 +350,19 @@ export class DashboardsService {
       .flatMap((w) => w.payments)
       .filter((p) => !p.deal.saleDate.includes(period));
 
+    // console.log('allPaymentsPrevDops', allPaymentsPrevDops);
+
     // периоды сделок(уникальные)
-    const prevPeriods = Array.from(
+    const prevPeriodsDeals = Array.from(
       new Set(allPaymentsPrevDeals.map((p) => p.deal.saleDate.slice(0, 7))),
+    ).filter((p) => p < period); //['2025-04', '2025-03']
+    // периоды допов(уникальные)
+    const prevPeriodsDops = Array.from(
+      new Set(
+        allPaymentsPrevDeals
+          .flatMap((p) => p.deal.dops)
+          .map((d) => d.saleDate.slice(0, 7)),
+      ),
     ).filter((p) => p < period); //['2025-04', '2025-03']
 
     //  массив уникальных id пользователей чьи сделки в платежах
@@ -363,6 +373,12 @@ export class DashboardsService {
         ),
       ),
     );
+
+    const prevPeriods = Array.from(
+      new Set([...prevPeriodsDeals, ...prevPeriodsDops]),
+    );
+
+    // console.log(prevPeriods);
 
     // по всем периодам ищем продажи пользователей по id и находим % в зп
     const res = await Promise.all(
@@ -522,6 +538,7 @@ export class DashboardsService {
         workSpace: true,
       },
     });
+    // console.log(prevPaymentsDeals);
 
     const datas = prevPaymentsDeals.map((deal) => {
       const {
@@ -565,6 +582,7 @@ export class DashboardsService {
       const dealDopsPrice = dops.reduce((a, b) => a + b.price, 0);
       const dopsInfo = dops
         .map((dop) => {
+          console.log(dop);
           const dealerPart = dop.price / dealDopsPrice;
 
           const bonusPercentage =
@@ -588,7 +606,8 @@ export class DashboardsService {
             toSalary: paid * bonusPercentage,
           };
         })
-        .filter((d) => prevPeriods.includes(d.saleDate.slice(0, 7)));
+        .filter((d) => d.toSalary != 0);
+      // .filter((d) => prevPeriods.includes(d.saleDate.slice(0, 7)));
 
       const dealInfo = dealers.map((dealer) => {
         const dealerPrice = dealer.price;
@@ -637,7 +656,7 @@ export class DashboardsService {
       };
     });
 
-    // console.log(datas);
+    // console.log(datas[0]);
 
     // console.log(workSpaces);
     const ropPlan = await this.prisma.managersPlan.findFirst({
