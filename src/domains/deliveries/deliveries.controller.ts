@@ -9,6 +9,7 @@ import {
   UseGuards,
   Get,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -34,6 +35,20 @@ export class DeliveriesController {
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST')
   async checkTrack(@Query('track') track: string) {
     return this.deliveriesService.checkTrack(track);
+  }
+
+  @Get('/registers')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST')
+  async checkRegisters(@Query('period') period: string) {
+    if (
+      !period ||
+      (!/^\d{4}-\d{2}-\d{2}$/.test(period) && !/^\d{4}-\d{2}$/.test(period))
+    ) {
+      throw new BadRequestException(
+        'Параметры period обязательны и должны быть в формате YYYY-MM-DD',
+      );
+    }
+    return this.deliveriesService.checkRegisters(period);
   }
 
   // Создание записи

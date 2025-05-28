@@ -50,6 +50,19 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsOptional()
   description?: string = '';
+  
+  @IsString({ message: 'paymentId должно быть строкой (paymentId).' })
+  @IsOptional()
+  @IsOptional()
+  paymentId?: string = '';
+
+  // Выбранный терминал
+  @IsString()
+  @IsOptional()
+  @IsIn(['Терминал Изинеон СБП', 'Терминал Изинеон', ''], {
+    message: 'Выбранный терминал недоступен.',
+  })
+  terminal?: string;
 
   @IsBoolean({ message: 'reservation должно быть true или false (бронь?).' })
   @IsOptional()
@@ -62,4 +75,8 @@ export class CreatePaymentDto {
 
   @IsInt({ message: 'userId должен быть целым числом (ID пользователя).' })
   dealId: number;
+
+  @IsBoolean({ message: 'isConfirmed должно быть true или false (подтвержден?).' })
+  @IsOptional()
+  isConfirmed: boolean = false;
 }

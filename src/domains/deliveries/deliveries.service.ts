@@ -13,23 +13,70 @@ export class DeliveriesService {
 
   async checkTrack(track: string) {
     try {
-      // const data = await this.cdekService.getRegisters();
-      // const orders = data.registries
-      //   .flatMap((r) => r.orders)
-      //   .map((o) => o.cdek_number);
-      // console.log(orders);
-      // const dels = await this.prisma.delivery.findMany({
-      //   where: {
-      //     track: {
-      //       in: orders,
-      //     },
-      //   },
-      // });
-      // console.log(dels);
       return await this.cdekService.checkTrackInfo(track);
     } catch (error) {
       console.error('Ошибка при проверке трека:', error.message);
-      throw new NotFoundException(`Ошибка при проверке трека ${track} не найдена`);
+      throw new NotFoundException(
+        `Ошибка при проверке трека ${track} не найдена`,
+      );
+    }
+  }
+
+  async checkRegisters(period: string) {
+    try {
+      // return console.log(days);
+      // Resolve all async calls using Promise.all
+      const tracks = await this.cdekService.getRegisters(period);
+
+      const dels = await this.prisma.delivery.findMany({
+        where: {
+          track: {
+            in: tracks,
+          },
+          deal: {
+            payments: {
+              some: {
+                method: 'Наложка',
+                isConfirmed: false, // Только неоплаченные наложки
+              },
+            },
+          },
+        },
+        include: {
+          deal: {
+            include: {
+              payments: true,
+            },
+          },
+        },
+      });
+
+      const paymentsId = dels.flatMap((d) =>
+        d.deal.payments
+          .filter((p) => p.method === 'Наложка')
+          .map((p) => {
+            return { id: p.id, method: p.method, isConfirmed: p.isConfirmed };
+          }),
+      );
+      console.log(paymentsId);
+
+      await this.prisma.payment.updateMany({
+        where: {
+          id: {
+            in: paymentsId.map((p) => p.id),
+          },
+        },
+        data: {
+          isConfirmed: true,
+        },
+      });
+
+      return {
+        message: `Реестры  за ${period} подтверждены. Обновлено ${paymentsId.length} платежей.`,
+      };
+    } catch (error) {
+      console.error('Ошибка при проверке реестров:', error.message);
+      throw new NotFoundException(`Ошибка при проверке реестров`);
     }
   }
 

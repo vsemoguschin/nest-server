@@ -230,13 +230,12 @@ model Deal {
   saleDate          String   // Дата продажи (обязательное поле)
   card_id           String      // ID карточки дизайна
   title             String   // Название сделки
-  price             Int      // Стоимость без допов
+  price             Int      // Стоимость
   status            String     @default("Создана") // Допустимые значения: "Создана", "Изготовление", "Готов", "Готов к отправке", "Отправлен", "Доставлен"
-  // deadline          String   // Дедлайн
   clothingMethod    String   // Метод закрытия (clothingMethod)
   description       String     @default("") // Описание сделки
   source            String   // Источник сделки
-  adTag             String   // ТЕГ (adTag)
+  adTag             String   // ТЕГ
   discont           String   // Скидка. Допустимые значения: "Без скидки", "Желтая", "ОПТ", "Рассылка", "Красная"
   sphere            String     @default("") // Сфера деятельности
   city              String     @default("") // Город
@@ -383,7 +382,9 @@ model Payment {
   reservation  Boolean     @default(false) // Бронь
   period       String      @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
   stutus       String      @default("") 
-  paymentId    String      @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
+  paymentId    String      @default("")
+  isConfirmed  Boolean     @default(true)
+  terminal     String      @default("")
 
   // Связи 
   userId       Int

@@ -10,6 +10,22 @@ import { UpdateDealDto } from './dto/deal-update.dto';
 import { UpdateDealersDto } from './dto/dealers-update.dto';
 import axios from 'axios';
 
+const useMyGetDaysDifference = (
+  dateString1: string,
+  dateString2: string,
+): number => {
+  const date1 = new Date(dateString1);
+  const date2 = new Date(dateString2);
+
+  // Вычисляем разницу в миллисекундах
+  const timeDifference = Math.abs(date2.getTime() - date1.getTime());
+
+  // Переводим миллисекунды в дни
+  const differenceInDays = Math.ceil(timeDifference / (1000 * 3600 * 24));
+
+  return differenceInDays;
+};
+
 @Injectable()
 export class DealsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -54,6 +70,15 @@ export class DealsService {
         title: createDealDto.adTag,
       },
     });
+
+    await this.prisma.dealAudit.create({
+      data: {
+        dealId: newDeal.id,
+        action: 'Создана',
+        userId: user.id,
+      },
+    });
+
     // console.log(newDeal);
     return newDeal;
   }
@@ -134,6 +159,17 @@ export class DealsService {
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 1)[0]?.status;
       const status = deliveryStatus ?? 'Создана';
+      const dg = useMyGetDaysDifference(el.client.firstContact, saleDate);
+      let daysGone = '';
+      if (dg > 31) {
+        daysGone = 'Больше 31';
+      } else if (7 < dg && dg <= 31) {
+        daysGone = '8-31';
+      } else if (2 < dg && dg <= 7) {
+        daysGone = '3-7';
+      } else if (0 < dg && dg <= 2) {
+        daysGone = '0-2';
+      }
       // console.log(deliveryStatus, status);
 
       // console.log(saleDate.toISOString().slice(0, 10), 234356);
@@ -166,6 +202,7 @@ export class DealsService {
         maketType,
         deletedAt,
         reservation,
+        daysGone,
       };
     });
 
@@ -419,10 +456,51 @@ export class DealsService {
       throw new NotFoundException(`Сделка с ID ${id} не найдена`);
     }
 
+    // Словарь для маппинга полей на русские названия
+    const fieldNames: Record<string, string> = {
+      saleDate: 'Дата продажи',
+      card_id: 'ID карточки дизайна',
+      title: 'Название сделки',
+      price: 'Стоимость',
+      status: 'Статус',
+      clothingMethod: 'Метод закрытия',
+      description: 'Описание',
+      source: 'Источник',
+      adTag: 'Тег',
+      discont: 'Скидка',
+      sphere: 'Сфера деятельности',
+      city: 'Город',
+      region: 'Регион',
+      paid: 'Оплачено',
+      maketType: 'Тип макета',
+      maketPresentation: 'Дата презентации макета',
+      period: 'Период',
+      category: 'Категория',
+      reservation: 'Бронь',
+    };
+
+    // Сравниваем поля updateDealDto с dealExists
+    const changedFields: { field: string; oldValue: any; newValue: any }[] = [];
+    const fieldsToCompare = Object.keys(fieldNames);
+
+    fieldsToCompare.forEach((field) => {
+      if (
+        updateDealDto[field] !== undefined && // Проверяем, что поле передано
+        updateDealDto[field] !== dealExists[field] // Проверяем, что значение изменилось
+      ) {
+        changedFields.push({
+          field: fieldNames[field], // Используем русское название
+          oldValue: dealExists[field],
+          newValue: updateDealDto[field],
+        });
+      }
+    });
+
+    // Обновляем связанные сущности
     if (updateDealDto.clothingMethod) {
       await this.prisma.clothingMethod.upsert({
         where: { title: updateDealDto.clothingMethod },
-        update: {}, // Ничего не обновляем, если запись существует
+        update: {},
         create: {
           title: updateDealDto.clothingMethod,
         },
@@ -432,10 +510,10 @@ export class DealsService {
     if (updateDealDto.source) {
       await this.prisma.dealSource.upsert({
         where: { title: updateDealDto.source },
-        update: {}, // Ничего не обновляем, если запись существует
+        update: {},
         create: {
           title: updateDealDto.source,
-          workSpaceId: dealExists.workSpaceId, // Используем существующий workSpaceId из сделки
+          workSpaceId: dealExists.workSpaceId,
         },
       });
     }
@@ -443,13 +521,13 @@ export class DealsService {
     if (updateDealDto.adTag) {
       await this.prisma.adTag.upsert({
         where: { title: updateDealDto.adTag },
-        update: {}, // Ничего не обновляем, если запись существует
+        update: {},
         create: {
           title: updateDealDto.adTag,
         },
       });
     }
-    // console.log(updateDealDto.status);
+
     // Обновляем сделку
     const updatedDeal = await this.prisma.deal.update({
       where: { id },
@@ -475,6 +553,22 @@ export class DealsService {
         reservation: updateDealDto.reservation,
       },
     });
+
+    // Создаем отдельную запись в аудите для каждого измененного поля
+    if (changedFields.length > 0) {
+      await Promise.all(
+        changedFields.map((change) =>
+          this.prisma.dealAudit.create({
+            data: {
+              dealId: id,
+              userId: user.id,
+              action: 'Обновление',
+              comment: `Изменение поля "${change.field}": с "${change.oldValue}" на "${change.newValue}"`,
+            },
+          }),
+        ),
+      );
+    }
 
     return updatedDeal;
   }

@@ -31,7 +31,7 @@ export class PaymentsService {
         workSpaceId: existingDeal.workSpaceId,
       },
     });
-    return newPayment;
+    return {...newPayment, message: 'Платеж создан'};
   }
 
   async createLink(createPaymentLinkDto: CreatePaymentLinkDto) {
@@ -102,6 +102,56 @@ export class PaymentsService {
     console.log(data);
 
     return { link: data.PaymentURL, PaymentId: data.PaymentId };
+  }
+
+  async checkPayment(paymentId: string, terminal: string) {
+    function generateToken(Data): string {
+      const hash = createHash('sha256')
+        .update(Data.join(''), 'utf8')
+        .digest('hex');
+      return hash;
+    }
+    let TerminalKey = '';
+    let password = '';
+
+    if (terminal === 'Терминал Изинеон СБП') {
+      TerminalKey = process.env.TB_TERMINAL_SPB || '';
+      password = process.env.TB_TERMINAL_PASSWORD_SPB || '';
+    } else {
+      TerminalKey = process.env.TB_TERMINAL || '';
+      password = process.env.TB_TERMINAL_PASSWORD || '';
+    }
+
+    // Генерация токена
+    const Token = generateToken([password, paymentId, TerminalKey]);
+    try {
+      const { data } = await axios.post(
+        'https://securepay.tinkoff.ru/v2/GetState',
+        { TerminalKey, PaymentId: paymentId, Token },
+      );
+      const res = {
+        isConfirmed: false,
+        message: 'Оплата не подтверждена',
+        price: 0,
+      };
+
+      if (data.Status == 'CONFIRMED') {
+        res.isConfirmed = true;
+        res.price = data.Amount / 100;
+        res.message = 'Оплата подтверждена';
+      } 
+
+      if (data.Success === false) {
+        res.message = data.Message;
+      }
+
+      console.log(data);
+
+      return res;
+    } catch (error) {
+      console.log(error);
+      throw new NotFoundException(`Ошибка при проверке оплаты`);
+    }
   }
 
   async delete(id: number) {

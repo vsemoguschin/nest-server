@@ -1,6 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 
+function getDatesOfMonth(yearMonth: string): string[] {
+  const [year, month] = yearMonth.split('-').map(Number); // Разделяем год и месяц
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1; // Месяцы в JS 0-11, поэтому +1
+  const currentDay = today.getDate();
+
+  const dates: string[] = [];
+  const isCurrentMonth = year === currentYear && month === currentMonth;
+  const daysInMonth = new Date(year, month, 0).getDate(); // Количество дней в месяце
+
+  const endDay = isCurrentMonth ? currentDay : daysInMonth; // До сегодня или до конца месяца
+
+  for (let day = 1; day <= endDay; day++) {
+    const formattedDay = day.toString().padStart(2, '0'); // Добавляем ведущий ноль
+    dates.push(`${year}-${month.toString().padStart(2, '0')}-${formattedDay}`);
+  }
+
+  return dates;
+}
+
 @Injectable()
 export class CdekService {
   private readonly logger = new Logger(CdekService.name);
@@ -98,10 +119,11 @@ export class CdekService {
   }> {
     const token = await this.getAccessToken();
     const entity = await this.getOrderInfo(cdek_number, token);
+    // console.log(entity);
     const { status, sendDate, deliveredDate } = this.parseOrderStatus(entity);
 
     const price = entity?.delivery_detail?.total_sum || 0;
-    console.log({ status, sendDate, deliveredDate, price });
+    // console.log({ status, sendDate, deliveredDate, price });
     return {
       price,
       status,
@@ -110,23 +132,48 @@ export class CdekService {
     };
   }
 
-  async getRegisters() {
-    const token = await this.getAccessToken();
+  async getRegisters(period: string) {
     try {
-      const response = await axios.get('https://api.cdek.ru/v2/registries', {
-        params: {
-          date: '2025-05-12',
-        },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      // console.log(response.data);
-      
+      const days = getDatesOfMonth(period); // Предполагается, что функция работает корректно
+      const token = await this.getAccessToken();
 
-      return response.data;
+      const res = await Promise.all(
+        days.map(async (date) => {
+          try {
+            const { data } = await axios.get(
+              'https://api.cdek.ru/v2/registries',
+              {
+                params: { date },
+                headers: { Authorization: `Bearer ${token}` },
+              },
+            );
+
+            // Проверка на наличие registries
+            if (!data?.registries) {
+              return { date, tracks: [], orders: [] }; // Возвращаем пустые массивы вместо null
+            }
+
+            const orders = data.registries.flatMap((r) => r.orders || []); // Защита от undefined
+            const tracks = orders.map((o) => o.cdek_number).filter(Boolean); // Фильтрация undefined/null
+
+            return { date, tracks, orders };
+          } catch (error) {
+            console.error(`Ошибка для даты ${date}:`, error.message);
+            return { date, tracks: [], orders: [], error: error.message }; // Возвращаем данные с ошибкой
+          }
+        }),
+      );
+
+      // Фильтруем успешные результаты (опционально)
+      const successfulResults = res
+        .filter((item) => !item.error)
+        .flatMap((item) => item.tracks);
+      // console.log('Результаты:', successfulResults);
+
+      return successfulResults; // Возвращаем результаты
     } catch (error) {
-      console.log(error);
+      console.error('Ошибка в getRegisters:', error.message);
+      return []; // Возвращаем пустой массив вместо null для предотвращения краша
     }
   }
 }

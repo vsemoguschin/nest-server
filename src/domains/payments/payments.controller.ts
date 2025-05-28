@@ -2,9 +2,11 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   Param,
   ParseIntPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -48,5 +50,14 @@ export class PaymentsController {
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   async createPaymentLink(@Body() dto: CreatePaymentLinkDto) {
     return this.paymentsService.createLink(dto);
+  }
+
+  @Get('checkPayment')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  async checkPayment(
+    @Query('paymentId') paymentId: string,
+    @Query('terminal') terminal: string
+  ) {
+    return this.paymentsService.checkPayment(paymentId, terminal);
   }
 }

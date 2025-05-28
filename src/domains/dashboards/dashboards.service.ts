@@ -582,7 +582,7 @@ export class DashboardsService {
       const dealDopsPrice = dops.reduce((a, b) => a + b.price, 0);
       const dopsInfo = dops
         .map((dop) => {
-          console.log(dop);
+          // console.log(dop);
           const dealerPart = dop.price / dealDopsPrice;
 
           const bonusPercentage =
