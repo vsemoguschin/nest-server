@@ -29,7 +29,7 @@ async function main() {
       },
     },
     data: {
-      isIntern: true,
+      isIntern: false,
     },
   });
   //update managerReports shiftCost = 800
@@ -41,7 +41,7 @@ async function main() {
       },
     },
     data: {
-      shiftCost: 800,
+      shiftCost: 666.67,
     },
   });
   console.log(
