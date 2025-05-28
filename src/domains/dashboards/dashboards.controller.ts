@@ -48,30 +48,30 @@ export class DashboardsController {
     return this.dashboardsService.getComercialData(user, period);
   }
 
-  @Get('/managers')
-  @ApiOperation({
-    summary: 'Получить данные менеджеров',
-    description:
-      'Endpoint: GET /dashboards?period=YYYY-MM. Получить данные менеджеров за указанный период.',
-  })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
-  @ApiResponse({
-    status: 200,
-    description: 'Данные менеджеров успешно получены.',
-  })
-  @ApiResponse({ status: 400, description: 'Неверный формат периода.' })
-  async getList(
-    @CurrentUser() user: UserDto,
-    @Query('period') period: string,
-  ): Promise<any> {
-    console.log(period);
-    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
-      throw new BadRequestException(
-        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
-      );
-    }
-    return this.dashboardsService.getManagersData(user, period);
-  }
+  // @Get('/managers')
+  // @ApiOperation({
+  //   summary: 'Получить данные менеджеров',
+  //   description:
+  //     'Endpoint: GET /dashboards?period=YYYY-MM. Получить данные менеджеров за указанный период.',
+  // })
+  // @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  // @ApiResponse({
+  //   status: 200,
+  //   description: 'Данные менеджеров успешно получены.',
+  // })
+  // @ApiResponse({ status: 400, description: 'Неверный формат периода.' })
+  // async getList(
+  //   @CurrentUser() user: UserDto,
+  //   @Query('period') period: string,
+  // ): Promise<any> {
+  //   console.log(period);
+  //   if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+  //     throw new BadRequestException(
+  //       'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+  //     );
+  //   }
+  //   return this.dashboardsService.getManagersData(user, period);
+  // }
 
   @Get('/reports/managers')
   @ApiOperation({

@@ -88,22 +88,6 @@ export class ReportsService {
     return report;
   }
 
-  // async delete(id: number) {
-  //   const report = await this.prisma.managerReport.findUnique({
-  //     where: { id },
-  //   });
-
-  //   if (!report) {
-  //     throw new NotFoundException(`Отчет с ID ${id} не найден`);
-  //   }
-
-  //   await this.prisma.managerReport.delete({
-  //     where: { id },
-  //   });
-
-  //   return { message: `Отчет с ID ${id} успешно удален` };
-  // }
-
   async deleteRopReport(id: number) {
     const report = await this.prisma.ropReport.findUnique({
       where: { id },
@@ -241,6 +225,12 @@ export class ReportsService {
             dops: {
               where: {
                 period,
+                deal: {
+                  reservation: false,
+                  status: {
+                    not: 'Возврат',
+                  },
+                },
               },
             },
             workSpace: {
@@ -372,6 +362,12 @@ export class ReportsService {
                   gte: range.start,
                   lt: range.end,
                 },
+                deal: {
+                  reservation: false,
+                  status: {
+                    not: 'Возврат',
+                  },
+                },
               },
             },
             workSpace: {
@@ -486,6 +482,9 @@ export class ReportsService {
           where: {
             saleDate: date,
             reservation: false,
+            status: {
+              not: 'Возврат',
+            },
           },
           include: {
             client: true,
@@ -499,6 +498,12 @@ export class ReportsService {
         dops: {
           where: {
             saleDate: date,
+            deal: {
+              reservation: false,
+              status: {
+                not: 'Возврат',
+              },
+            },
           },
         },
       },
@@ -560,6 +565,12 @@ export class ReportsService {
               where: {
                 saleDate: {
                   startsWith: period,
+                },
+                deal: {
+                  reservation: false,
+                  status: {
+                    not: 'Возврат',
+                  },
                 },
               },
             },
@@ -685,7 +696,9 @@ export class ReportsService {
                 },
                 deal: {
                   reservation: false,
-                  status: { not: 'Возврат' },
+                  status: {
+                    not: 'Возврат',
+                  },
                 },
               },
             },

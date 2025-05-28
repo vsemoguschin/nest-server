@@ -7,7 +7,7 @@ async function main() {
   const users = await prisma.user.findMany({
     where: {
       fullName: {
-        in: ['Степан Марк', 'Святослав Зенков'],
+        in: ['Татьяна Швец'],
       },
     },
     include: {
