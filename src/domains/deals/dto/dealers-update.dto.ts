@@ -1,9 +1,17 @@
-import { IsInt, IsNotEmpty, Min, Validate, ValidationArguments, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  Min,
+  Validate,
+  ValidationArguments,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+} from 'class-validator';
 
 @ValidatorConstraint({ name: 'uniqueUserIds', async: false })
 export class UniqueUserIdsConstraint implements ValidatorConstraintInterface {
   validate(dealers: DealerDto[], args: ValidationArguments) {
-    const userIds = dealers.map(dealer => dealer.userId);
+    const userIds = dealers.map((dealer) => dealer.userId);
     return new Set(userIds).size === userIds.length; // Проверяем уникальность
   }
 

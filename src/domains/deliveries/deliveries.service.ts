@@ -26,7 +26,8 @@ export class DeliveriesService {
     try {
       // return console.log(days);
       // Resolve all async calls using Promise.all
-      const tracks = await this.cdekService.getRegisters(period);
+      const { tracks, sum } = await this.cdekService.getRegisters(period);
+      console.log('total', sum);
 
       const dels = await this.prisma.delivery.findMany({
         where: {
@@ -72,6 +73,7 @@ export class DeliveriesService {
       });
 
       return {
+        sum,
         message: `Реестры  за ${period} подтверждены. Обновлено ${paymentsId.length} платежей.`,
       };
     } catch (error) {
@@ -88,7 +90,7 @@ export class DeliveriesService {
     if (!deal) {
       throw new NotFoundException(`Сделка с ID ${createDto.dealId} не найдена`);
     }
-    return this.prisma.delivery.create({
+    const createdDelivery = await this.prisma.delivery.create({
       data: {
         date: createDto.date,
         method: createDto.method || '',
@@ -106,10 +108,25 @@ export class DeliveriesService {
         deal: true, // Включаем данные сделки в ответ
       },
     });
+
+    // Формируем комментарий для аудита
+    const auditComment = `Добавил доставку(${createdDelivery.method})`;
+
+    // Создаем запись в аудите
+    await this.prisma.dealAudit.create({
+      data: {
+        dealId: createdDelivery.dealId,
+        userId: user.id,
+        action: 'Добавление доставки',
+        comment: auditComment,
+      },
+    });
+
+    return createdDelivery;
   }
 
   // Редактирование записи
-  async update(id: number, updateDto: DeliveryCreateDto) {
+  async update(id: number, updateDto: DeliveryCreateDto, user: UserDto) {
     const delivery = await this.prisma.delivery.findUnique({
       where: { id },
     });
@@ -118,27 +135,88 @@ export class DeliveriesService {
       throw new NotFoundException(`Доставка с ID ${id} не найдена`);
     }
 
-    return this.prisma.delivery.update({
-      where: { id },
-      data: {
-        date: updateDto.date,
-        method: updateDto.method,
-        type: updateDto.type,
-        description: updateDto.description,
-        track: updateDto.track,
-        status: updateDto.status,
-        price: updateDto.price,
-        deliveredDate: updateDto.deliveredDate,
-        dealId: updateDto.dealId,
-      },
-      include: {
-        deal: true,
-      },
+    // Словарь для маппинга полей на русские названия
+    const fieldNames: Record<string, string> = {
+      date: 'Дата отправки',
+      method: 'Метод доставки',
+      type: 'Тип доставки',
+      description: 'Описание',
+      track: 'Трек-номер',
+      status: 'Статус',
+      price: 'Стоимость',
+      deliveredDate: 'Дата доставки',
+      dealId: 'ID сделки',
+    };
+
+    // Сравниваем поля updateDto с delivery
+    const changedFields: { field: string; oldValue: any; newValue: any }[] = [];
+    const fieldsToCompare = Object.keys(fieldNames);
+
+    fieldsToCompare.forEach((field) => {
+      if (
+        updateDto[field] !== undefined && // Проверяем, что поле передано
+        updateDto[field] !== delivery[field] // Проверяем, что значение изменилось
+      ) {
+        changedFields.push({
+          field: fieldNames[field], // Используем русское название
+          oldValue: delivery[field],
+          newValue: updateDto[field],
+        });
+      }
+    });
+
+    // Обновляем доставку и создаем аудит внутри транзакции
+    return await this.prisma.$transaction(async (prisma) => {
+      const updatedDelivery = await prisma.delivery.update({
+        where: { id },
+        data: {
+          date: updateDto.date,
+          method: updateDto.method,
+          type: updateDto.type,
+          description: updateDto.description,
+          track: updateDto.track,
+          status: updateDto.status,
+          price: updateDto.price,
+          deliveredDate: updateDto.deliveredDate,
+          dealId: updateDto.dealId,
+        },
+        include: {
+          deal: true,
+        },
+      });
+
+      // Создаем отдельную запись в аудите для каждого измененного поля
+      if (changedFields.length > 0) {
+        await Promise.all(
+          changedFields.map((change) =>
+            prisma.dealAudit.create({
+              data: {
+                dealId: updatedDelivery.dealId,
+                userId: user.id,
+                action: 'Обновление доставки',
+                comment: `Изменение поля "${change.field}": с "${change.oldValue}" на "${change.newValue}"`,
+              },
+            }),
+          ),
+        );
+      } else {
+        // Если изменений нет, создаем одну запись
+        await prisma.dealAudit.create({
+          data: {
+            dealId: updatedDelivery.dealId,
+            userId: user.id,
+            action: 'Обновление доставки',
+            comment: 'Обновление доставки без изменений полей',
+          },
+        });
+      }
+
+      return updatedDelivery;
     });
   }
 
   // Удаление записи
-  async delete(id: number) {
+  async delete(id: number, user: UserDto) {
     const delivery = await this.prisma.delivery.findUnique({
       where: { id },
     });
@@ -146,6 +224,19 @@ export class DeliveriesService {
     if (!delivery) {
       throw new NotFoundException(`Доставка с ID ${id} не найдена`);
     }
+
+    // Формируем комментарий для аудита
+    const auditComment = `Удалил доставку(${delivery.method})`;
+
+    // Создаем запись в аудите
+    await this.prisma.dealAudit.create({
+      data: {
+        dealId: delivery.dealId,
+        userId: user.id,
+        action: 'Удаление доставки',
+        comment: auditComment,
+      },
+    });
 
     await this.prisma.delivery.delete({
       where: { id },

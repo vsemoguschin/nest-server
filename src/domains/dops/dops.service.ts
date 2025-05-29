@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateDopDto } from './dto/dop-create.dto';
+import { UserDto } from '../users/dto/user.dto';
 
 @Injectable()
 export class DopsService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createDopDto: CreateDopDto) {
+  async create(createDopDto: CreateDopDto, user: UserDto) {
     // Проверяем, существует ли сделка
     const dealExists = await this.prisma.deal.findUnique({
       where: { id: createDopDto.dealId },
@@ -40,7 +41,7 @@ export class DopsService {
         period, // Вычисленное значение
         userId: createDopDto.userId, // Берем из текущего пользователя
         dealId: createDopDto.dealId,
-        workSpaceId: managerExists.workSpaceId
+        workSpaceId: managerExists.workSpaceId,
       },
     });
 
@@ -50,10 +51,23 @@ export class DopsService {
       create: { title: createdDop.type },
     });
 
+    // Формируем комментарий для аудита
+    const auditComment = `Добавил доп(${createdDop.type}) на сумму ${createdDop.price} руб.`;
+
+    // Создаем запись в аудите
+    await this.prisma.dealAudit.create({
+      data: {
+        dealId: createdDop.dealId,
+        userId: user.id,
+        action: 'Создание доп. услуги',
+        comment: auditComment,
+      },
+    });
+
     return createdDop;
   }
 
-  async delete(id: number) {
+  async delete(id: number, user: UserDto) {
     // Проверяем, существует ли доп
     const dopExists = await this.prisma.dop.findUnique({
       where: { id },
@@ -61,6 +75,19 @@ export class DopsService {
     if (!dopExists) {
       throw new NotFoundException(`Доп. услуга с ID ${id} не найдена`);
     }
+
+    // Формируем комментарий для аудита
+    const auditComment = `Удалил доп(${dopExists.type}) на сумму ${dopExists.price} руб.`;
+
+    // Создаем запись в аудите
+    await this.prisma.dealAudit.create({
+      data: {
+        dealId: dopExists.dealId,
+        userId: user.id,
+        action: 'Удаление доп. услуги',
+        comment: auditComment,
+      },
+    });
 
     // Удаляем доп
     return this.prisma.dop.delete({

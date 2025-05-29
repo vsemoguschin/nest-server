@@ -47,8 +47,9 @@ export class ClientsController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateClientDto: UpdateClientDto,
+    @CurrentUser() user: UserDto,
   ) {
-    return this.clientsService.update(id, updateClientDto);
+    return this.clientsService.update(id, updateClientDto, user);
   }
 
   @Get()

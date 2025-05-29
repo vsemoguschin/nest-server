@@ -573,7 +573,7 @@ export class DealsService {
     return updatedDeal;
   }
 
-  async delete(id: number) {
+  async delete(id: number, user: UserDto) {
     const dealExists = await this.prisma.deal.findUnique({ where: { id } });
     if (!dealExists) {
       throw new NotFoundException(`Сделка с ID ${id} не найдена`);
@@ -598,6 +598,19 @@ export class DealsService {
       // Удаляем саму сделку
       const deletedDeal = await prisma.deal.delete({
         where: { id: dealId },
+      });
+
+      // Формируем комментарий для аудита
+      const auditComment = `Удалил сделку ${dealExists.title}(${dealId})`;
+
+      // Создаем запись в аудите
+      await this.prisma.dealAudit.create({
+        data: {
+          dealId: dealExists.id,
+          userId: user.id,
+          action: 'Удаление сделки',
+          comment: auditComment,
+        },
       });
 
       return deletedDeal;
@@ -629,10 +642,14 @@ export class DealsService {
     return await this.prisma.dealSource.findMany();
   }
 
-  async updateDealers(dealId: number, updateDealersDto: UpdateDealersDto) {
+  async updateDealers(
+    dealId: number,
+    updateDealersDto: UpdateDealersDto,
+    user: UserDto,
+  ) {
     const deal = await this.prisma.deal.findUnique({
       where: { id: dealId },
-      include: { dealers: true },
+      include: { dealers: { include: { user: true } } },
     });
 
     if (!deal) {
@@ -694,10 +711,49 @@ export class DealsService {
 
       await Promise.all(upsertPromises);
 
-      return prisma.deal.findUnique({
+      const updatedDeal = await prisma.deal.findUnique({
         where: { id: dealId },
         include: { dealers: { include: { user: true } } },
       });
+
+      // Формируем данные для аудита
+      const oldDealers = deal.dealers
+        .map((d) => `Менеджер: ${d.user.fullName}, стоимость: ${d.price}`)
+        .join('; ');
+      const newDealers = updatedDeal!.dealers
+        .map((d) => `Менеджер: ${d.user.fullName}, стоимость: ${d.price}`)
+        .join('; ');
+
+      const auditComment = `Обновление менеджеров. Было: ${
+        oldDealers || 'нет'
+      }; Стало: ${newDealers || 'нет'}`;
+
+      // Создаем запись в аудите
+      await prisma.dealAudit.create({
+        data: {
+          dealId,
+          userId: user.id,
+          action: 'Обновление дилеров',
+          comment: auditComment,
+        },
+      });
     });
+  }
+
+  async getHistory(id: number, user: UserDto) {
+    const dealExists = await this.prisma.deal.findUnique({
+      where: { id },
+      include: {
+        audit: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+    if (!dealExists) {
+      throw new NotFoundException(`Сделка с ID ${id} не найдена`);
+    }
+    return dealExists.audit;
   }
 }

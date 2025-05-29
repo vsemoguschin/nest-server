@@ -1,7 +1,17 @@
-import { Controller, Post, Get, Body, Delete, Param, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Delete,
+  Param,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { DopsService } from './dops.service';
 import { CreateDopDto } from './dto/dop-create.dto';
+import { UserDto } from '../users/dto/user.dto';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 
 @ApiTags('dops') // Добавляем тег для Swagger
 @Controller('dops')
@@ -9,27 +19,46 @@ export class DopsController {
   constructor(private readonly dopService: DopsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Создать доп. услугу', description: 'Создает новую доп. услугу.' })
+  @ApiOperation({
+    summary: 'Создать доп. услугу',
+    description: 'Создает новую доп. услугу.',
+  })
   @ApiResponse({ status: 201, description: 'Доп. услуга успешно создана.' })
-  @ApiResponse({ status: 404, description: 'Сделка или пользователь не найдены.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Сделка или пользователь не найдены.',
+  })
   async create(
     @Body() createDopDto: CreateDopDto,
+    @CurrentUser() user: UserDto,
   ) {
-    return this.dopService.create(createDopDto);
+    return this.dopService.create(createDopDto, user);
   }
 
   @Get('types')
-  @ApiOperation({ summary: 'Получить список типов допов', description: 'Возвращает все типы допов.' })
-  @ApiResponse({ status: 200, description: 'Список типов допов успешно получен.' })
+  @ApiOperation({
+    summary: 'Получить список типов допов',
+    description: 'Возвращает все типы допов.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Список типов допов успешно получен.',
+  })
   async getDopTypes() {
     return this.dopService.getDopTypes();
   }
-    
+
   @Delete(':id')
-  @ApiOperation({ summary: 'Удалить доп. услугу', description: 'Удаляет доп. услугу по ID.' })
+  @ApiOperation({
+    summary: 'Удалить доп. услугу',
+    description: 'Удаляет доп. услугу по ID.',
+  })
   @ApiResponse({ status: 200, description: 'Доп. услуга успешно удалена.' })
   @ApiResponse({ status: 404, description: 'Доп. услуга не найдена.' })
-  async delete(@Param('id', ParseIntPipe) id: number) {
-    return this.dopService.delete(id);
+  async delete(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.dopService.delete(id, user);
   }
 }

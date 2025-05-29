@@ -72,8 +72,9 @@ export class DeliveriesController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: DeliveryCreateDto,
+    @CurrentUser() user: UserDto,
   ) {
-    return this.deliveriesService.update(id, updateDto);
+    return this.deliveriesService.update(id, updateDto, user);
   }
 
   // Удаление записи
@@ -82,7 +83,10 @@ export class DeliveriesController {
   @ApiParam({ name: 'id', description: 'ID доставки', type: 'integer' })
   @ApiNoContentResponse({ description: 'Запись успешно удалена' })
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'LOGIST')
-  async delete(@Param('id', ParseIntPipe) id: number) {
-    await this.deliveriesService.delete(id);
+  async delete(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserDto,
+  ) {
+    await this.deliveriesService.delete(id, user);
   }
 }

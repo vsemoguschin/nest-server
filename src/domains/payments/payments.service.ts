@@ -5,10 +5,14 @@ import { UserDto } from '../users/dto/user.dto';
 import axios from 'axios';
 import { createHash } from 'crypto';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
+import { DealsService } from '../deals/deals.service';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly dealsService: DealsService,
+  ) {}
 
   async create(createPaymentDto: CreatePaymentDto, user: UserDto) {
     const existingDeal = await this.prisma.deal.findUnique({
@@ -31,7 +35,20 @@ export class PaymentsService {
         workSpaceId: existingDeal.workSpaceId,
       },
     });
-    return {...newPayment, message: 'Платеж создан'};
+
+    // Формируем комментарий для аудита
+    const auditComment = `Добавил платеж(${newPayment.method}) на сумму ${newPayment.price} руб.`;
+
+    // Создаем запись в аудите
+    await this.prisma.dealAudit.create({
+      data: {
+        dealId: createPaymentDto.dealId,
+        userId: user.id,
+        action: 'Создание платежа',
+        comment: auditComment,
+      },
+    });
+    return { ...newPayment, message: 'Платеж создан' };
   }
 
   async createLink(createPaymentLinkDto: CreatePaymentLinkDto) {
@@ -139,7 +156,7 @@ export class PaymentsService {
         res.isConfirmed = true;
         res.price = data.Amount / 100;
         res.message = 'Оплата подтверждена';
-      } 
+      }
 
       if (data.Success === false) {
         res.message = data.Message;
@@ -154,11 +171,23 @@ export class PaymentsService {
     }
   }
 
-  async delete(id: number) {
+  async delete(id: number, user: UserDto) {
     const payment = await this.prisma.payment.findUnique({ where: { id } });
     if (!payment) {
       throw new NotFoundException(`Платеж с id ${id} не найден.`);
     }
+    // Формируем комментарий для аудита
+    const auditComment = `Удалил платеж (${payment.method}) на сумму ${payment.price} руб.`;
+
+    // Создаем запись в аудите
+    await this.prisma.dealAudit.create({
+      data: {
+        dealId: payment.dealId,
+        userId: user.id,
+        action: 'Создание платежа',
+        comment: auditComment,
+      },
+    });
     return await this.prisma.payment.delete({ where: { id } });
   }
 }

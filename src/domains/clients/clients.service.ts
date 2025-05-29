@@ -23,7 +23,7 @@ export class ClientsService {
     });
   }
 
-  async update(id: number, updateClientDto: UpdateClientDto) {
+  async update(id: number, updateClientDto: UpdateClientDto, user: UserDto) {
     const clientExists = await this.prisma.client.findUnique({
       where: { id },
     });

@@ -126,8 +126,11 @@ export class DealsController {
     description: 'Endpoint: DELETE /groups/:id. Удаляет сделку по id.',
   })
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP')
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    return this.dealsService.delete(id);
+  async remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.dealsService.delete(id, user);
   }
 
   @Patch(':dealId/dealers')
@@ -144,7 +147,17 @@ export class DealsController {
   async updateDealers(
     @Param('dealId', ParseIntPipe) dealId: number,
     @Body() updateDealersDto: UpdateDealersDto,
+    @CurrentUser() user: UserDto,
   ) {
-    return this.dealsService.updateDealers(dealId, updateDealersDto);
+    return this.dealsService.updateDealers(dealId, updateDealersDto, user);
+  }
+
+  @Get(':id/deal-history')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'LOGIST', 'ROV', 'MOV')
+  async getHistory(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.dealsService.getHistory(id, user);
   }
 }

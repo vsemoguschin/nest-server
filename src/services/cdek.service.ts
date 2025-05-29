@@ -136,9 +136,11 @@ export class CdekService {
     try {
       const days = getDatesOfMonth(period); // Предполагается, что функция работает корректно
       const token = await this.getAccessToken();
-
+      const delay = (ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms));
       const res = await Promise.all(
-        days.map(async (date) => {
+        days.map(async (date, index) => {
+          await delay(index * 50);
           try {
             const { data } = await axios.get(
               'https://api.cdek.ru/v2/registries',
@@ -147,19 +149,28 @@ export class CdekService {
                 headers: { Authorization: `Bearer ${token}` },
               },
             );
+            // console.log(data);
 
             // Проверка на наличие registries
             if (!data?.registries) {
-              return { date, tracks: [], orders: [] }; // Возвращаем пустые массивы вместо null
+              return { date, tracks: [], orders: [], sum: 0 }; // Возвращаем пустые массивы вместо null
             }
 
             const orders = data.registries.flatMap((r) => r.orders || []); // Защита от undefined
             const tracks = orders.map((o) => o.cdek_number).filter(Boolean); // Фильтрация undefined/null
+            const sum = data.registries.reduce((acc, r) => acc + r.sum, 0);
+            console.log(date, 'sum reg', sum);
 
-            return { date, tracks, orders };
+            return { date, tracks, orders, sum };
           } catch (error) {
-            console.error(`Ошибка для даты ${date}:`, error.message);
-            return { date, tracks: [], orders: [], error: error.message }; // Возвращаем данные с ошибкой
+            console.error(`Ошибка для даты ${date}:`, error);
+            return {
+              date,
+              tracks: [],
+              orders: [],
+              error: error.message,
+              sum: 0,
+            }; // Возвращаем данные с ошибкой
           }
         }),
       );
@@ -170,10 +181,13 @@ export class CdekService {
         .flatMap((item) => item.tracks);
       // console.log('Результаты:', successfulResults);
 
-      return successfulResults; // Возвращаем результаты
+      return {
+        tracks: successfulResults,
+        sum: res.reduce((a, b) => a + b.sum, 0),
+      }; // Возвращаем результаты
     } catch (error) {
       console.error('Ошибка в getRegisters:', error.message);
-      return []; // Возвращаем пустой массив вместо null для предотвращения краша
+      return { tracks: [], sum: 0 }; // Возвращаем пустой массив вместо null для предотвращения краша
     }
   }
 }

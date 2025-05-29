@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { FilesService } from '../files/files.service';
+import { UserDto } from '../users/dto/user.dto';
 
 @Injectable()
 export class ReviewsService {
@@ -14,6 +15,7 @@ export class ReviewsService {
     dealId: number,
     date: string,
     file: Express.Multer.File,
+    user: UserDto,
   ) {
     try {
       // Шаг 1: Загружаем файл на Яндекс.Диск
@@ -50,6 +52,19 @@ export class ReviewsService {
         },
       });
 
+      // Формируем комментарий для аудита
+      const auditComment = `Добавил отзыв`;
+
+      // Создаем запись в аудите
+      await this.prisma.dealAudit.create({
+        data: {
+          dealId: review.dealId,
+          userId: user.id,
+          action: 'Добавление отзыва',
+          comment: auditComment,
+        },
+      });
+
       return review;
     } catch (error) {
       console.error('Ошибка при создании отзыва:', error);
@@ -57,7 +72,7 @@ export class ReviewsService {
     }
   }
 
-  async deleteReview(reviewId: number): Promise<void> {
+  async deleteReview(reviewId: number, user: UserDto): Promise<void> {
     try {
       // Шаг 1: Найти отзыв и связанные файлы
       const review = await this.prisma.review.findUnique({
@@ -77,6 +92,19 @@ export class ReviewsService {
       // Шаг 3: Удалить записи файлов из базы данных
       await this.prisma.file.deleteMany({
         where: { reviewId },
+      });
+
+      // Формируем комментарий для аудита
+      const auditComment = `Удалил отзыв`;
+
+      // Создаем запись в аудите
+      await this.prisma.dealAudit.create({
+        data: {
+          dealId: review.dealId,
+          userId: user.id,
+          action: 'удаление отзыва',
+          comment: auditComment,
+        },
       });
 
       // Шаг 4: Удалить отзыв из базы данных

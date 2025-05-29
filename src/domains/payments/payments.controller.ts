@@ -42,8 +42,11 @@ export class PaymentsController {
     summary: 'Удалить платеж',
     description: 'Endpoint: DELETE /payments/:id. Удаляет платеж по id.',
   })
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    return this.paymentsService.delete(id);
+  async remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.paymentsService.delete(id, user);
   }
 
   @Post('link')
@@ -56,7 +59,7 @@ export class PaymentsController {
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   async checkPayment(
     @Query('paymentId') paymentId: string,
-    @Query('terminal') terminal: string
+    @Query('terminal') terminal: string,
   ) {
     return this.paymentsService.checkPayment(paymentId, terminal);
   }
