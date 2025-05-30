@@ -76,6 +76,7 @@ export class DealsService {
         dealId: newDeal.id,
         action: 'Создана',
         userId: user.id,
+        comment: 'Сделка создана',
       },
     });
 
