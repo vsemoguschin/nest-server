@@ -17,8 +17,8 @@ const statuses = [
   'Изготовление',
   'Готов',
   'Готов к отправке',
-  'Отправлен',
-  'Доставлен',
+  'Отправлена',
+  'Вручена',
   'Возврат',
 ];
 const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная'];
@@ -78,8 +78,9 @@ export class UpdateDealDto {
 
   @IsString({ message: 'description должно быть строкой (description).' })
   @IsOptional() // Разрешает undefined
-  @ValidateIf((obj) => obj.description !== undefined && obj.description !== null) // Проверяем только если явно указано
-  
+  @ValidateIf(
+    (obj) => obj.description !== undefined && obj.description !== null,
+  ) // Проверяем только если явно указано
   description?: string;
 
   @IsString({ message: 'source должно быть строкой (источник сделки).' })
@@ -148,7 +149,6 @@ export class UpdateDealDto {
   period?: string;
 
   @IsOptional() // Поле необязательное
-  @IsIn(categories, { message: "Не верная категория" })
+  @IsIn(categories, { message: 'Не верная категория' })
   category?: string | '';
-
 }

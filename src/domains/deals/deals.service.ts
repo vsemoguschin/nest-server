@@ -449,6 +449,7 @@ export class DealsService {
 
   async update(id: number, updateDealDto: UpdateDealDto, user: UserDto) {
     // Проверяем, существует ли сделка
+    // console.log('updateDealDto', updateDealDto);
     const dealExists = await this.prisma.deal.findUnique({
       where: { id },
     });

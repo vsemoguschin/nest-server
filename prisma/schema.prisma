@@ -231,7 +231,7 @@ model Deal {
   card_id           String      // ID карточки дизайна
   title             String   // Название сделки
   price             Int      // Стоимость
-  status            String     @default("Создана") // Допустимые значения: "Создана", "Изготовление", "Готов", "Готов к отправке", "Отправлен", "Доставлен"
+  status            String     @default("Создана") // Допустимые значения: "Создана", "Изготовление", "Готов", "Готов к отправке", "Отправлена", "Вручена"
   clothingMethod    String   // Метод закрытия (clothingMethod)
   description       String     @default("") // Описание сделки
   source            String   // Источник сделки

@@ -119,7 +119,7 @@ export class CdekService {
   }> {
     const token = await this.getAccessToken();
     const entity = await this.getOrderInfo(cdek_number, token);
-    // console.log(entity);
+    console.log(entity);
     const { status, sendDate, deliveredDate } = this.parseOrderStatus(entity);
 
     const price = entity?.delivery_detail?.total_sum || 0;

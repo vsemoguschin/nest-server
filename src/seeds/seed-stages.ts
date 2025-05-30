@@ -13,7 +13,7 @@ const stageList = [
   { title: 'ОКК(Оплачено)', index: 8 },
   { title: 'Упаковано', index: 9 },
   { title: 'Оплачено', index: 10 },
-  { title: 'Отправлен', index: 11 },
+  { title: 'Отправлена', index: 11 },
   { title: 'На исправлении', index: 12 },
   { title: 'Ремонт', index: 13 },
   { title: 'Возврат', index: 14 },
