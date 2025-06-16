@@ -26,6 +26,8 @@ import { ReviewsModule } from './domains/reviews/reviews.module';
 import { PlanfactModule } from './domains/planfact/planfact.module';
 import { WebhooksModule } from './domains/webhooks/webhooks.module';
 import { SuppliesModule } from './domains/supplies/supplies.module';
+import { WbModule } from './domains/wb/wb.module';
+import { ProductionModule } from './domains/production/production.module';
 
 @Module({
   imports: [
@@ -53,6 +55,8 @@ import { SuppliesModule } from './domains/supplies/supplies.module';
     PlanfactModule,
     WebhooksModule,
     SuppliesModule,
+    WbModule,
+    ProductionModule,
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],

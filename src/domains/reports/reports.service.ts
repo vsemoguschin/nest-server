@@ -403,6 +403,7 @@ export class ReportsService {
       const dateDeals = r.user.dealSales.filter(
         (d) => d.deal.saleDate === date,
       );
+      // console.log(dateDeals.map(d=>d.deal.title));
       const dateExpenses = r.user.workSpace.adExpenses.filter(
         (e) => e.date === date,
       );
@@ -749,6 +750,12 @@ export class ReportsService {
       const dealsDayToDayCount = dateDeals.filter(
         (d) => d.saleDate === d.client.firstContact,
       ).length;
+
+      console.log(
+        dateDeals
+          .filter((d) => d.saleDate === d.client.firstContact)
+          .map((d) => d.title),
+      );
 
       const conversionDealsDayToDay = calls
         ? +((dealsDayToDayCount / calls) * 100).toFixed(2)

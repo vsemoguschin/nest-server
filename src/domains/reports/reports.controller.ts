@@ -41,7 +41,10 @@ export class ReportsController {
     @Body() createManagerReportDto: CreateManagerReportDto,
     @CurrentUser() user: UserDto,
   ) {
-    const report = await this.reportService.create(createManagerReportDto, user);
+    const report = await this.reportService.create(
+      createManagerReportDto,
+      user,
+    );
     return report;
   }
 

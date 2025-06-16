@@ -8,7 +8,6 @@ import { CreateDealDto } from './dto/deal-create.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { UpdateDealDto } from './dto/deal-update.dto';
 import { UpdateDealersDto } from './dto/dealers-update.dto';
-import axios from 'axios';
 
 const useMyGetDaysDifference = (
   dateString1: string,
@@ -168,7 +167,7 @@ export class DealsService {
         daysGone = '8-31';
       } else if (2 < dg && dg <= 7) {
         daysGone = '3-7';
-      } else if (0 < dg && dg <= 2) {
+      } else if (dg <= 2) {
         daysGone = '0-2';
       }
       // console.log(deliveryStatus, status);
