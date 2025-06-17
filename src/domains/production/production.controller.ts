@@ -100,4 +100,15 @@ export class ProductionController {
     }
     return this.productionService.getMasterShifts(masterId, period);
   }
+
+  @Get('stat')
+  @Roles('ADMIN', 'G', 'DP')
+  async getStat(@Query('period') period: string) {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.productionService.getStat(period)
+  }
 }

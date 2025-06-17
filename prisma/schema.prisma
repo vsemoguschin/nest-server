@@ -281,6 +281,8 @@ model Deal {
 
   statusHistory     DealStatusHistory[]
   audit             DealAudit[]
+
+  masterReports       MasterReport[]
 }
 
 // История изменения статуса
@@ -667,6 +669,9 @@ model MasterReport {
 
   userId  Int
   user    User    @relation(fields: [userId], references: [id])
+
+  dealId      Int?
+  deal        Deal?   @relation(fields: [dealId], references: [id])
 }
 
 model MasterShift {

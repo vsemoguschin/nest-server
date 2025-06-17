@@ -432,6 +432,7 @@ export class DealsService {
             file: true,
           },
         },
+        masterReports: true,
       },
     });
 
