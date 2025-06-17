@@ -277,104 +277,131 @@ export class ProductionService {
     });
   }
 
-  async getStat(period: string) {
-    // Проверка формата period (YYYY-MM)
-    if (!/^\d{4}-\d{2}$/.test(period)) {
-      throw new BadRequestException('Period must be in YYYY-MM format');
-    }
+// Заменить в методе getStat в production.service.ts
+async getStat(period: string) {
+  // Проверка формата period (YYYY-MM)
+  if (!/^\d{4}-\d{2}$/.test(period)) {
+    throw new BadRequestException('Period must be in YYYY-MM format');
+  }
 
-    // Получаем год и месяц из period
-    const [year, month] = period.split('-').map(Number);
-    
-    // Генерируем все даты для месяца
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const allDates = Array.from({ length: daysInMonth }, (_, i) => {
-      const day = (i + 1).toString().padStart(2, '0');
-      return `${year}-${month.toString().padStart(2, '0')}-${day}`;
-    });
+  // Получаем год и месяц из period
+  const [year, month] = period.split('-').map(Number);
+  
+  // Генерируем все даты для месяца
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const allDates = Array.from({ length: daysInMonth }, (_, i) => {
+    const day = (i + 1).toString().padStart(2, '0');
+    return `${year}-${month.toString().padStart(2, '0')}-${day}`;
+  });
 
-    // Получаем мастеров, их отчеты и смены
-    const masters = await this.prisma.user.findMany({
-      where: {
-        role: {
-          shortName: 'MASTER',
+  // Получаем мастеров, их отчеты и смены
+  const masters = await this.prisma.user.findMany({
+    where: {
+      role: {
+        shortName: 'MASTER',
+      },
+    },
+    select: {
+      id: true,
+      fullName: true,
+      masterReports: {
+        where: {
+          date: {
+            startsWith: period,
+          },
+        },
+        select: {
+          date: true,
+          els: true,
+          type: true, // Добавляем выбор типа отчета
         },
       },
-      select: {
-        id: true,
-        fullName: true,
-        masterReports: {
-          where: {
-            date: {
-              startsWith: period,
-            },
-          },
-          select: {
-            date: true,
-            els: true,
+      masterShifts: {
+        where: {
+          shift_date: {
+            startsWith: period,
           },
         },
-        masterShifts: {
-          where: {
-            shift_date: {
-              startsWith: period,
-            },
-          },
-          select: {
-            shift_date: true,
-          },
+        select: {
+          shift_date: true,
         },
       },
-    });
+    },
+  });
 
-    // Подсчитываем суммы смен и элементов по дням
-    const shiftsSumByDate: { [date: string]: number } = {};
-    const elsSumByDate: { [date: string]: number } = {};
+  // Подсчитываем суммы смен, обычных и специальных элементов по дням
+  const shiftsSumByDate: { [date: string]: number } = {};
+  const regularElsSumByDate: { [date: string]: number } = {};
+  const specialElsSumByDate: { [date: string]: number } = {};
+  allDates.forEach((date) => {
+    shiftsSumByDate[date] = 0;
+    regularElsSumByDate[date] = 0;
+    specialElsSumByDate[date] = 0;
+  });
+
+  masters.forEach((master) => {
+    master.masterShifts.forEach((shift) => {
+      shiftsSumByDate[shift.shift_date] = (shiftsSumByDate[shift.shift_date] || 0) + 1;
+    });
+    master.masterReports.forEach((report) => {
+      const isSpecial = ['Уличная', 'РГБ', 'Смарт'].includes(report.type);
+      if (isSpecial) {
+        specialElsSumByDate[report.date] = (specialElsSumByDate[report.date] || 0) + report.els;
+      } else {
+        regularElsSumByDate[report.date] = (regularElsSumByDate[report.date] || 0) + report.els;
+      }
+    });
+  });
+
+  // Формируем результат для мастеров
+  const result = masters.map((master) => {
+    const elsByDate: { [date: string]: { regular: number; special: number } } = {};
+    const shiftsByDate: { [date: string]: boolean } = {};
+
+    // Инициализируем все даты
     allDates.forEach((date) => {
-      shiftsSumByDate[date] = 0;
-      elsSumByDate[date] = 0;
+      elsByDate[date] = { regular: 0, special: 0 };
+      shiftsByDate[date] = master.masterShifts.some(
+        (shift) => shift.shift_date === date
+      );
     });
 
-    masters.forEach((master) => {
-      master.masterShifts.forEach((shift) => {
-        shiftsSumByDate[shift.shift_date] = (shiftsSumByDate[shift.shift_date] || 0) + 1;
-      });
-      master.masterReports.forEach((report) => {
-        elsSumByDate[report.date] = (elsSumByDate[report.date] || 0) + report.els;
-      });
+    // Суммируем обычные и специальные элементы по датам
+    master.masterReports.forEach((report) => {
+      const isSpecial = ['Уличная', 'РГБ', 'Смарт'].includes(report.type);
+      if (isSpecial) {
+        elsByDate[report.date].special = (elsByDate[report.date].special || 0) + report.els;
+      } else {
+        elsByDate[report.date].regular = (elsByDate[report.date].regular || 0) + report.els;
+      }
     });
 
-    // Формируем результат для мастеров
-    const result = masters.map((master) => {
-      const elsByDate: { [date: string]: number } = {};
-      const shiftsByDate: { [date: string]: boolean } = {};
-
-      // Инициализируем все даты
-      allDates.forEach((date) => {
-        elsByDate[date] = 0;
-        shiftsByDate[date] = master.masterShifts.some(
-          (shift) => shift.shift_date === date
-        );
-      });
-
-      // Суммируем els по датам
-      master.masterReports.forEach((report) => {
-        elsByDate[report.date] = (elsByDate[report.date] || 0) + report.els;
-      });
-
-      return {
-        masterId: master.id,
-        fullName: master.fullName,
-        elsByDate,
-        shiftsByDate,
-      };
-    });
+    // Подсчитываем рейтинг: сумма всех элементов / количество смен / 10
+    const totalEls = Object.values(elsByDate).reduce(
+      (sum, { regular, special }) => sum + regular + special,
+      0
+    );
+    const totalShifts = master.masterShifts.length;
+    const rating = totalShifts > 0 ? Number((totalEls / totalShifts / 10).toFixed(2)) : 0;
 
     return {
-      dates: allDates,
-      masters: result,
-      shiftsSumByDate,
-      elsSumByDate,
+      masterId: master.id,
+      fullName: master.fullName,
+      elsByDate,
+      shiftsByDate,
+      rating,
     };
-  }
+  });
+
+  // Сортируем мастеров по рейтингу от большего к меньшему
+  result.sort((a, b) => b.rating - a.rating);
+
+  return {
+    dates: allDates,
+    masters: result,
+    shiftsSumByDate,
+    regularElsSumByDate,
+    specialElsSumByDate,
+  };
+}
 }

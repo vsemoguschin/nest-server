@@ -138,6 +138,7 @@ export class SuppliesService {
           quantity: position.quantity,
           priceForItem: position.priceForItem,
           supplieId: supplie.id,
+          category: position.category,
         })),
       });
 
