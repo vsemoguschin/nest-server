@@ -433,6 +433,7 @@ export class DealsService {
           },
         },
         masterReports: true,
+        packerReports: true,
       },
     });
 

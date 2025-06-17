@@ -20,6 +20,10 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateMasterShiftsDto } from './dto/create-master-shifts.dto';
 import { MasterShiftResponseDto } from './dto/master-shift.dto';
+import { CreatePackerReportDto } from './dto/create-packer-report.dto';
+import { PackerShiftResponseDto } from './dto/packer-shift.dto';
+import { UpdatePackerReportDto } from './dto/update-packer-report.dto';
+import { CreatePackerShiftsDto } from './dto/create-packer-shifts.dto';
 
 @UseGuards(RolesGuard)
 @Controller('production')
@@ -109,6 +113,85 @@ export class ProductionController {
         'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
       );
     }
-    return this.productionService.getStat(period)
+    return this.productionService.getStat(period);
+  }
+
+  // Добавить в production/production.controller.ts после существующих роутов
+  @Post('packer-report')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER')
+  async createPackerReport(
+    @Body() createPackerReportDto: CreatePackerReportDto,
+  ) {
+    return this.productionService.createPackerReport(createPackerReportDto);
+  }
+
+  @Get('packer/:id/reports')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER')
+  async getPackerReports(
+    @Query('period') period: string,
+    @Param('id') id: string,
+  ) {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.productionService.getPackerReports(+id, period);
+  }
+
+  @Patch('packer-report/:id')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER')
+  async updatePackerReport(
+    @Param('id') id: string,
+    @Body() updatePackerReportDto: UpdatePackerReportDto,
+  ) {
+    return this.productionService.updatePackerReport(
+      +id,
+      updatePackerReportDto,
+    );
+  }
+
+  @Delete('packer-report/:id')
+  @Roles('ADMIN', 'G', 'DP')
+  async removePackerReport(@Param('id') id: string) {
+    return this.productionService.deletePackerReport(+id);
+  }
+
+  @Post('packer/:packerId/shifts')
+  async createPackerShifts(
+    @Param('packerId', ParseIntPipe) packerId: number,
+    @Body() dto: CreatePackerShiftsDto,
+  ): Promise<PackerShiftResponseDto[]> {
+    return this.productionService.createPackerShifts(packerId, dto);
+  }
+
+  @Get('packer/:packerId/shifts')
+  async getPackerShifts(
+    @Param('packerId', ParseIntPipe) packerId: number,
+    @Query('period') period: string,
+  ): Promise<PackerShiftResponseDto[]> {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.productionService.getPackerShifts(packerId, period);
+  }
+
+  @Get('packers')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER')
+  async getPackers(@CurrentUser() user: UserDto) {
+    return this.productionService.getPackers(user);
+  }
+
+  @Get('packer-stat')
+  @Roles('ADMIN', 'G', 'DP')
+  async getPackerStat(@Query('period') period: string) {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.productionService.getPackerStat(period);
   }
 }

@@ -123,7 +123,9 @@ model User {
   salaryCorrections salaryCorrection[]
 
   masterReports   MasterReport[]
+  packerReports   PackerReport[]
   masterShifts    MasterShift[]
+  packerShifts    PackerShift[]
 }
 model ManagersPlan {
   id         Int        @id @default(autoincrement()) 
@@ -283,6 +285,7 @@ model Deal {
   audit             DealAudit[]
 
   masterReports       MasterReport[]
+  packerReports       PackerReport[]
 }
 
 // История изменения статуса
@@ -674,7 +677,32 @@ model MasterReport {
   deal        Deal?   @relation(fields: [dealId], references: [id])
 }
 
+model PackerReport {
+  id        Int      @id @default(autoincrement())
+  date      String
+  name      String
+  overSize  Boolean //Не размер
+  isGift    Boolean //Не размер
+  items     Int     //количество вывесок в заказе
+  cost      Int
+  dimmers   Int  //количество диммеров
+
+  userId  Int
+  user    User    @relation(fields: [userId], references: [id])
+
+  dealId      Int?
+  deal        Deal?   @relation(fields: [dealId], references: [id])
+}
+
 model MasterShift {
+  id          Int     @id @default(autoincrement())
+  shift_date  String //2025-05-01
+
+  userId      Int
+  user        User    @relation(fields: [userId], references: [id])
+}
+
+model PackerShift {
   id          Int     @id @default(autoincrement())
   shift_date  String //2025-05-01
 
