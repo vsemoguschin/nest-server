@@ -193,4 +193,291 @@ export class PlanfactService {
 
     return await this.prisma.planFactAccounts.findMany();
   }
+
+  async getPLDatas(period: string) {
+    const deals = await this.prisma.deal.findMany({
+      where: {
+        saleDate: {
+          startsWith: period,
+        },
+        reservation: false,
+        status: { not: 'Возврат' },
+      },
+      include: {
+        dops: true,
+      },
+    });
+    const dealsDops = deals.flatMap((d) => d.dops);
+    const allDealsPrice =
+      deals.reduce((a, b) => a + b.price, 0) +
+      dealsDops.reduce((a, b) => a + b.price, 0);
+
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+        deal: {
+          saleDate: {
+            startsWith: period,
+          },
+          reservation: false,
+          status: { not: 'Возврат' },
+        },
+      },
+    });
+    const revenue = payments.reduce((a, b) => a + b.price, 0);
+
+    const sendDeliveries = await this.prisma.delivery.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
+          },
+        },
+      },
+    });
+    const deliveredDeliveries = await this.prisma.delivery.findMany({
+      where: {
+        deliveredDate: {
+          startsWith: period,
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
+          },
+        },
+      },
+    });
+    const sendDeals =
+      sendDeliveries.reduce(
+        (a, b) =>
+          a + b.deal.price + b.deal.dops.reduce((a, b) => a + b.price, 0),
+        0,
+      ) +
+      deliveredDeliveries.reduce(
+        (a, b) =>
+          a + b.deal.price + b.deal.dops.reduce((a, b) => a + b.price, 0),
+        0,
+      );
+
+    const supplies = await this.prisma.supplie.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+      },
+      include: {
+        positions: true,
+      },
+    });
+
+    // Подсчет сумм по категориям для supplies
+    const suppliesByCategory = supplies
+      .reduce(
+        (acc, supplie) => {
+          supplie.positions.forEach((position) => {
+            const category = position.category || 'Без категории';
+            const totalPrice = position.priceForItem * position.quantity;
+            const existingCategory = acc.find(
+              (item) => item.label === category,
+            );
+            if (existingCategory) {
+              existingCategory.value += totalPrice;
+            } else {
+              acc.push({ label: category, value: totalPrice });
+            }
+          });
+          return acc;
+        },
+        [] as { label: string; value: number }[],
+      )
+      .sort((a, b) => b.value - a.value);
+    // console.log(suppliesByCategory);
+
+    const dateFrom = new Date(period + '-01').toISOString().slice(0, 10);
+    const [year, month] = period.split('-').map(Number);
+    const dateTo = new Date(year, month, 1).toISOString().slice(0, 10);
+
+    const data = await this.getOperationsFromRange(
+      { from: dateFrom, to: dateTo },
+      5000,
+    );
+    const operations = data.operations.filter(
+      (o) => o.typeOfOperation === 'Выплата',
+    );
+
+    // Получение всех пользователей для productionSalaries
+    const prodUsers = await this.prisma.user.findMany({
+      where: {
+        role: {
+          shortName: {
+            in: ['DP', 'RP', 'LOGIST', 'MASTER', 'FRZ', 'PACKER', 'LAM'],
+          },
+        },
+      },
+      select: {
+        fullName: true,
+        role: {
+          select: {
+            fullName: true,
+          },
+        },
+      },
+    });
+
+    // Подсчет зарплат по ролям для productionSalaries
+    const productionSalaries = prodUsers
+      .reduce(
+        (acc, user) => {
+          const userOps = operations.filter((o) => {
+            const name = user.fullName.toLowerCase().split(' ');
+            const contrAgent = o.counterParty.toLowerCase().split(' ');
+            return name.every((s) => contrAgent.includes(s));
+          });
+          const pays = userOps.reduce((sum, op) => sum + op.accountAmount, 0);
+
+          const role = user.role.fullName;
+          const existingRole = acc.find((item) => item.role === role);
+          if (existingRole) {
+            existingRole.value += pays;
+            existingRole.operations.push(...userOps);
+          } else if (pays > 0) {
+            acc.push({
+              role,
+              value: pays,
+              operations: [...userOps],
+            });
+          }
+
+          return acc;
+        },
+        [] as { role: string; value: number; operations: any[] }[],
+      )
+      .sort((a, b) => b.value - a.value);
+
+    // Получение всех пользователей для commercialSalaries
+    const commUsers = await this.prisma.user.findMany({
+      where: {
+        role: {
+          shortName: {
+            in: [
+              'MOP',
+              'KD',
+              'DO',
+              'ROP',
+              'ROV',
+              'MOV',
+              'ROD',
+              'DIZ',
+              'MTZ',
+              'MARKETER',
+              'BUKH',
+            ],
+          },
+        },
+      },
+      select: {
+        fullName: true,
+        role: {
+          select: {
+            fullName: true,
+          },
+        },
+      },
+    });
+
+    // Подсчет зарплат по ролям для commercialSalaries
+    const commercialSalaries = commUsers
+      .reduce(
+        (acc, user) => {
+          const userOps = operations.filter((o) => {
+            const name = user.fullName.toLowerCase().split(' ');
+            const contrAgent = o.counterParty.toLowerCase().split(' ');
+            return name.every((s) => contrAgent.includes(s));
+          });
+          const pays = userOps.reduce((sum, op) => sum + op.accountAmount, 0);
+
+          const role = user.role.fullName;
+          const existingRole = acc.find((item) => item.role === role);
+          if (existingRole) {
+            existingRole.value += pays;
+            existingRole.operations.push(...userOps);
+          } else if (pays > 0) {
+            acc.push({
+              role,
+              value: pays,
+              operations: [...userOps],
+            });
+          }
+
+          return acc;
+        },
+        [] as { role: string; value: number; operations: any[] }[],
+      )
+      .sort((a, b) => b.value - a.value);
+
+    // Получение расходов на рекламу
+    const adExpenses = await this.prisma.adExpense.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+      },
+      include: {
+        adSource: {
+          select: {
+            title: true,
+          },
+        },
+      },
+    });
+
+    // Группировка adExpenses по AdSource.title
+    const adExpensesBySource = adExpenses
+      .reduce(
+        (acc, expense) => {
+          const source = expense.adSource.title;
+          const existingSource = acc.find((item) => item.source === source);
+          if (existingSource) {
+            existingSource.value += expense.price;
+          } else {
+            acc.push({
+              source,
+              value: expense.price,
+            });
+          }
+          return acc;
+        },
+        [] as { source: string; value: number }[],
+      )
+      .sort((a, b) => b.value - a.value);
+
+    return {
+      // Доходы
+      income: {
+        allDealsPrice,
+        sendDeals,
+        revenue,
+      },
+      // Расходы
+      expenses: {
+        production: {
+          supplies: suppliesByCategory,
+          productionSalaries,
+        },
+        commercial: {
+          commercialSalaries,
+        },
+        adExpenses: adExpensesBySource,
+      },
+    };
+  }
 }

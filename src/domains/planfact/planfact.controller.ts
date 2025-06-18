@@ -65,4 +65,15 @@ export class PlanfactController {
   async createPaymentLink() {
     return this.planfactService.getBankAccounts();
   }
+
+  @Get('pl')
+  @Roles('ADMIN', 'G', 'KD')
+  async getPLDatas(@Query('period') period: string) {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.planfactService.getPLDatas(period);
+  }
 }
