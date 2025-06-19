@@ -31,7 +31,7 @@ export class ProductionController {
   constructor(private readonly productionService: ProductionService) {}
 
   @Get('predata')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP', 'MASTER', 'LOGIST', 'PACKER')
   async getPredata(@CurrentUser() user: UserDto) {
     return this.productionService.getPredata(user);
   }
