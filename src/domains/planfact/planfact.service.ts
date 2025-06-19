@@ -319,7 +319,8 @@ export class PlanfactService {
       where: {
         role: {
           shortName: {
-            in: ['DP', 'RP', 'LOGIST', 'MASTER', 'FRZ', 'PACKER', 'LAM'],
+            in: ['MASTER'],
+            // in: ['DP', 'RP', 'LOGIST', 'MASTER', 'FRZ', 'PACKER', 'LAM'],
           },
         },
       },
@@ -332,6 +333,7 @@ export class PlanfactService {
         },
       },
     });
+    
 
     // Подсчет зарплат по ролям для productionSalaries
     const productionSalaries = prodUsers
@@ -342,6 +344,7 @@ export class PlanfactService {
             const contrAgent = o.counterParty.toLowerCase().split(' ');
             return name.every((s) => contrAgent.includes(s));
           });
+          // console.log(userOps);
           const pays = userOps.reduce((sum, op) => sum + op.accountAmount, 0);
 
           const role = user.role.fullName;

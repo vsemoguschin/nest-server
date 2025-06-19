@@ -662,19 +662,21 @@ model SuppliesCategories  {
 }
 
 model MasterReport {
-  id     Int      @id @default(autoincrement())
-  date   String
-  name   String
-  metrs  Float
-  els    Int
-  type   String
-  cost   Int
+  id         Int      @id @default(autoincrement())
+  date       String
+  name       String
+  metrs      Float
+  els        Int
+  type       String
+  cost       Int
+  // isPenalty  Boolean
+  // comment    String
 
-  userId  Int
-  user    User    @relation(fields: [userId], references: [id])
+  userId     Int
+  user       User    @relation(fields: [userId], references: [id])
 
-  dealId      Int?
-  deal        Deal?   @relation(fields: [dealId], references: [id])
+  dealId     Int?
+  deal       Deal?   @relation(fields: [dealId], references: [id])
 }
 
 model PackerReport {

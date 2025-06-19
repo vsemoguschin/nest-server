@@ -23,6 +23,7 @@ export class CreateMasterReportDto {
     'ВБ',
     'ОЗОН',
     'Подарок',
+    'Ремонт',
   ])
   type: string;
 

@@ -26,8 +26,8 @@ export class ProductionService {
         tabs: [
           { value: 'table', label: 'Сборка' },
           { value: 'masters', label: 'Сборщики' },
-          { value: 'package', label: 'Упаковщики' },
           { value: 'packers-stat', label: 'Упаковка' },
+          { value: 'package', label: 'Упаковщики' },
           { value: 'supplie', label: 'Закупки' },
         ],
       };
@@ -464,11 +464,11 @@ export class ProductionService {
           const match = description.match(linkRegex);
 
           if (match && match.length > 0) {
-            name = match[0];
+            const link = match[0]; // Берем первую найденную ссылку
             const deal = await this.prisma.deal.findFirst({
               where: {
                 client: {
-                  chatLink: name,
+                  chatLink: link,
                 },
               },
             });
@@ -536,11 +536,11 @@ export class ProductionService {
           const match = description.match(linkRegex);
 
           if (match && match.length > 0) {
-            name = match[0];
+            const link = match[0];
             const deal = await this.prisma.deal.findFirst({
               where: {
                 client: {
-                  chatLink: name,
+                  chatLink: link,
                 },
               },
             });
