@@ -40,4 +40,13 @@ export class UpdatePackerReportDto {
   @IsInt({ message: 'Количество диммеров должно быть целым числом' })
   @Min(0, { message: 'Количество диммеров не может быть отрицательным' })
   dimmers?: number;
+
+  @IsOptional()
+  @IsInt({ message: 'Цена за допы должно быть целым числом' })
+  @Min(0, { message: 'Цена за допы должно быть больше 0' })
+  dops?: number;
+
+  @IsOptional()
+  @IsString({ message: 'Коммент должно быть строкой' })
+  dopsComment?: string;
 }

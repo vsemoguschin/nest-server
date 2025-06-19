@@ -680,20 +680,22 @@ model MasterReport {
 }
 
 model PackerReport {
-  id        Int      @id @default(autoincrement())
-  date      String
-  name      String
-  overSize  Boolean //Не размер
-  isGift    Boolean //Не размер
-  items     Int     //количество вывесок в заказе
-  cost      Int
-  dimmers   Int  //количество диммеров
+  id           Int      @id @default(autoincrement())
+  date         String
+  name         String
+  overSize     Boolean //Не размер
+  isGift       Boolean //Не размер
+  items        Int     //количество вывесок в заказе
+  cost         Int
+  dimmers      Int  //количество диммеров
+  dops         Int      @default(0)
+  dopsComment  String   @default("")
 
-  userId  Int
-  user    User    @relation(fields: [userId], references: [id])
+  userId       Int
+  user         User    @relation(fields: [userId], references: [id])
 
-  dealId      Int?
-  deal        Deal?   @relation(fields: [dealId], references: [id])
+  dealId       Int?
+  deal         Deal?   @relation(fields: [dealId], references: [id])
 }
 
 model MasterShift {

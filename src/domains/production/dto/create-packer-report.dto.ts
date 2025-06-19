@@ -5,6 +5,7 @@ import {
   IsDateString,
   MinLength,
   Min,
+  IsOptional,
 } from 'class-validator';
 
 export class CreatePackerReportDto {
@@ -24,6 +25,14 @@ export class CreatePackerReportDto {
   @IsInt({ message: 'Количество вывесок должно быть целым числом' })
   @Min(1, { message: 'Количество вывесок должно быть больше 0' })
   items: number;
+
+  @IsInt({ message: 'Цена за допы должно быть целым числом' })
+  @Min(0, { message: 'Цена за допы должно быть больше 0' })
+  dops: number;
+
+  @IsString({ message: 'Коммент должно быть строкой' })
+  @IsOptional()
+  dopsComment: string;
 
   @IsInt({ message: 'Стоимость должна быть целым числом' })
   @Min(0, { message: 'Стоимость не может быть отрицательной' })
