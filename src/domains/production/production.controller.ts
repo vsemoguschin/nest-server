@@ -24,6 +24,11 @@ import { CreatePackerReportDto } from './dto/create-packer-report.dto';
 import { PackerShiftResponseDto } from './dto/packer-shift.dto';
 import { UpdatePackerReportDto } from './dto/update-packer-report.dto';
 import { CreatePackerShiftsDto } from './dto/create-packer-shifts.dto';
+import {
+  CreateMasterRepairReportDto,
+  UpdateMasterRepairReportDto,
+} from './dto/create-master-repair-report.dto';
+import { CreateOtherReportDto, UpdateOtherReportDto } from './dto/other-report.dto';
 
 @UseGuards(RolesGuard)
 @Controller('production')
@@ -105,6 +110,34 @@ export class ProductionController {
     return this.productionService.getMasterShifts(masterId, period);
   }
 
+  @Post('master-repair')
+  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  async createRepairReport(
+    @Body() createMasterRepairReportDto: CreateMasterRepairReportDto,
+  ) {
+    return this.productionService.createMasterRepairReport(
+      createMasterRepairReportDto,
+    );
+  }
+
+  @Patch('master-repair/:id')
+  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  async updateRepairReport(
+    @Param('id') id: string,
+    @Body() updateMasterRepairReportDto: UpdateMasterRepairReportDto,
+  ) {
+    return this.productionService.updateMasterRepairReport(
+      +id,
+      updateMasterRepairReportDto,
+    );
+  }
+
+  @Delete('master-repair/:id')
+  @Roles('ADMIN', 'G', 'DP')
+  async removeRepairReport(@Param('id') id: string) {
+    return this.productionService.deleteMasterRepairReport(+id);
+  }
+
   @Get('stat')
   @Roles('ADMIN', 'G', 'DP')
   async getStat(@Query('period') period: string) {
@@ -118,7 +151,7 @@ export class ProductionController {
 
   // Добавить в production/production.controller.ts после существующих роутов
   @Post('packer-report')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
   async createPackerReport(
     @Body() createPackerReportDto: CreatePackerReportDto,
   ) {
@@ -126,7 +159,7 @@ export class ProductionController {
   }
 
   @Get('packer/:id/reports')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
   async getPackerReports(
     @Query('period') period: string,
     @Param('id') id: string,
@@ -140,7 +173,7 @@ export class ProductionController {
   }
 
   @Patch('packer-report/:id')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
   async updatePackerReport(
     @Param('id') id: string,
     @Body() updatePackerReportDto: UpdatePackerReportDto,
@@ -158,6 +191,7 @@ export class ProductionController {
   }
 
   @Post('packer/:packerId/shifts')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
   async createPackerShifts(
     @Param('packerId', ParseIntPipe) packerId: number,
     @Body() dto: CreatePackerShiftsDto,
@@ -166,6 +200,7 @@ export class ProductionController {
   }
 
   @Get('packer/:packerId/shifts')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
   async getPackerShifts(
     @Param('packerId', ParseIntPipe) packerId: number,
     @Query('period') period: string,
@@ -179,7 +214,7 @@ export class ProductionController {
   }
 
   @Get('packers')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
   async getPackers(@CurrentUser() user: UserDto) {
     return this.productionService.getPackers(user);
   }
@@ -193,5 +228,25 @@ export class ProductionController {
       );
     }
     return this.productionService.getPackerStat(period);
+  }
+  @Post('other-report')
+  @Roles('ADMIN', 'G', 'DP', 'MASTER', 'PACKER')
+  async createOtherReport(@Body() createOtherReportDto: CreateOtherReportDto) {
+    return this.productionService.createOtherReport(createOtherReportDto);
+  }
+
+  @Patch('other-report/:id')
+  @Roles('ADMIN', 'G', 'DP', 'MASTER', 'PACKER')
+  async updateOtherReport(
+    @Param('id') id: string,
+    @Body() updateOtherReportDto: UpdateOtherReportDto,
+  ) {
+    return this.productionService.updateOtherReport(+id, updateOtherReportDto);
+  }
+
+  @Delete('other-report/:id')
+  @Roles('ADMIN', 'G', 'DP')
+  async removeOtherReport(@Param('id') id: string) {
+    return this.productionService.deleteOtherReport(+id);
   }
 }

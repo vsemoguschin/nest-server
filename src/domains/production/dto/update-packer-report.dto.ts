@@ -28,8 +28,18 @@ export class UpdatePackerReportDto {
 
   @IsOptional()
   @IsInt({ message: 'Количество вывесок должно быть целым числом' })
-  @Min(1, { message: 'Количество вывесок должно быть больше 0' })
+  @Min(0, { message: 'Количество вывесок должно быть больше 0' })
   items?: number;
+
+  @IsOptional()
+  @IsInt({ message: 'Количество блоков должно быть целым числом' })
+  @Min(0, { message: 'Количество блоков должно быть больше или равно 0' })
+  adapters?: number;
+
+  @IsOptional()
+  @IsInt({ message: 'Количество пленок должно быть целым числом' })
+  @Min(0, { message: 'Количество пленок должно быть больше или равно 0' })
+  lam?: number;
 
   @IsOptional()
   @IsInt({ message: 'Стоимость должна быть целым числом' })

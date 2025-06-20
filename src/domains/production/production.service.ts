@@ -14,6 +14,11 @@ import { UpdatePackerReportDto } from './dto/update-packer-report.dto';
 import { PackerShiftResponseDto } from './dto/packer-shift.dto';
 import { CreatePackerShiftsDto } from './dto/create-packer-shifts.dto';
 import axios from 'axios';
+import {
+  CreateMasterRepairReportDto,
+  UpdateMasterRepairReportDto,
+} from './dto/create-master-repair-report.dto';
+import { CreateOtherReportDto, UpdateOtherReportDto } from './dto/other-report.dto';
 const KAITEN_TOKEN = process.env.KAITEN_TOKEN;
 
 @Injectable()
@@ -33,7 +38,12 @@ export class ProductionService {
       };
     }
     if (['LOGIST'].includes(user.role.shortName)) {
-      return { tabs: [{ value: 'supplie', label: 'Закупки' }] };
+      return {
+        tabs: [
+          { value: 'supplie', label: 'Закупки' },
+          { value: 'package', label: 'Упаковщики' },
+        ],
+      };
     }
     if (['MASTER'].includes(user.role.shortName)) {
       return { tabs: [{ value: 'masters', label: 'Сборщики' }] };
@@ -116,8 +126,8 @@ export class ProductionService {
     });
   }
 
-  async getMasterReports(userId: number, period) {
-    return this.prisma.masterReport.findMany({
+  async getMasterReports(userId: number, period: string) {
+    const masterReports = await this.prisma.masterReport.findMany({
       where: {
         userId,
         date: {
@@ -126,6 +136,44 @@ export class ProductionService {
       },
       orderBy: { date: 'desc' },
     });
+
+    const masterRepairReports = await this.prisma.masterRepairReport.findMany({
+      where: {
+        userId,
+        date: {
+          startsWith: period,
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const masterOtherReports = await this.prisma.otherReport.findMany({
+      where: {
+        userId,
+        date: {
+          startsWith: period,
+        },
+      },
+      orderBy: { date: 'desc' },
+    })
+
+    return [
+      ...masterReports.map(report => ({
+        ...report,
+        key: `report-${report.id}`,
+      })),
+      ...masterRepairReports.map(report => ({
+        ...report,
+        key: `repair-${report.id}`,
+        isRepair: true,
+      })),
+      ...masterOtherReports.map(report => ({
+        ...report,
+        key: `other-${report.id}`,
+        isOther: true,
+        type: 'Другое',
+      })),
+    ].sort((a, b) => b.date.localeCompare(a.date));
   }
 
   async getMasterReportById(id: number) {
@@ -285,6 +333,127 @@ export class ProductionService {
     });
   }
 
+  async createMasterRepairReport(dto: CreateMasterRepairReportDto) {
+    const name = dto.name;
+    let dealId = 0;
+
+    if (dto.name.includes('easyneonwork.kaiten.ru/')) {
+      const linkSplit = dto.name.split('/');
+      const card_id = linkSplit[linkSplit.length - 1];
+
+      try {
+        const options = {
+          method: 'GET',
+          url: `https://easyneonwork.kaiten.ru/api/latest/cards/${card_id}`,
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${KAITEN_TOKEN}`,
+          },
+        };
+
+        const response = await axios.request(options);
+        const description = response.data.description;
+
+        if (description) {
+          const linkRegex =
+            /(https:\/\/(?:bluesales\.ru|easyneon.amocrm.ru)[^\]\s]+)/g;
+          const match = description.match(linkRegex);
+
+          if (match && match.length > 0) {
+            const link = match[0];
+            const deal = await this.prisma.deal.findFirst({
+              where: {
+                client: {
+                  chatLink: link,
+                },
+              },
+            });
+            dealId = deal?.id ?? 0;
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching Kaiten card:', error);
+      }
+    }
+
+    return this.prisma.masterRepairReport.create({
+      data: {
+        ...dto,
+        name,
+        dealId: dealId === 0 ? null : dealId,
+      },
+    });
+  }
+
+  async updateMasterRepairReport(id: number, dto: UpdateMasterRepairReportDto) {
+    const report = await this.prisma.masterRepairReport.findUnique({
+      where: { id },
+    });
+    if (!report) {
+      throw new NotFoundException(`Repair Report with ID ${id} not found`);
+    }
+    let dealId = 0;
+    if (dto.name && dto.name.includes('easyneonwork.kaiten.ru/')) {
+      const linkSplit = dto.name.split('/');
+      const card_id = linkSplit[linkSplit.length - 1];
+
+      try {
+        const options = {
+          method: 'GET',
+          url: `https://easyneonwork.kaiten.ru/api/latest/cards/${card_id}`,
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${KAITEN_TOKEN}`,
+          },
+        };
+
+        const response = await axios.request(options);
+        const description = response.data.description;
+
+        if (description) {
+          const linkRegex =
+            /(https:\/\/(?:bluesales\.ru|easyneon.amocrm.ru)[^\]\s]+)/g;
+          const match = description.match(linkRegex);
+
+          if (match && match.length > 0) {
+            const link = match[0];
+            const deal = await this.prisma.deal.findFirst({
+              where: {
+                client: {
+                  chatLink: link,
+                },
+              },
+            });
+            dealId = deal?.id ?? 0;
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching Kaiten card:', error);
+      }
+    }
+    return this.prisma.masterRepairReport.update({
+      where: { id },
+      data: {
+        ...dto,
+        dealId: dealId === 0 ? null : dealId,
+      },
+    });
+  }
+
+  async deleteMasterRepairReport(id: number) {
+    const report = await this.prisma.masterRepairReport.findUnique({
+      where: { id },
+    });
+    if (!report) {
+      throw new NotFoundException(`Repair Report with ID ${id} not found`);
+    }
+    return this.prisma.masterRepairReport.delete({
+      where: { id },
+    });
+  }
+
   async getStat(period: string) {
     // Проверка формата period (YYYY-MM)
     if (!/^\d{4}-\d{2}$/.test(period)) {
@@ -419,13 +588,17 @@ export class ProductionService {
       specialElsSumByDate,
     };
   }
-  
+
   async getPackers(user: UserDto) {
-    const userSearch = user.role.shortName === 'PACKER' ? user.id : { gt: 0 };
+    const userSearch = ['PACKER', 'LOGIST'].includes(user.role.shortName)
+      ? user.id
+      : { gt: 0 };
 
     const users = await this.prisma.user.findMany({
       where: {
-        role: { shortName: 'PACKER' },
+        role: {
+          shortName: { in: ['PACKER', 'LOGIST'] },
+        },
         id: userSearch,
       },
       select: {
@@ -437,7 +610,7 @@ export class ProductionService {
   }
 
   async createPackerReport(dto: CreatePackerReportDto) {
-    let name = dto.name;
+    const name = dto.name;
     let dealId = 0;
 
     if (dto.name.includes('easyneonwork.kaiten.ru/')) {
@@ -490,7 +663,7 @@ export class ProductionService {
   }
 
   async getPackerReports(userId: number, period: string) {
-    return this.prisma.packerReport.findMany({
+    const reports = await this.prisma.packerReport.findMany({
       where: {
         userId,
         date: {
@@ -499,6 +672,27 @@ export class ProductionService {
       },
       orderBy: { date: 'desc' },
     });
+    const packersOtherReports = await this.prisma.otherReport.findMany({
+      where: {
+        userId,
+        date: {
+          startsWith: period,
+        },
+      },
+      orderBy: { date: 'desc' },
+    })
+    return [
+      ...reports.map(report => ({
+        ...report,
+        key: `report-${report.id}`,
+      })),
+      ...packersOtherReports.map(report => ({
+        ...report,
+        key: `other-${report.id}`,
+        isOther: true,
+        type: 'Другое',
+      })),
+    ].sort((a, b) => b.date.localeCompare(a.date));
   }
 
   async updatePackerReport(id: number, dto: UpdatePackerReportDto) {
@@ -510,7 +704,7 @@ export class ProductionService {
     }
 
     let dealId = 0;
-    let name = dto.name;
+    const name = dto.name;
 
     if (dto.name && dto.name.includes('easyneonwork.kaiten.ru/')) {
       const linkSplit = dto.name.split('/');
@@ -658,7 +852,7 @@ export class ProductionService {
     const packers = await this.prisma.user.findMany({
       where: {
         role: {
-          shortName: 'PACKER',
+          shortName: { in: ['PACKER', 'LOGIST'] },
         },
       },
       select: {
@@ -736,5 +930,31 @@ export class ProductionService {
       shiftsSumByDate,
       itemsSumByDate,
     };
+  }
+
+  async createOtherReport(dto: CreateOtherReportDto) {
+    console.log(dto);
+    return this.prisma.otherReport.create({
+      data: { ...dto },
+    });
+  }
+  
+  async updateOtherReport(id: number, dto: UpdateOtherReportDto) {
+    const report = await this.prisma.otherReport.findUnique({ where: { id } });
+    if (!report) {
+      throw new NotFoundException(`Other Report with ID ${id} not found`);
+    }
+    return this.prisma.otherReport.update({
+      where: { id },
+      data: { ...dto },
+    });
+  }
+  
+  async deleteOtherReport(id: number) {
+    const report = await this.prisma.otherReport.findUnique({ where: { id } });
+    if (!report) {
+      throw new NotFoundException(`Other Report with ID ${id} not found`);
+    }
+    return this.prisma.otherReport.delete({ where: { id } });
   }
 }

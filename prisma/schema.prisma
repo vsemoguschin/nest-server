@@ -123,9 +123,11 @@ model User {
   salaryCorrections salaryCorrection[]
 
   masterReports   MasterReport[]
+  masterRepairReports   MasterRepairReport[]
   packerReports   PackerReport[]
   masterShifts    MasterShift[]
   packerShifts    PackerShift[]
+  otherReport     OtherReport[]
 }
 model ManagersPlan {
   id         Int        @id @default(autoincrement()) 
@@ -284,8 +286,9 @@ model Deal {
   statusHistory     DealStatusHistory[]
   audit             DealAudit[]
 
-  masterReports       MasterReport[]
-  packerReports       PackerReport[]
+  masterReports         MasterReport[]
+  masterRepairReports   MasterRepairReport[]
+  packerReports         PackerReport[]
 }
 
 // История изменения статуса
@@ -661,6 +664,30 @@ model SuppliesCategories  {
   name  String
 }
 
+model MasterRepairReport {
+  id            Int      @id @default(autoincrement())
+  date          String
+  name          String
+  grinding      Boolean  //Шлифовка 350р
+  unpackage     Boolean  //Распаковка стандарт 50
+  unpackageBig  Boolean  //Распаковка большая 100
+  smartContr    Boolean      //замена смарт контроллера 200
+  acoustics     Boolean   //Акустика 150
+  metrs         Float  // замена неона 130
+  els           Int  // замена элемента 70
+
+  type       String // Стандарт/Уличная/Смарт/РГБ
+  cost       Int
+  isPenalty  Boolean  @default(false)
+  comment    String   @default("")
+
+  userId     Int
+  user       User    @relation(fields: [userId], references: [id])
+
+  dealId     Int?
+  deal       Deal?   @relation(fields: [dealId], references: [id])
+}
+
 model MasterReport {
   id         Int      @id @default(autoincrement())
   date       String
@@ -669,8 +696,8 @@ model MasterReport {
   els        Int
   type       String
   cost       Int
-  // isPenalty  Boolean
-  // comment    String
+  isPenalty  Boolean  @default(false)
+  comment    String   @default("")
 
   userId     Int
   user       User    @relation(fields: [userId], references: [id])
@@ -686,10 +713,15 @@ model PackerReport {
   overSize     Boolean //Не размер
   isGift       Boolean //Не размер
   items        Int     //количество вывесок в заказе
+  adapters     Int      @default(0)
+  lam          Int      @default(0)
   cost         Int
   dimmers      Int  //количество диммеров
   dops         Int      @default(0)
   dopsComment  String   @default("")
+
+  isPenalty  Boolean  @default(false)
+  comment    String   @default("")
 
   userId       Int
   user         User    @relation(fields: [userId], references: [id])
@@ -709,6 +741,16 @@ model MasterShift {
 model PackerShift {
   id          Int     @id @default(autoincrement())
   shift_date  String //2025-05-01
+
+  userId      Int
+  user        User    @relation(fields: [userId], references: [id])
+}
+
+model OtherReport {
+  id          Int     @id @default(autoincrement())
+  date     String //2025-05-01
+  name     String
+  cost     String
 
   userId      Int
   user        User    @relation(fields: [userId], references: [id])
