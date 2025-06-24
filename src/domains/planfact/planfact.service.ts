@@ -7,6 +7,7 @@ import { UserDto } from '../users/dto/user.dto';
 const tToken = process.env.TB_TOKEN;
 
 export interface Operation {
+  operationId: string;
   operationDate: string;
   accountNumber: string;
   typeOfOperation: string;
@@ -31,6 +32,7 @@ export class PlanfactService {
 
   private mapOperation(op: any): Operation {
     let operationType = op.category;
+    console.log(op);
     if (op.category === 'selfTransferInner') {
       operationType = 'Перемещение';
     }
@@ -58,6 +60,7 @@ export class PlanfactService {
           : op.accountNumber;
 
     return {
+      operationId: op.operationId,
       operationDate: op.operationDate,
       accountNumber: accountLabel,
       typeOfOperation: operationType,
@@ -448,7 +451,87 @@ export class PlanfactService {
           role: 'Другое',
           value: otherReports.reduce((a, b) => a + b.cost, 0),
         },
+        {
+          role: 'Директор производства?',
+          value: 0,
+        },
+        {
+          role: 'Монтажники?',
+          value: 0,
+        },
+        {
+          role: 'Аренда?',
+          value: 0,
+        },
+        {
+          role: 'Содержание офиса?',
+          value: 0,
+        },
       ];
+    };
+
+    //зарплаты дизайнеров
+    const getDesignSalaries = async () => {
+      const designers = await this.prisma.user.findMany({
+        where: {
+          role: {
+            shortName: 'DIZ',
+          },
+        },
+        include: {
+          salaryPays: {
+            where: {
+              period,
+            },
+          },
+        },
+      });
+      return {
+        role: 'Дизайнеры',
+        value: designers.reduce(
+          (a, b) => a + b.salaryPays.reduce((a, b) => a + b.price, 0),
+          0,
+        ),
+        more: designers
+          .map((d) => ({
+            role: 'Дизайнер',
+            manager: d.fullName,
+            salary: +d.salaryPays.reduce((a, b) => a + b.price, 0).toFixed(2),
+          }))
+          .filter((d) => d.salary > 0),
+      };
+    };
+
+    //Зарплаты ведения
+    const getMOVSalaries = async () => {
+      const movs = await this.prisma.user.findMany({
+        where: {
+          role: {
+            shortName: 'MOV',
+          },
+        },
+        include: {
+          salaryPays: {
+            where: {
+              period,
+            },
+          },
+        },
+      });
+      return {
+        role: 'Менеджеры отдела ведения',
+        value: movs.reduce(
+          (a, b) => a + b.salaryPays.reduce((a, b) => a + b.price, 0),
+          0,
+        ),
+        more: movs
+          .map((d) => ({
+            role: 'Менеджеры отдела ведения',
+            manager: d.fullName,
+            salary: +d.salaryPays.reduce((a, b) => a + b.price, 0).toFixed(2),
+          }))
+          .filter((d) => d.salary > 0),
+      };
     };
 
     return {
@@ -468,13 +551,57 @@ export class PlanfactService {
           commercialSalaries: [
             ...commercialMOPSalaries,
             {
-              value: commercialROPSalaries,
+              value: +commercialROPSalaries.toFixed(2),
               role: 'РОПы',
               more: data.ropData,
+            },
+            {
+              value: 100_000,
+              role: 'Коммерческий директор?',
+            },
+            {
+              value: 0,
+              role: 'Отдел маркетинга?',
+            },
+            await getMOVSalaries(),
+          ],
+        },
+        design: {
+          designSalaries: [
+            {
+              value: 70000,
+              role: 'Руководитель отдела дизайна',
+            },
+            await getDesignSalaries(),
+          ],
+        },
+        hr: {
+          hrSalaries: [
+            {
+              role: 'Зарплата HR?',
+              value: 0,
+            },
+          ],
+          hrServices: [
+            {
+              value: 0,
+              role: 'Сервисы для найма?',
             },
           ],
         },
         adExpenses: adExpensesBySource,
+        others: [
+          {
+            value: 0,
+            role: 'Другое?',
+          },
+        ],
+        bookkeeper: [
+          {
+            value: 0,
+            role: 'Бухгалтер?',
+          },
+        ]
       },
     };
   }

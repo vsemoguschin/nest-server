@@ -18,7 +18,10 @@ import {
   CreateMasterRepairReportDto,
   UpdateMasterRepairReportDto,
 } from './dto/create-master-repair-report.dto';
-import { CreateOtherReportDto, UpdateOtherReportDto } from './dto/other-report.dto';
+import {
+  CreateOtherReportDto,
+  UpdateOtherReportDto,
+} from './dto/other-report.dto';
 const KAITEN_TOKEN = process.env.KAITEN_TOKEN;
 
 @Injectable()
@@ -155,19 +158,19 @@ export class ProductionService {
         },
       },
       orderBy: { date: 'desc' },
-    })
+    });
 
     return [
-      ...masterReports.map(report => ({
+      ...masterReports.map((report) => ({
         ...report,
         key: `report-${report.id}`,
       })),
-      ...masterRepairReports.map(report => ({
+      ...masterRepairReports.map((report) => ({
         ...report,
         key: `repair-${report.id}`,
         isRepair: true,
       })),
-      ...masterOtherReports.map(report => ({
+      ...masterOtherReports.map((report) => ({
         ...report,
         key: `other-${report.id}`,
         isOther: true,
@@ -564,9 +567,13 @@ export class ProductionService {
         (sum, { regular, special }) => sum + regular + special,
         0,
       );
+      const totalElsRating = Object.values(elsByDate).reduce(
+        (sum, { regular, special }) => sum + regular + special * 1.5,
+        0,
+      );
       const totalShifts = master.masterShifts.length;
       const rating =
-        totalShifts > 0 ? Number((totalEls / totalShifts / 10).toFixed(2)) : 0;
+        totalShifts > 0 ? Number((totalElsRating / totalShifts / 10).toFixed(2)) : 0;
 
       return {
         masterId: master.id,
@@ -680,13 +687,13 @@ export class ProductionService {
         },
       },
       orderBy: { date: 'desc' },
-    })
+    });
     return [
-      ...reports.map(report => ({
+      ...reports.map((report) => ({
         ...report,
         key: `report-${report.id}`,
       })),
-      ...packersOtherReports.map(report => ({
+      ...packersOtherReports.map((report) => ({
         ...report,
         key: `other-${report.id}`,
         isOther: true,
@@ -938,7 +945,7 @@ export class ProductionService {
       data: { ...dto },
     });
   }
-  
+
   async updateOtherReport(id: number, dto: UpdateOtherReportDto) {
     const report = await this.prisma.otherReport.findUnique({ where: { id } });
     if (!report) {
@@ -949,7 +956,7 @@ export class ProductionService {
       data: { ...dto },
     });
   }
-  
+
   async deleteOtherReport(id: number) {
     const report = await this.prisma.otherReport.findUnique({ where: { id } });
     if (!report) {
