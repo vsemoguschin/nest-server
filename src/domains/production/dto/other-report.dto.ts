@@ -1,4 +1,4 @@
-import { IsString, IsDateString, IsNumber, IsOptional } from 'class-validator';
+import { IsString, IsDateString, IsNumber, IsOptional, IsInt, Min } from 'class-validator';
 
 export class CreateOtherReportDto {
   @IsDateString({}, { message: 'Дата должна быть в формате YYYY-MM-DD' })
@@ -7,8 +7,9 @@ export class CreateOtherReportDto {
   @IsString({ message: 'Название должен быть строкой' })
   name: string;
 
-  @IsString({ message: 'Стоимость должна быть строкой' })
-  cost: string;
+  @IsInt({ message: 'Стоимость должна быть целым числом' })
+  @Min(0, { message: 'Стоимость не может быть отрицательной' })
+  cost: number;
 
   @IsNumber({}, { message: 'ID пользователя должен быть числом' })
   userId: number;
@@ -24,6 +25,7 @@ export class UpdateOtherReportDto {
   name?: string;
 
   @IsOptional()
-  @IsString({ message: 'Стоимость должна быть строкой' })
-  cost?: string;
+  @IsInt({ message: 'Стоимость должна быть целым числом' })
+  @Min(0, { message: 'Стоимость не может быть отрицательной' })
+  cost?: number;
 }
