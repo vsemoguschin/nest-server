@@ -598,23 +598,29 @@ export class DealsService {
         where: { dealId },
       });
 
+      await prisma.dealAudit.deleteMany({
+        where: {
+          dealId,
+        },
+      });
+
       // Удаляем саму сделку
       const deletedDeal = await prisma.deal.delete({
         where: { id: dealId },
       });
 
       // Формируем комментарий для аудита
-      const auditComment = `Удалил сделку ${dealExists.title}(${dealId})`;
+      // const auditComment = `Удалил сделку ${dealExists.title}(${dealId})`;
 
       // Создаем запись в аудите
-      await this.prisma.dealAudit.create({
-        data: {
-          dealId: dealExists.id,
-          userId: user.id,
-          action: 'Удаление сделки',
-          comment: auditComment,
-        },
-      });
+      // await this.prisma.dealAudit.create({
+      //   data: {
+      //     dealId: dealExists.id,
+      //     userId: user.id,
+      //     action: 'Удаление сделки',
+      //     comment: auditComment,
+      //   },
+      // });
 
       return deletedDeal;
     });
