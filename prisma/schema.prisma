@@ -750,7 +750,7 @@ model OtherReport {
   id          Int     @id @default(autoincrement())
   date     String //2025-05-01
   name     String
-  cost     String
+  cost     Int
 
   userId      Int
   user        User    @relation(fields: [userId], references: [id])

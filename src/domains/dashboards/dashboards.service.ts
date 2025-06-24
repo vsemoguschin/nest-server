@@ -659,15 +659,18 @@ export class DashboardsService {
     // console.log(datas[0]);
 
     // console.log(workSpaces);
-    const ropPlan = await this.prisma.managersPlan.findFirst({
+    const ropPlan = await this.prisma.managersPlan.findMany({
       where: {
         period,
         user: {
           role: {
             shortName: 'DO',
           },
-          fullName: 'Юлия Куштанова',
+          fullName: { in: ['Юлия Куштанова', 'Сергей Иванов'] },
         },
+      },
+      include: {
+        user: true,
       },
     });
 
@@ -699,7 +702,8 @@ export class DashboardsService {
       // console.log(dealPrice, ` сделки пространства ${w.title}`);
 
       let isOverRopPlan = false;
-      const ropPlanValue = ropPlan?.plan || 0;
+      const ropPlanValue =
+        ropPlan.find((p) => p.user.workSpaceId === w.id)?.plan || 0;
       const workSpaceDealSales = w.deals.reduce((acc, d) => acc + d.price, 0);
       const workSpaceDopSales = w.dops.reduce((acc, d) => acc + d.price, 0);
       const workSpaceTotalSales = workSpaceDealSales + workSpaceDopSales;
@@ -707,6 +711,21 @@ export class DashboardsService {
       if (workSpaceTotalSales > ropPlanValue && ropPlanValue > 0) {
         isOverRopPlan = true;
       }
+
+      const ropData = () => {
+        const paymentsThisPeriod = w.payments.filter((p) =>
+          p.date.includes(period),
+        );
+        const paymentsLastPeriod = w.payments.filter((p) =>
+          p.date.includes(period),
+        );
+        return {
+          isOverRopPlan,
+          salaryThisPeriod: isOverRopPlan
+            ? 50000 + paymentsThisPeriod.reduce((a, b) => a + b.price, 0) * 0.01
+            : 50000 + paymentsThisPeriod.reduce((a, b) => a + b.price, 0) * 0.005,
+        };
+      };
 
       const userData = w.users
         .map((m) => {
@@ -1027,6 +1046,7 @@ export class DashboardsService {
           return {
             //основное
             fullName: m.fullName,
+            role: m.role.fullName,
             id: m.id,
             workSpace: w.title,
             plan: m.managersPlans[0]?.plan ?? 0,
@@ -1252,10 +1272,15 @@ export class DashboardsService {
           }
         });
 
-      return userData;
+      return { userData, ropData: ropData() };
     });
 
-    return { users: wdata, vkTop, b2bTop };
+    return {
+      users: wdata.flatMap((wd) => wd.userData),
+      vkTop,
+      b2bTop,
+      ropData: wdata.flatMap((d) => d.ropData),
+    };
   }
 
   // satistics

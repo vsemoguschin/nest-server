@@ -12,6 +12,8 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { PlanfactService } from './planfact.service';
 import { ApiTags } from '@nestjs/swagger';
 import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { UserDto } from '../users/dto/user.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('planfact')
@@ -68,12 +70,12 @@ export class PlanfactController {
 
   @Get('pl')
   @Roles('ADMIN', 'G', 'KD')
-  async getPLDatas(@Query('period') period: string) {
+  async getPLDatas(@Query('period') period: string, @CurrentUser() user: UserDto ) {
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
       throw new BadRequestException(
         'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
       );
     }
-    return this.planfactService.getPLDatas(period);
+    return this.planfactService.getPLDatas(period, user);
   }
 }
