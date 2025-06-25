@@ -28,7 +28,7 @@ export class SuppliesController {
   }
 
   @Get()
-  @Roles('ADMIN', 'G', 'LOGIST', 'DP')
+  @Roles('ADMIN', 'G', 'LOGIST', 'DP', 'FINANCIER')
   async getSupplies(
     @Query('period') period: string,
   ): Promise<SupplieCreateDto[]> {

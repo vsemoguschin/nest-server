@@ -54,6 +54,9 @@ export class ProductionService {
     if (['PACKER'].includes(user.role.shortName)) {
       return { tabs: [{ value: 'package', label: 'Упаковщики' }] };
     }
+    if (['FINANCIER'].includes(user.role.shortName)) {
+      return { tabs: [{ value: 'supplie', label: 'Закупки' },] };
+    }
   }
 
   async getMasters(user: UserDto) {

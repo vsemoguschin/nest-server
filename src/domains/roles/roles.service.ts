@@ -55,6 +55,7 @@ export class RolesService {
             'BUKH',
             'ROV',
             'MOV',
+            'FINANCIER'
           ],
         }, // Фильтруем по списку shortName
       },
