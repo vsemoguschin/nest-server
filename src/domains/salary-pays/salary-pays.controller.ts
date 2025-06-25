@@ -34,7 +34,7 @@ export class SalaryPaysController {
 
   // Создание записи
   @Post()
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'DP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'DP', 'ROD', 'ROV')
   @ApiOperation({ summary: 'Создать запись о выплате зарплаты' })
   @ApiResponse({ status: 201, description: 'Запись успешно создана' })
   async create(@Body() createDto: SalaryPayCreateDto) {
@@ -62,7 +62,7 @@ export class SalaryPaysController {
 
   // Получение записей по периоду
   @Get()
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'BUKH', 'DP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'BUKH', 'DP', 'ROD', 'ROV')
   @ApiOperation({ summary: 'Получить записи о выплатах по периоду' })
   @ApiQuery({
     name: 'period',
@@ -81,7 +81,7 @@ export class SalaryPaysController {
 
   // Удаление записи
   @Delete(':id')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'BUKH', 'DP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'BUKH', 'DP', 'ROD', 'ROV')
   @ApiOperation({ summary: 'Удалить запись о выплате' })
   @ApiParam({ name: 'id', description: 'ID записи', type: 'integer' })
   @ApiNoContentResponse({ description: 'Запись успешно удалена' })

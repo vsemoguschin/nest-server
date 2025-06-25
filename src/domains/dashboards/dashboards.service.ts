@@ -723,7 +723,8 @@ export class DashboardsService {
           isOverRopPlan,
           salaryThisPeriod: isOverRopPlan
             ? 50000 + paymentsThisPeriod.reduce((a, b) => a + b.price, 0) * 0.01
-            : 50000 + paymentsThisPeriod.reduce((a, b) => a + b.price, 0) * 0.005,
+            : 50000 +
+              paymentsThisPeriod.reduce((a, b) => a + b.price, 0) * 0.005,
         };
       };
 
@@ -2138,6 +2139,7 @@ export class DashboardsService {
           select: {
             id: true,
             fullName: true,
+            deletedAt: true,
           },
         },
       },
@@ -2158,7 +2160,10 @@ export class DashboardsService {
           status: p.status,
         }))
         .sort((a, b) => a.fullName.localeCompare(b.fullName)),
-      users: w.users,
+      users: w.users.map((u) => ({
+        id: u.id,
+        fullName: u.fullName + (u.deletedAt !== null ? ' (Уволен)' : ''),
+      })),
       totals: [
         {
           title: 'Выплачено',

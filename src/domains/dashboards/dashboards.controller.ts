@@ -122,7 +122,7 @@ export class DashboardsController {
   //Получить данные по выплатам за указанный период
   @Get('/pays')
   @ApiOperation({ summary: 'Получить данные по выплатам за указанный период' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'BUKH', 'DP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'BUKH', 'DP', 'ROD', 'ROV') 
   @ApiResponse({
     status: 200,
     description: 'Данные по выплатам успешно получены.',
