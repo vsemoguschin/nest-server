@@ -4,34 +4,23 @@ import axios from 'axios';
 const prisma = new PrismaClient();
 
 async function main() {
-  const user = await prisma.user.deleteMany({
-    where: {
-      id: {
-        in: [74, 41, 42],
-      },
+  const accounts = [
+    {
+      name: 'Основной счет 7213',
+      accountNumber: '40802810800000977213',
+      balance: 0,
+      type: 'Безналичный',
     },
-  });
-
-  await prisma.refreshToken.deleteMany({
-    where: {
-      userId: {
-        in: [83, 40],
-      },
+    {
+      name: 'Кредитный счет 4658',
+      accountNumber: '40802810900002414658',
+      balance: 0,
+      type: 'Безналичный',
     },
+  ];
+  const data = await prisma.planFactAccount.createMany({
+    data: accounts,
   });
-
-  const user2 = await prisma.user.deleteMany({
-    where: {
-      id: {
-        in: [83, 40],
-      },
-    },
-    // include: {
-    //   refreshTokens: true,
-    // },
-  });
-
-  console.log(user);
 }
 
 main();

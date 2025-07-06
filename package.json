@@ -20,7 +20,6 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "doc": "npx typedoc --out docs src",
     "git-push": "git add . && read -p 'Commit message: ' msg && git commit -m \"$msg\" && git push origin main"
-
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -33,7 +32,7 @@
     "@prisma/client": "^6.4.0",
     "@sentry/node": "^8.54.0",
     "apollo-server-express": "^3.13.0",
-    "axios": "^1.8.4",
+    "axios": "^1.10.0",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -49,7 +48,9 @@
     "prom-client": "^15.1.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "socks-proxy-agent": "^8.0.5",
     "swagger-ui-express": "^5.0.1",
+    "uuid": "^11.1.0",
     "winston": "^3.17.0"
   },
   "devDependencies": {
@@ -67,6 +68,7 @@
     "@types/node": "^22.10.7",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
+    "@types/uuid": "^10.0.0",
     "eslint": "^9.19.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.3",

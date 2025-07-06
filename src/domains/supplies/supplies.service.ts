@@ -60,6 +60,9 @@ export class SuppliesService {
       include: {
         positions: true,
       },
+      orderBy: {
+        date: 'desc',
+      },
     });
   }
 

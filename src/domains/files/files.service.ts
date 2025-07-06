@@ -7,7 +7,7 @@ export class FilesService {
   constructor(private readonly prisma: PrismaService) {}
   private readonly YANDEX_DISK_API =
     'https://cloud-api.yandex.net/v1/disk/resources/upload';
-  
+
   private readonly OAUTH_TOKEN = process.env.YA_TOKEN; // Замените на ваш OAuth-токен
 
   async uploadToYandexDisk(
@@ -70,6 +70,29 @@ export class FilesService {
         preview: md.data.sizes[0].url || '',
         directory,
         path: filePath,
+      }; // Возвращаем публичную ссылку
+    } catch (error) {
+      console.error('Ошибка при загрузке файла на Яндекс.Диск:', error);
+      throw error;
+    }
+  }
+
+  async getFilePath(filePath: string): Promise<any> {
+    try {
+      const md = await axios.get(
+        'https://cloud-api.yandex.net/v1/disk/resources',
+        {
+          params: {
+            path: filePath,
+          },
+          headers: { Authorization: `OAuth ${process.env.YA_TOKEN}` },
+        },
+      );
+
+      // console.log(md.data);
+
+      return {
+        preview: md.data.sizes[0].url || '',
       }; // Возвращаем публичную ссылку
     } catch (error) {
       console.error('Ошибка при загрузке файла на Яндекс.Диск:', error);

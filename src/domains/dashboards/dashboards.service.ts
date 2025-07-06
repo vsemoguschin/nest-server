@@ -999,18 +999,34 @@ export class DashboardsService {
               dealsInfo.reduce((a, b) => a + b.paid, 0) * bonusPercentage;
           }
           if (w.title === 'ВК') {
-            if (totalSales < 400_000) {
-              bonusPercentage = 0.03;
-            } else if (totalSales >= 400_000 && totalSales < 600_000) {
-              bonusPercentage = 0.05;
-            } else if (totalSales >= 600_000 && totalSales < 700_000) {
-              bonusPercentage = 0.06;
-            } else if (totalSales >= 700_000 && totalSales < 1_000_000) {
-              bonusPercentage = 0.07;
-            } else if (totalSales >= 1_000_000) {
-              bonusPercentage = 0.07;
-              totalSalary += 10_000; // Премия за достижение 1 млн
-              bonus += 10_000; // Премия за достижение 1 млн
+            if (!m.isIntern) {
+              if (totalSales < 400_000) {
+                bonusPercentage = 0.03;
+              } else if (totalSales >= 400_000 && totalSales < 600_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales >= 600_000 && totalSales < 700_000) {
+                bonusPercentage = 0.06;
+              } else if (totalSales >= 700_000 && totalSales < 1_000_000) {
+                bonusPercentage = 0.07;
+              } else if (totalSales >= 1_000_000) {
+                bonusPercentage = 0.07;
+                totalSalary += 10_000; // Премия за достижение 1 млн
+                bonus += 10_000; // Премия за достижение 1 млн
+              }
+            } else {
+              if (totalSales < 250_000) {
+                bonusPercentage = 0.03;
+              } else if (totalSales >= 250_000 && totalSales < 450_000) {
+                bonusPercentage = 0.05;
+              } else if (totalSales >= 450_000 && totalSales < 550_000) {
+                bonusPercentage = 0.06;
+              } else if (totalSales >= 550_000 && totalSales < 850_000) {
+                bonusPercentage = 0.07;
+              } else if (totalSales >= 850_000) {
+                bonusPercentage = 0.07;
+                totalSalary += 10_000; // Премия за достижение 850k
+                bonus += 10_000; // Премия за достижение 850k
+              }
             }
             dopPays =
               +dopsInfo.reduce((a, b) => a + b.paid, 0) * bonusPercentage;
@@ -1422,9 +1438,56 @@ export class DashboardsService {
             date: {
               startsWith: period,
             },
+            deal: {
+              status: { not: 'Возврат' },
+              reservation: false,
+            },
           },
           include: {
-            deal: true,
+            deal: {
+              include: {
+                dops: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const sendDeliveries = await this.prisma.delivery.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+        status: 'Отправлена',
+        deal: {
+          status: { not: 'Возврат' },
+          reservation: false,
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
+          },
+        },
+      },
+    });
+    const deliveredDeliveries = await this.prisma.delivery.findMany({
+      where: {
+        deliveredDate: {
+          startsWith: period,
+        },
+        status: 'Вручена',
+        deal: {
+          status: { not: 'Возврат' },
+          reservation: false,
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
           },
         },
       },
@@ -1829,19 +1892,23 @@ export class DashboardsService {
 
       // доставки
       const deliveries = w.deliveries;
-      data.sendDeliveriesPrice = deliveries
-        .filter((d) => ['Отправлена'].includes(d.status))
-        .reduce((acc, d) => acc + d.deal.price, 0);
-      data.deliveredDeliveriesPrice = deliveries
-        .filter((d) => ['Вручена'].includes(d.status))
-        .reduce((acc, d) => acc + d.deal.price, 0);
+      data.sendDeliveriesPrice = sendDeliveries
+        .filter((d) => d.workSpaceId === w.id)
+        .reduce(
+          (acc, d) =>
+            acc + (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+          0,
+        );
+      data.deliveredDeliveriesPrice = deliveredDeliveries
+        .filter((d) => d.workSpaceId === w.id)
+        .reduce(
+          (acc, d) =>
+            acc + (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+          0,
+        );
 
-      data.sendDeliveries = deliveries.filter((d) =>
-        ['Отправлена'].includes(d.status),
-      ).length;
-      data.deliveredDeliveries = deliveries.filter((d) =>
-        ['Вручена'].includes(d.status),
-      ).length;
+      data.sendDeliveries = sendDeliveries.length;
+      data.deliveredDeliveries = deliveredDeliveries.length;
       data.freeDeliveries = deliveries.filter(
         (d) => d.type === 'Бесплатно',
       ).length;

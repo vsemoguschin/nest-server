@@ -2,7 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -14,6 +17,8 @@ import { ApiTags } from '@nestjs/swagger';
 import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserDto } from '../users/dto/user.dto';
+import { CreateOperationDto } from './dto/create-operation.dto';
+import { UpdateOperationDto } from './dto/update-operation.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('planfact')
@@ -21,12 +26,19 @@ import { UserDto } from '../users/dto/user.dto';
 export class PlanfactController {
   constructor(private readonly planfactService: PlanfactService) {}
 
+  @Get('accounts')
+  @Roles('ADMIN', 'G', 'KD')
+  async getBankAccounts() {
+    return this.planfactService.getBankAccounts();
+  }
+
   @Get('operations')
   @Roles('ADMIN', 'G', 'KD')
   async getOperationsFromRange(
     @Query('start') start: string,
     @Query('end') end: string,
     @Query('limit') limit: number,
+    @Query('accountId') accountId: number,
   ) {
     if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
       throw new BadRequestException(
@@ -41,13 +53,50 @@ export class PlanfactController {
     return this.planfactService.getOperationsFromRange(
       { from: start, to: end },
       limit,
+      accountId,
     );
   }
 
-  @Get('operations')
+  @Patch('operations/:operationId/expense-category')
   @Roles('ADMIN', 'G', 'KD')
-  async getBankAccounts() {
-    return this.planfactService.getBankAccounts();
+  async assignExpenseCategory(
+    @Param('operationId') operationId: string,
+    @Body('expenseCategoryId') expenseCategoryId: number,
+  ) {
+    return this.planfactService.assignExpenseCategory(
+      operationId,
+      expenseCategoryId,
+    );
+  }
+
+  @Post('operation')
+  @Roles('ADMIN', 'G', 'KD')
+  async createOperation(@Body() createOperationDto: CreateOperationDto) {
+    return this.planfactService.createOperation(createOperationDto);
+  }
+
+  @Patch('operation/:operationId')
+  @Roles('ADMIN', 'G', 'KD')
+  async updateOperation(@Param('operationId') operationId: string, @Body() updateOperationDto: UpdateOperationDto) {
+    return this.planfactService.updateOperation(operationId, updateOperationDto);
+  }
+
+  @Delete('operation/:operationId')
+  @Roles('ADMIN', 'G', 'KD')
+  async deleteOperation(@Param('operationId') operationId: string) {
+    return this.planfactService.deleteOperation(operationId);
+  }
+
+  @Get('expense-categories')
+  @Roles('ADMIN', 'G', 'KD')
+  async getExpenseCategories(@Query('operationType') operationType?: string) {
+    return this.planfactService.getExpenseCategories(operationType);
+  }
+
+  @Get('counter-parties')
+  @Roles('ADMIN', 'G', 'KD')
+  async getCounterParties() {
+    return this.planfactService.getCounterParties();
   }
 
   @Get('categories')
@@ -62,15 +111,12 @@ export class PlanfactController {
     return this.planfactService.createAccount(dto);
   }
 
-  @Get('accounts')
-  @Roles('ADMIN', 'G', 'KD')
-  async createPaymentLink() {
-    return this.planfactService.getBankAccounts();
-  }
-
   @Get('pl')
   @Roles('ADMIN', 'G', 'KD')
-  async getPLDatas(@Query('period') period: string, @CurrentUser() user: UserDto ) {
+  async getPLDatas(
+    @Query('period') period: string,
+    @CurrentUser() user: UserDto,
+  ) {
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
       throw new BadRequestException(
         'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',

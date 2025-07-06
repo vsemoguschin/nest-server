@@ -8,6 +8,8 @@ import { CreateDealDto } from './dto/deal-create.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { UpdateDealDto } from './dto/deal-update.dto';
 import { UpdateDealersDto } from './dto/dealers-update.dto';
+import { FilesService } from '../files/files.service';
+import axios from 'axios';
 
 const useMyGetDaysDifference = (
   dateString1: string,
@@ -27,7 +29,10 @@ const useMyGetDaysDifference = (
 
 @Injectable()
 export class DealsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // private readonly filesService: FilesService,
+  ) {}
 
   async create(createDealDto: CreateDealDto, user: UserDto) {
     const newDeal = await this.prisma.deal.create({
@@ -445,6 +450,28 @@ export class DealsService {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 1)[0]?.status;
     deal.status = deliveryStatus ?? 'Создана';
+
+    const { reviews } = deal;
+    if (reviews.length > 0) {
+      await Promise.all(
+        reviews.map(async (review, i) => {
+          const filePath = review.file[0].path;
+          const md = await axios.get(
+            'https://cloud-api.yandex.net/v1/disk/resources',
+            {
+              params: {
+                path: filePath,
+              },
+              headers: { Authorization: `OAuth ${process.env.YA_TOKEN}` },
+            },
+          );
+          // console.log(md.data.sizes[0].url);
+          // console.log(reviews[i].file[0].path);
+        
+          reviews[i].file[0].preview = md.data.sizes[0].url || '';
+        }),
+      );
+    }
 
     return deal;
   }
