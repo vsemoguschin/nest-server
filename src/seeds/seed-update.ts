@@ -7,6 +7,14 @@ async function main() {
   try {
     await prisma.operation.deleteMany({});
     await prisma.operationPosition.deleteMany({});
+    await prisma.operationPosition.deleteMany();
+    await prisma.operation.deleteMany({
+      where: {
+        deletedAt: {
+          not: null,
+        },
+      },
+    });
   } catch (e) {
     console.log(e);
   }
