@@ -1,36 +1,54 @@
-import { IsDateString, IsNumber, IsOptional, IsString, IsNotEmpty, IsIn } from 'class-validator';
+import {
+  IsString,
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+
+class OperationPositionDto {
+  @IsOptional()
+  @IsInt()
+  id?: number;
+
+  @IsNumber()
+  amount: number;
+
+  @IsOptional()
+  @IsInt()
+  counterPartyId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  expenseCategoryId?: number | null;
+}
 
 export class UpdateOperationDto {
-  @IsDateString()
-  @IsNotEmpty()
-  operationDate: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @IsIn(['Перемещение', 'Поступление', 'Выплата', 'Начисление'])
-  operationType: string;
-
-  @IsString()
   @IsOptional()
+  @IsDateString()
+  operationDate?: string;
+
+  @IsOptional()
+  @IsString()
+  operationType?: string;
+
+  @IsOptional()
+  @IsString()
   description?: string;
 
-  @IsString()
   @IsOptional()
+  @IsString()
   payPurpose?: string;
 
-  @IsNumber()
-  @IsNotEmpty()
-  accountAmount: number;
-
-  @IsNumber()
-  @IsOptional()
-  expenseCategoryId?: number;
-
-  @IsNumber()
-  @IsOptional()
-  counterPartyId?: number;
-
-  @IsNumber()
-  @IsNotEmpty()
+  @IsInt()
   accountId: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OperationPositionDto)
+  operationPositions?: OperationPositionDto[];
 }

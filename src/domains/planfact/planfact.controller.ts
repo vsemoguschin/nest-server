@@ -19,6 +19,8 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
+import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
+import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('planfact')
@@ -57,17 +59,17 @@ export class PlanfactController {
     );
   }
 
-  @Patch('operations/:operationId/expense-category')
-  @Roles('ADMIN', 'G', 'KD')
-  async assignExpenseCategory(
-    @Param('operationId') operationId: string,
-    @Body('expenseCategoryId') expenseCategoryId: number,
-  ) {
-    return this.planfactService.assignExpenseCategory(
-      operationId,
-      expenseCategoryId,
-    );
-  }
+  // @Patch('operations/:operationId/expense-category')
+  // @Roles('ADMIN', 'G', 'KD')
+  // async assignExpenseCategory(
+  //   @Param('operationId') operationId: string,
+  //   @Body('expenseCategoryId') expenseCategoryId: number,
+  // ) {
+  //   return this.planfactService.assignExpenseCategory(
+  //     operationId,
+  //     expenseCategoryId,
+  //   );
+  // }
 
   @Post('operation')
   @Roles('ADMIN', 'G', 'KD')
@@ -87,16 +89,34 @@ export class PlanfactController {
     return this.planfactService.deleteOperation(operationId);
   }
 
+  @Post('expense-categories')
+  @Roles('ADMIN', 'G', 'KD')
+  async createExpenseCategory(@Body() createExpenseCategoryDto: CreateExpenseCategoryDto) {
+    return this.planfactService.createExpenseCategory(createExpenseCategoryDto);
+  }
+
   @Get('expense-categories')
   @Roles('ADMIN', 'G', 'KD')
   async getExpenseCategories(@Query('operationType') operationType?: string) {
     return this.planfactService.getExpenseCategories(operationType);
   }
 
+  @Get('expense-categories-by-type')
+  @Roles('ADMIN', 'G', 'KD')
+  async getExpenseCategoriesByType(@Query('type') type: string) {
+    return this.planfactService.getExpenseCategoriesByType(type);
+  }
+
   @Get('counter-parties')
   @Roles('ADMIN', 'G', 'KD')
   async getCounterParties() {
     return this.planfactService.getCounterParties();
+  }
+
+  @Post('counter-parties')
+  @Roles('ADMIN', 'G', 'KD')
+  async createCounterParty(@Body() createCounterPartyDto: CreateCounterPartyDto) {
+    return this.planfactService.createCounterParty(createCounterPartyDto);
   }
 
   @Get('categories')

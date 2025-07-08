@@ -736,17 +736,21 @@ model OtherReport {
 
 //планфакт ----------
 model ExpenseCategory {
-  id              Int                @id @default(autoincrement())
-  name            String
-  type            String             // Тип категории: Доходы, Расходы, Активы, Обязательства, Капитал
-  description     String?
-  parentId        Int?               // ID родительской категории (если есть)
-  parent          ExpenseCategory?   @relation("CategoryRelation", fields: [parentId], references: [id], onDelete: SetNull)
-  children        ExpenseCategory[]  @relation("CategoryRelation")
-  operations      Operation[]        // Операции, связанные с категорией (только для листовых категорий)
-  counterParties  CounterParty[]
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  id                     Int                @id @default(autoincrement())
+  name                   String
+  type                   String             // Тип категории: Доходы, Расходы, Активы, Обязательства, Капитал
+  description            String?
+  parentId               Int?               // ID родительской категории (если есть)
+  parent                 ExpenseCategory?   @relation("CategoryRelation", fields: [parentId], references: [id], onDelete: SetNull)
+  children               ExpenseCategory[]  @relation("CategoryRelation")
+  // operations             Operation[]        // Операции, связанные с категорией (только для листовых категорий)
+  counterPartiesIncome   CounterParty[]     @relation("CounterPartyIncome")
+  counterPartiesOutcome  CounterParty[]     @relation("CounterPartyOutcome")
+
+  operationPositions     OperationPosition[]
+
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 }
 
 model PlanFactAccount {
@@ -772,17 +776,19 @@ model Operation {
   category           String    @default("")
   description        String    @default("")
   payPurpose         String    @default("")
-  accountAmount      Float
+  // accountAmount      Float
   isCreated          Boolean   @default(false)
 
-  expenseCategoryId  Int?            // Связь с категорией (только листовая категория)
-  expenseCategory    ExpenseCategory?  @relation(fields: [expenseCategoryId], references: [id])
+  // expenseCategoryId  Int?            // Связь с категорией (только листовая категория)
+  // expenseCategory    ExpenseCategory?  @relation(fields: [expenseCategoryId], references: [id])
 
   accountId          Int
   account            PlanFactAccount   @relation(fields: [accountId], references: [id])
 
-  counterPartyId     Int?
-  counterParty       CounterParty?      @relation(fields: [counterPartyId], references: [id])
+  // counterPartyId     Int?
+  // counterParty       CounterParty?      @relation(fields: [counterPartyId], references: [id])
+
+  operationPositions OperationPosition[]
 
   updatedAt          DateTime          @updatedAt
   deletedAt          DateTime?
@@ -791,7 +797,7 @@ model Operation {
 model CounterParty {
   id                 Int               @id @default(autoincrement())
   title              String
-  type               String  //Плательщик или Получатель Смешанный
+  type               String  @default("") // Плательщик/Получатель/Смешанный
   inn                String  @default("")
   kpp                String  @default("")
   account            String  @default("")
@@ -799,8 +805,25 @@ model CounterParty {
   bankName           String  @default("")
   contrAgentGroup    String  @default("") // Банки/Гос. органы/Клиенты/Поставщики/Сотрудники 
 
-  expenseCategoryId  Int?            // Связь с категорией (только листовая категория)
-  expenseCategory    ExpenseCategory?  @relation(fields: [expenseCategoryId], references: [id])
+  // operations         Operation[]
+  operationPositions OperationPosition[]
 
-  operations         Operation[]
+  incomeExpenseCategoryId   Int?            // Связь с категорией для входящих операций
+  incomeExpenseCategory     ExpenseCategory?  @relation("CounterPartyIncome", fields: [incomeExpenseCategoryId], references: [id])
+  outcomeExpenseCategoryId  Int?            // Связь с категорией для исходящих операций
+  outcomeExpenseCategory    ExpenseCategory?  @relation("CounterPartyOutcome", fields: [outcomeExpenseCategoryId], references: [id])
+}
+
+model OperationPosition {
+  id                 Int               @id @default(autoincrement())
+  amount             Float
+
+  operationId        Int?            // Связь с операцией
+  operation          Operation?  @relation(fields: [operationId], references: [id])
+
+  counterPartyId     Int?
+  counterParty       CounterParty?      @relation(fields: [counterPartyId], references: [id])
+
+  expenseCategoryId  Int?            // Связь с категорией
+  expenseCategory    ExpenseCategory?  @relation(fields: [expenseCategoryId], references: [id])
 }

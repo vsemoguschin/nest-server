@@ -13,10 +13,10 @@ export class ClientDto {
   fullName: string;
 
   @IsString()
-  @Matches(/^8\d{10}$/, {
-    message:
-      'Номер телефона должен быть корректным номером в формате 89991234567.',
-  })
+  // @Matches(/^8\d{10}$/, {
+  //   message:
+  //     'Номер телефона должен быть корректным номером в формате 89991234567.',
+  // })
   phone: string;
 
   @IsUrl(

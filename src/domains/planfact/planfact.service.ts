@@ -13,6 +13,8 @@ import { CounterParty } from '@prisma/client';
 import { CreateOperationDto } from './dto/create-operation.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { UpdateOperationDto } from './dto/update-operation.dto';
+import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
+import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
 
 const tToken = process.env.TB_TOKEN;
 
@@ -48,7 +50,7 @@ export class PlanfactService {
   ) {}
 
   async createOperation(dto: CreateOperationDto) {
-    // Проверяем существование счета
+    // Проверка счета
     const account = await this.prisma.planFactAccount.findUnique({
       where: { id: dto.accountId },
     });
@@ -56,51 +58,120 @@ export class PlanfactService {
       throw new NotFoundException(`Счет с ID ${dto.accountId} не найден`);
     }
 
-    // Проверяем существование категории, если указана
-    if (dto.expenseCategoryId) {
-      const category = await this.prisma.expenseCategory.findUnique({
-        where: { id: dto.expenseCategoryId },
-      });
-      if (!category) {
-        throw new NotFoundException(
-          `Категория с ID ${dto.expenseCategoryId} не найдена`,
-        );
+    // Проверка категорий и контрагентов для каждой позиции
+    for (const position of dto.operationPositions || []) {
+      if (position.expenseCategoryId) {
+        const category = await this.prisma.expenseCategory.findUnique({
+          where: { id: position.expenseCategoryId },
+        });
+        if (!category) {
+          throw new NotFoundException(
+            `Категория с ID ${position.expenseCategoryId} не найдена`,
+          );
+        }
+      }
+
+      if (position.counterPartyId) {
+        const counterParty = await this.prisma.counterParty.findUnique({
+          where: { id: position.counterPartyId },
+        });
+        if (!counterParty) {
+          throw new NotFoundException(
+            `Контрагент с ID ${position.counterPartyId} не найден`,
+          );
+        }
       }
     }
 
-    // Проверяем существование контрагента, если указан
-    if (dto.counterPartyId) {
-      const counterParty = await this.prisma.counterParty.findUnique({
-        where: { id: dto.counterPartyId },
+    return this.prisma.$transaction(async (prisma) => {
+      // Создаем операцию
+      const operation = await prisma.operation.create({
+        data: {
+          operationDate: dto.operationDate,
+          operationDateTime: new Date(dto.operationDate),
+          operationType: dto.operationType,
+          description: dto.description || '',
+          payPurpose: dto.payPurpose || '',
+          accountId: dto.accountId,
+          operationId: Date.now().toString(),
+        },
       });
-      if (!counterParty) {
-        throw new NotFoundException(
-          `Контрагент с ID ${dto.counterPartyId} не найден`,
-        );
-      }
-    }
 
-    // Создаем операцию
-    return this.prisma.operation.create({
-      data: {
-        operationId: uuidv4(),
-        operationDate: dto.operationDate,
-        operationDateTime: new Date(dto.operationDate),
-        operationType: dto.operationType,
-        description: dto.description || '',
-        payPurpose: dto.payPurpose || '',
-        accountAmount: dto.accountAmount,
-        isCreated: true,
-        expenseCategoryId: dto.expenseCategoryId,
-        counterPartyId: dto.counterPartyId,
-        accountId: dto.accountId,
-      },
+      // Создаем позиции, присваивая operationId
+      if (dto.operationPositions && dto.operationPositions.length > 0) {
+        await prisma.operationPosition.createMany({
+          data: dto.operationPositions.map((pos) => ({
+            amount: pos.amount,
+            counterPartyId: pos.counterPartyId || null,
+            expenseCategoryId: pos.expenseCategoryId || null,
+            operationId: operation.id,
+          })),
+        });
+      }
+
+      // Возвращаем операцию с позициями
+      return prisma.operation.findUnique({
+        where: { id: operation.id },
+        include: { operationPositions: true },
+      });
     });
   }
+
+  // async createOperation(dto: CreateOperationDto) {
+  //   // Проверяем существование счета
+  //   const account = await this.prisma.planFactAccount.findUnique({
+  //     where: { id: dto.accountId },
+  //   });
+  //   if (!account) {
+  //     throw new NotFoundException(`Счет с ID ${dto.accountId} не найден`);
+  //   }
+
+  //   // Проверяем существование категории, если указана
+  //   if (dto.expenseCategoryId) {
+  //     const category = await this.prisma.expenseCategory.findUnique({
+  //       where: { id: dto.expenseCategoryId },
+  //     });
+  //     if (!category) {
+  //       throw new NotFoundException(
+  //         `Категория с ID ${dto.expenseCategoryId} не найдена`,
+  //       );
+  //     }
+  //   }
+
+  //   // Проверяем существование контрагента, если указан
+  //   if (dto.counterPartyId) {
+  //     const counterParty = await this.prisma.counterParty.findUnique({
+  //       where: { id: dto.counterPartyId },
+  //     });
+  //     if (!counterParty) {
+  //       throw new NotFoundException(
+  //         `Контрагент с ID ${dto.counterPartyId} не найден`,
+  //       );
+  //     }
+  //   }
+
+  //   // Создаем операцию
+  //   return this.prisma.operation.create({
+  //     data: {
+  //       operationId: uuidv4(),
+  //       operationDate: dto.operationDate,
+  //       operationDateTime: new Date(dto.operationDate),
+  //       operationType: dto.operationType,
+  //       description: dto.description || '',
+  //       payPurpose: dto.payPurpose || '',
+  //       // accountAmount: dto.accountAmount,
+  //       isCreated: true,
+  //       // expenseCategoryId: dto.expenseCategoryId,
+  //       // counterPartyId: dto.counterPartyId,
+  //       accountId: dto.accountId,
+  //     },
+  //   });
+  // }
 
   async updateOperation(operationId: string, dto: UpdateOperationDto) {
     const operation = await this.prisma.operation.findUnique({
       where: { operationId },
+      include: { operationPositions: true },
     });
     if (!operation) {
       throw new NotFoundException(`Операция с ID ${operationId} не найдена`);
@@ -113,40 +184,94 @@ export class PlanfactService {
       throw new NotFoundException(`Счет с ID ${dto.accountId} не найден`);
     }
 
-    if (dto.expenseCategoryId) {
-      const category = await this.prisma.expenseCategory.findUnique({
-        where: { id: dto.expenseCategoryId },
-      });
-      if (!category) {
-        throw new NotFoundException(
-          `Категория с ID ${dto.expenseCategoryId} не найдена`,
-        );
+    // Проверка категорий и контрагентов для каждой позиции
+    if (dto.operationPositions) {
+      for (const position of dto.operationPositions) {
+        if (position.expenseCategoryId) {
+          const category = await this.prisma.expenseCategory.findUnique({
+            where: { id: position.expenseCategoryId },
+          });
+          if (!category) {
+            throw new NotFoundException(
+              `Категория с ID ${position.expenseCategoryId} не найдена`,
+            );
+          }
+        }
+
+        if (position.counterPartyId) {
+          const counterParty = await this.prisma.counterParty.findUnique({
+            where: { id: position.counterPartyId },
+          });
+          if (!counterParty) {
+            throw new NotFoundException(
+              `Контрагент с ID ${position.counterPartyId} не найден`,
+            );
+          }
+        }
       }
     }
 
-    if (dto.counterPartyId) {
-      const counterParty = await this.prisma.counterParty.findUnique({
-        where: { id: dto.counterPartyId },
+    return this.prisma.$transaction(async (prisma) => {
+      // Обновляем операцию
+      const updatedOperation = await prisma.operation.update({
+        where: { operationId },
+        data: {
+          operationDate: dto.operationDate,
+          operationType: dto.operationType,
+          description: dto.description || '',
+          payPurpose: dto.payPurpose || '',
+          accountId: dto.accountId,
+        },
+        include: { operationPositions: true },
       });
-      if (!counterParty) {
-        throw new NotFoundException(
-          `Контрагент с ID ${dto.counterPartyId} не найден`,
-        );
-      }
-    }
 
-    return this.prisma.operation.update({
-      where: { operationId },
-      data: {
-        operationDate: dto.operationDate,
-        operationType: dto.operationType,
-        description: dto.description || '',
-        payPurpose: dto.payPurpose || '',
-        accountAmount: dto.accountAmount,
-        expenseCategoryId: dto.expenseCategoryId === 0 ? null : dto.expenseCategoryId,
-        counterPartyId: dto.counterPartyId,
-        accountId: dto.accountId,
-      },
+      // Если есть позиции, обновляем/создаем/удаляем их
+      if (dto.operationPositions) {
+        // Удаляем позиции, которых нет в новом списке
+        const existingPositionIds = operation.operationPositions.map(
+          (pos) => pos.id,
+        );
+        const newPositionIds = dto.operationPositions
+          .filter((pos) => pos.id)
+          .map((pos) => pos.id!);
+        const positionsToDelete = existingPositionIds.filter(
+          (id) => !newPositionIds.includes(id),
+        );
+
+        await prisma.operationPosition.deleteMany({
+          where: {
+            id: { in: positionsToDelete },
+            operationId: operation.id,
+          },
+        });
+
+        // Создаем или обновляем позиции
+        for (const position of dto.operationPositions) {
+          if (position.id) {
+            // Обновляем существующую позицию
+            await prisma.operationPosition.update({
+              where: { id: position.id, operationId: operation.id },
+              data: {
+                amount: position.amount,
+                counterPartyId: position.counterPartyId || null,
+                expenseCategoryId: position.expenseCategoryId || null,
+              },
+            });
+          } else {
+            // Создаем новую позицию
+            await prisma.operationPosition.create({
+              data: {
+                amount: position.amount,
+                counterPartyId: position.counterPartyId || null,
+                expenseCategoryId: position.expenseCategoryId || null,
+                operationId: operation.id,
+              },
+            });
+          }
+        }
+      }
+
+      return updatedOperation;
     });
   }
 
@@ -213,6 +338,7 @@ export class PlanfactService {
 
       // если у аккаунта есть апи
       if (account && account.isReal) {
+        // console.log('acc');
         const fetchOperationsForAccount = async (accountNumber: string) => {
           // const agent = new SocksProxyAgent('socks5h://localhost:8080');
 
@@ -290,16 +416,25 @@ export class PlanfactService {
                     category: op.category || '',
                     description: op.description || '',
                     payPurpose: op.payPurpose || '',
-                    accountAmount: op.accountAmount,
+                    // accountAmount: op.accountAmount,
                     accountId: account.id,
-                    counterPartyId: counterParty.id,
+                    // counterPartyId: counterParty.id,
                   },
                   include: {
-                    counterParty: true,
-                    expenseCategory: true,
-                    account: true,
+                    operationPositions: true,
                   },
                 });
+
+                if (!operation.operationPositions.length) {
+                  await this.prisma.operationPosition.create({
+                    data: {
+                      operationId: operation.id,
+                      amount: op.accountAmount,
+                      counterPartyId: counterParty.id,
+                    },
+                  });
+                }
+
                 // console.log(operation);
                 return operation;
               }),
@@ -315,8 +450,14 @@ export class PlanfactService {
                 deletedAt: null,
               },
               include: {
-                counterParty: true,
-                expenseCategory: true,
+                // counterParty: true,
+                // expenseCategory: true,
+                operationPositions: {
+                  include: {
+                    counterParty: true,
+                    expenseCategory: true,
+                  },
+                },
                 account: true,
               },
             });
@@ -346,9 +487,15 @@ export class PlanfactService {
           contragents: Array.from(contragentsSet), // Уникальные контрагенты
         };
       } else if (account) {
+        // console.log('db');
         const operations = await this.prisma.operation.findMany({
           where: {
-            id: account.id,
+            accountId: account.id,
+            operationDate: {
+              gte: range.from,
+              lte: range.to,
+            },
+            deletedAt: null,
           },
         });
         return {
@@ -394,18 +541,133 @@ export class PlanfactService {
     });
   }
 
+  async createCounterParty(dto: CreateCounterPartyDto) {
+    // Проверяем существование категорий, если указаны
+    if (dto.incomeExpenseCategoryId) {
+      const incomeCategory = await this.prisma.expenseCategory.findUnique({
+        where: { id: dto.incomeExpenseCategoryId },
+      });
+      if (!incomeCategory) {
+        throw new BadRequestException(
+          'Указанная категория для входящих операций не найдена',
+        );
+      }
+    }
+
+    if (dto.outcomeExpenseCategoryId) {
+      const outcomeCategory = await this.prisma.expenseCategory.findUnique({
+        where: { id: dto.outcomeExpenseCategoryId },
+      });
+      if (!outcomeCategory) {
+        throw new BadRequestException(
+          'Указанная категория для исходящих операций не найдена',
+        );
+      }
+    }
+
+    return this.prisma.counterParty.create({
+      data: {
+        title: dto.title,
+        type: dto.type,
+        inn: dto.inn || '',
+        kpp: dto.kpp || '',
+        account: dto.account || '',
+        bankBic: dto.bankBic || '',
+        bankName: dto.bankName || '',
+        contrAgentGroup: dto.contrAgentGroup || '',
+        incomeExpenseCategoryId: dto.incomeExpenseCategoryId || null,
+        outcomeExpenseCategoryId: dto.outcomeExpenseCategoryId || null,
+      },
+      include: {
+        incomeExpenseCategory: true,
+        outcomeExpenseCategory: true,
+      },
+    });
+  }
+
   async getCounterParties() {
     return this.prisma.counterParty.findMany();
   }
 
+  async createExpenseCategory(dto: CreateExpenseCategoryDto) {
+    // Проверяем, существует ли родительская категория, если указан parentId
+    console.log(dto);
+    if (dto.parentId) {
+      const parentExists = await this.prisma.expenseCategory.findUnique({
+        where: { id: dto.parentId },
+      });
+      if (!parentExists) {
+        throw new BadRequestException(
+          'Указанная родительская категория не найдена',
+        );
+      }
+      // Проверяем, что родительская категория имеет тот же тип
+      if (parentExists.type !== dto.type) {
+        throw new BadRequestException(
+          'Тип родительской категории должен совпадать с типом новой категории',
+        );
+      }
+    }
+
+    return this.prisma.expenseCategory.create({
+      data: {
+        name: dto.name,
+        type: dto.type,
+        description: dto.description || '',
+        parentId: dto.parentId || null,
+      },
+      include: {
+        parent: true,
+        children: true,
+      },
+    });
+  }
+
   async getExpenseCategories(operationType?: string) {
-    const types = operationType === 'Поступление'
-      ? ['Доходы', 'Активы', 'Обязательства', 'Капитал']
-      : ['Расходы', 'Активы', 'Обязательства', 'Капитал'];
+    const types =
+      operationType === 'Поступление'
+        ? ['Доходы', 'Активы', 'Обязательства', 'Капитал']
+        : ['Расходы', 'Активы', 'Обязательства', 'Капитал'];
 
     const categories = await this.prisma.expenseCategory.findMany({
       where: {
         type: { in: types },
+        parent: null,
+      },
+      include: {
+        children: {
+          include: {
+            children: {
+              include: {
+                children: true,
+              },
+            },
+          },
+        },
+      },
+      // orderBy: {
+      //   type: 'desc',
+      // },
+    });
+
+    const flattenCategories = (categories, prefix = '') => {
+      return categories.reduce((acc, cat) => {
+        const formattedCategory = { ...cat, name: `${prefix}${cat.name}` };
+        acc.push(formattedCategory);
+        if (cat.children && cat.children.length > 0) {
+          acc.push(...flattenCategories(cat.children, `${prefix} - `));
+        }
+        return acc;
+      }, []);
+    };
+
+    return flattenCategories(categories);
+  }
+
+  async getExpenseCategoriesByType(type: string) {
+    const categories = await this.prisma.expenseCategory.findMany({
+      where: {
+        type,
         parent: null,
       },
       include: {
@@ -438,40 +700,40 @@ export class PlanfactService {
     return flattenCategories(categories);
   }
 
-  async assignExpenseCategory(operationId: string, expenseCategoryId: number) {
-    // Проверяем существование категории и что она листовая
-    const category = await this.prisma.expenseCategory.findUnique({
-      where: { id: expenseCategoryId },
-      // include: { children: { select: { id: true } } },
-    });
+  // async assignExpenseCategory(operationId: string, expenseCategoryId: number) {
+  //   // Проверяем существование категории и что она листовая
+  //   const category = await this.prisma.expenseCategory.findUnique({
+  //     where: { id: expenseCategoryId },
+  //     // include: { children: { select: { id: true } } },
+  //   });
 
-    if (!category) {
-      throw new NotFoundException('Категория не найдена');
-    }
+  //   if (!category) {
+  //     throw new NotFoundException('Категория не найдена');
+  //   }
 
-    // Проверяем операцию
-    const operation = await this.prisma.operation.findUnique({
-      where: { operationId },
-      include: {
-        expenseCategory: true,
-      },
-    });
+  //   // Проверяем операцию
+  //   const operation = await this.prisma.operation.findUnique({
+  //     where: { operationId },
+  //     include: {
+  //       // expenseCategory: true,
+  //     },
+  //   });
 
-    if (!operation) {
-      throw new NotFoundException('Операция не найдена');
-    }
-    // Обновляем существующую операцию
-    const updatedOperation = await this.prisma.operation.update({
-      where: { operationId },
-      data: { expenseCategoryId },
-      include: {
-        expenseCategory: true,
-        counterParty: true,
-      },
-    });
+  //   if (!operation) {
+  //     throw new NotFoundException('Операция не найдена');
+  //   }
+  //   // Обновляем существующую операцию
+  //   const updatedOperation = await this.prisma.operation.update({
+  //     where: { operationId },
+  //     data: { expenseCategoryId },
+  //     include: {
+  //       // expenseCategory: true,
+  //       // counterParty: true,
+  //     },
+  //   });
 
-    return updatedOperation;
-  }
+  //   return updatedOperation;
+  // }
 
   async createAccount(PlanFactAccountCreateDto: PlanFactAccountCreateDto) {
     return await this.prisma.planFactAccount.create({
