@@ -28,7 +28,10 @@ import {
   CreateMasterRepairReportDto,
   UpdateMasterRepairReportDto,
 } from './dto/create-master-repair-report.dto';
-import { CreateOtherReportDto, UpdateOtherReportDto } from './dto/other-report.dto';
+import {
+  CreateOtherReportDto,
+  UpdateOtherReportDto,
+} from './dto/other-report.dto';
 
 @UseGuards(RolesGuard)
 @Controller('production')
@@ -61,13 +64,22 @@ export class ProductionController {
 
   @Get('master/:id/reports')
   @Roles('ADMIN', 'G', 'DP', 'MASTER')
-  async findAll(@Query('period') period: string, @Param('id') id: string) {
-    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+  async findAll(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Param('id') id: string,
+  ) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
-        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    return this.productionService.getMasterReports(+id, period);
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.productionService.getMasterReports(+id, from, to);
   }
 
   @Patch('master-report/:id')
@@ -161,15 +173,21 @@ export class ProductionController {
   @Get('packer/:id/reports')
   @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
   async getPackerReports(
-    @Query('period') period: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
     @Param('id') id: string,
   ) {
-    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
-        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    return this.productionService.getPackerReports(+id, period);
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.productionService.getPackerReports(+id, from, to);
   }
 
   @Patch('packer-report/:id')

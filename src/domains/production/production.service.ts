@@ -55,7 +55,7 @@ export class ProductionService {
       return { tabs: [{ value: 'package', label: 'Упаковщики' }] };
     }
     if (['FINANCIER'].includes(user.role.shortName)) {
-      return { tabs: [{ value: 'supplie', label: 'Закупки' },] };
+      return { tabs: [{ value: 'supplie', label: 'Закупки' }] };
     }
   }
 
@@ -132,12 +132,13 @@ export class ProductionService {
     });
   }
 
-  async getMasterReports(userId: number, period: string) {
+  async getMasterReports(userId: number, from: string, to: string) {
     const masterReports = await this.prisma.masterReport.findMany({
       where: {
         userId,
         date: {
-          startsWith: period,
+          gte: from,
+          lte: to,
         },
       },
       orderBy: { date: 'desc' },
@@ -147,7 +148,8 @@ export class ProductionService {
       where: {
         userId,
         date: {
-          startsWith: period,
+          gte: from,
+          lte: to,
         },
       },
       orderBy: { date: 'desc' },
@@ -157,7 +159,8 @@ export class ProductionService {
       where: {
         userId,
         date: {
-          startsWith: period,
+          gte: from,
+          lte: to,
         },
       },
       orderBy: { date: 'desc' },
@@ -576,7 +579,9 @@ export class ProductionService {
       );
       const totalShifts = master.masterShifts.length;
       const rating =
-        totalShifts > 0 ? Number((totalElsRating / totalShifts / 10).toFixed(2)) : 0;
+        totalShifts > 0
+          ? Number((totalElsRating / totalShifts / 10).toFixed(2))
+          : 0;
 
       return {
         masterId: master.id,
@@ -672,12 +677,13 @@ export class ProductionService {
     });
   }
 
-  async getPackerReports(userId: number, period: string) {
+  async getPackerReports(userId: number, from: string, to: string) {
     const reports = await this.prisma.packerReport.findMany({
       where: {
         userId,
         date: {
-          startsWith: period,
+          gte: from,
+          lte: to,
         },
       },
       orderBy: { date: 'desc' },
@@ -686,7 +692,8 @@ export class ProductionService {
       where: {
         userId,
         date: {
-          startsWith: period,
+          gte: from,
+          lte: to,
         },
       },
       orderBy: { date: 'desc' },

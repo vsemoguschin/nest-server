@@ -52,7 +52,7 @@ model WorkSpace {
 // ГРУПППА
 model Group {
   id         Int        @id @default(autoincrement()) 
-  title      String     @unique
+  title      String     
   deletedAt  DateTime?  // Поле для мягкого удаления
   createdAt  DateTime   @default(now())
 

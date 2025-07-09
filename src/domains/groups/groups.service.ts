@@ -22,14 +22,14 @@ export class GroupsService {
       );
     }
     // Проверяем уникальность названия группы
-    const existingGroup = await this.prisma.group.findUnique({
-      where: { title: createGroupDto.title },
-    });
-    if (existingGroup) {
-      throw new ConflictException(
-        `Группа с названием "${createGroupDto.title}" уже существует.`,
-      );
-    }
+    // const existingGroup = await this.prisma.group.findUnique({
+    //   where: { title: createGroupDto.title },
+    // });
+    // if (existingGroup) {
+    //   throw new ConflictException(
+    //     `Группа с названием "${createGroupDto.title}" уже существует.`,
+    //   );
+    // }
     return await this.prisma.group.create({
       data: {
         title: createGroupDto.title,
@@ -61,16 +61,16 @@ export class GroupsService {
       throw new NotFoundException(`Группа с id ${id} не найдена.`);
     }
     // Если обновляется title, проверим уникальность
-    if (updateGroupDto.title && updateGroupDto.title !== group.title) {
-      const groupWithSameTitle = await this.prisma.group.findUnique({
-        where: { title: updateGroupDto.title },
-      });
-      if (groupWithSameTitle) {
-        throw new ConflictException(
-          `Группа с названием "${updateGroupDto.title}" уже существует.`,
-        );
-      }
-    }
+    // if (updateGroupDto.title && updateGroupDto.title !== group.title) {
+    //   const groupWithSameTitle = await this.prisma.group.findUnique({
+    //     where: { title: updateGroupDto.title },
+    //   });
+    //   if (groupWithSameTitle) {
+    //     throw new ConflictException(
+    //       `Группа с названием "${updateGroupDto.title}" уже существует.`,
+    //     );
+    //   }
+    // }
     return await this.prisma.group.update({
       where: { id },
       data: { ...updateGroupDto },
