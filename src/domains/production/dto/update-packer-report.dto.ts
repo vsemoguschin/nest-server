@@ -6,6 +6,7 @@ import {
   MinLength,
   Min,
   IsOptional,
+  IsNumber,
 } from 'class-validator';
 
 export class UpdatePackerReportDto {
@@ -59,4 +60,13 @@ export class UpdatePackerReportDto {
   @IsOptional()
   @IsString({ message: 'Коммент должно быть строкой' })
   dopsComment?: string;
+
+  @IsNumber({}, { message: 'Штраф должен быть числом' })
+  @Min(0, { message: 'Штраф должен быть больше или равны нулю' })
+  @IsOptional()
+  penaltyCost?: number;
+
+  @IsString()
+  @IsOptional()
+  comment?: string;
 }

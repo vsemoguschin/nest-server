@@ -127,6 +127,7 @@ model User {
   packerReports   PackerReport[]
   masterShifts    MasterShift[]
   packerShifts    PackerShift[]
+  logistShifts    LogistShift[]
   otherReport     OtherReport[]
 }
 model ManagersPlan {
@@ -646,18 +647,19 @@ model MasterRepairReport {
   id            Int      @id @default(autoincrement())
   date          String
   name          String
-  grinding      Boolean  //Шлифовка 350р
-  unpackage     Boolean  //Распаковка стандарт 50
-  unpackageBig  Boolean  //Распаковка большая 100
-  smartContr    Boolean      //замена смарт контроллера 200
-  acoustics     Boolean   //Акустика 150
-  metrs         Float  // замена неона 130
-  els           Int  // замена элемента 70
+  grinding      Int    @default(0)  //Шлифовка 350р
+  unpackage     Int    @default(0)  //Распаковка стандарт 50
+  unpackageBig  Int    @default(0)  //Распаковка большая 100
+  smartContr    Int    @default(0)  //замена смарт контроллера 200
+  acoustics     Int    @default(0)  //Акустика 150
+  metrs         Float  @default(0)  //замена неона 130
+  els           Int    @default(0)  //замена элемента 70
+  penaltyCost   Int    @default(0)
 
-  type       String // Стандарт/Уличная/Смарт/РГБ
-  cost       Int
-  isPenalty  Boolean  @default(false)
-  comment    String   @default("")
+  type          String // Стандарт/Уличная/Смарт/РГБ
+  cost          Int
+  isPenalty     Boolean  @default(false)
+  comment       String   @default("")
 
   userId     Int
   user       User    @relation(fields: [userId], references: [id])
@@ -667,15 +669,16 @@ model MasterRepairReport {
 }
 
 model MasterReport {
-  id         Int      @id @default(autoincrement())
-  date       String
-  name       String
-  metrs      Float
-  els        Int
-  type       String
-  cost       Int
-  isPenalty  Boolean  @default(false)
-  comment    String   @default("")
+  id           Int      @id @default(autoincrement())
+  date         String
+  name         String
+  metrs        Float
+  els          Int
+  type         String
+  cost         Int
+  penaltyCost  Int      @default(0)
+  isPenalty    Boolean  @default(false)
+  comment      String   @default("")
 
   userId     Int
   user       User    @relation(fields: [userId], references: [id])
@@ -700,6 +703,7 @@ model PackerReport {
 
   isPenalty  Boolean  @default(false)
   comment    String   @default("")
+  penaltyCost  Int      @default(0)
 
   userId       Int
   user         User    @relation(fields: [userId], references: [id])
@@ -724,14 +728,24 @@ model PackerShift {
   user        User    @relation(fields: [userId], references: [id])
 }
 
-model OtherReport {
+model LogistShift {
   id          Int     @id @default(autoincrement())
-  date     String //2025-05-01
-  name     String
-  cost     Int
+  shift_date  String //2025-05-01
+  cost        Int    @default(0)
 
   userId      Int
   user        User    @relation(fields: [userId], references: [id])
+}
+
+model OtherReport {
+  id           Int     @id @default(autoincrement())
+  date         String //2025-05-01
+  name         String
+  cost         Int
+  penaltyCost  Int      @default(0)
+
+  userId       Int
+  user         User    @relation(fields: [userId], references: [id])
 }
 
 //планфакт ----------

@@ -87,10 +87,12 @@ export class ProductionController {
   async update(
     @Param('id') id: string,
     @Body() updateMasterReportDto: UpdateMasterReportDto,
+    @CurrentUser() user: UserDto,
   ) {
     return this.productionService.updateMasterReport(
       +id,
       updateMasterReportDto,
+      user,
     );
   }
 
@@ -195,10 +197,12 @@ export class ProductionController {
   async updatePackerReport(
     @Param('id') id: string,
     @Body() updatePackerReportDto: UpdatePackerReportDto,
+    @CurrentUser() user: UserDto
   ) {
     return this.productionService.updatePackerReport(
       +id,
       updatePackerReportDto,
+      user
     );
   }
 
@@ -232,7 +236,7 @@ export class ProductionController {
   }
 
   @Get('packers')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP', 'PACKER')
   async getPackers(@CurrentUser() user: UserDto) {
     return this.productionService.getPackers(user);
   }
@@ -247,6 +251,7 @@ export class ProductionController {
     }
     return this.productionService.getPackerStat(period);
   }
+
   @Post('other-report')
   @Roles('ADMIN', 'G', 'DP', 'MASTER', 'PACKER')
   async createOtherReport(@Body() createOtherReportDto: CreateOtherReportDto) {
@@ -266,5 +271,42 @@ export class ProductionController {
   @Roles('ADMIN', 'G', 'DP')
   async removeOtherReport(@Param('id') id: string) {
     return this.productionService.deleteOtherReport(+id);
+  }
+
+  // LOGIST
+
+  @Get('logists')
+  @Roles('ADMIN', 'G', 'DP', 'LOGIST')
+  async getLogists(@CurrentUser() user: UserDto) {
+    return this.productionService.getLogists(user);
+  }
+
+  @Get('logist/:logistId/shifts')
+  @Roles('ADMIN', 'G', 'DP', 'LOGIST')
+  async getlogistShifts(
+    @Param('logistId', ParseIntPipe) logistId: number,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ): Promise<PackerShiftResponseDto[]> {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.productionService.getlogistShifts(logistId, from, to);
+  }
+
+  @Post('logists/:logistId/shifts')
+  @Roles('ADMIN', 'G', 'DP', 'LOGIST')
+  async createLogistShifts(
+    @Param('logistId', ParseIntPipe) logistId: number,
+    @Body() dto: CreatePackerShiftsDto,
+  ): Promise<PackerShiftResponseDto[]> {
+    return this.productionService.createLogistShifts(logistId, dto);
   }
 }

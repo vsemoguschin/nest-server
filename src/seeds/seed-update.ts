@@ -5,42 +5,56 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    const ws = await prisma.workSpace.create({
+    const user = await prisma.user.update({
+      where: {
+        id: 111,
+      },
       data: {
-        title: 'Производство Пермь',
-        department: 'PRODUCTION',
-      }
-    })
-    await prisma.group.createMany({
-      data: [
-        {
-          title: 'Сборщики',
-          workSpaceId: ws.id
+        isIntern: false,
+      },
+    });
+
+    const reportsJune = await prisma.managerReport.findMany({
+      where: {
+        userId: 111,
+        date: {
+          lte: '2025-07-00',
         },
-        {
-          title: 'Упаковщики',
-          workSpaceId: ws.id
+      },
+    });
+    console.log(reportsJune);
+    const reportsJuneIds = reportsJune.map((r) => r.id);
+    await prisma.managerReport.updateMany({
+      where: {
+        id: {
+          in: reportsJuneIds,
         },
-        {
-          title: 'Фрезеровка/Пленка',
-          workSpaceId: ws.id
+      },
+      data: {
+        shiftCost: 800,
+      },
+    });
+
+    const reportsJule = await prisma.managerReport.findMany({
+      where: {
+        userId: 111,
+        date: {
+          startsWith: '2025-07',
         },
-        {
-          title: 'Руководители',
-          workSpaceId: ws.id
+      },
+    });
+    const reportsJuleIds = reportsJule.map((r) => r.id);
+
+    await prisma.managerReport.updateMany({
+      where: {
+        id: {
+          in: reportsJuleIds,
         },
-      ]
-    })
-    // await prisma.operation.deleteMany({});
-    // await prisma.operationPosition.deleteMany({});
-    // await prisma.operationPosition.deleteMany();
-    // await prisma.operation.deleteMany({
-    //   where: {
-    //     deletedAt: {
-    //       not: null,
-    //     },
-    //   },
-    // });
+      },
+      data: {
+        shiftCost: 666.67,
+      },
+    });
   } catch (e) {
     console.log(e);
   }

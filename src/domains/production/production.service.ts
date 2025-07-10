@@ -22,6 +22,10 @@ import {
   CreateOtherReportDto,
   UpdateOtherReportDto,
 } from './dto/other-report.dto';
+import {
+  CreateLogistShiftsDto,
+  LogistShiftResponseDto,
+} from './dto/logist-shift.dto';
 const KAITEN_TOKEN = process.env.KAITEN_TOKEN;
 
 @Injectable()
@@ -36,7 +40,9 @@ export class ProductionService {
           { value: 'masters', label: 'Сборщики' },
           { value: 'packers-stat', label: 'Упаковка' },
           { value: 'package', label: 'Упаковщики' },
+          { value: 'logist', label: 'Логист' },
           { value: 'supplie', label: 'Закупки' },
+          { value: 'salaries', label: 'Зарплаты' },
         ],
       };
     }
@@ -44,7 +50,7 @@ export class ProductionService {
       return {
         tabs: [
           { value: 'supplie', label: 'Закупки' },
-          { value: 'package', label: 'Упаковщики' },
+          { value: 'logist', label: 'Логист' },
         ],
       };
     }
@@ -228,7 +234,11 @@ export class ProductionService {
     return report;
   }
 
-  async updateMasterReport(id: number, dto: UpdateMasterReportDto) {
+  async updateMasterReport(
+    id: number,
+    dto: UpdateMasterReportDto,
+    user: UserDto,
+  ) {
     const report = await this.prisma.masterReport.findUnique({
       where: { id },
     });
@@ -278,6 +288,10 @@ export class ProductionService {
         console.error('Error fetching Kaiten card:', error);
         // Продолжаем с исходным dto.name, если ошибка
       }
+    }
+    if (user.role.shortName === 'MASTER') {
+      dto.comment = report.comment;
+      dto.penaltyCost = report.penaltyCost;
     }
     return this.prisma.masterReport.update({
       where: { id },
@@ -632,12 +646,7 @@ export class ProductionService {
 
     return {
       dates: allDates,
-      masters: result
-        .filter(
-          (u) =>
-            u.deleatedAt === null || 
-            u.rating
-        ),
+      masters: result.filter((u) => u.deleatedAt === null || u.rating),
       shiftsSumByDate,
       regularElsSumByDate,
       specialElsSumByDate,
@@ -645,23 +654,31 @@ export class ProductionService {
   }
 
   async getPackers(user: UserDto) {
-    const userSearch = ['PACKER', 'LOGIST'].includes(user.role.shortName)
+    const userSearch = ['PACKER'].includes(user.role.shortName)
       ? user.id
       : { gt: 0 };
 
     const users = await this.prisma.user.findMany({
       where: {
         role: {
-          shortName: { in: ['PACKER', 'LOGIST'] },
+          shortName: { in: ['PACKER'] },
         },
         id: userSearch,
       },
       select: {
         id: true,
         fullName: true,
+        deletedAt: true,
+        packerShifts: true,
+        packerReports: true,
       },
     });
-    return users;
+    return users.filter(
+      (u) =>
+        u.deletedAt === null ||
+        u.packerReports.length > 0 ||
+        u.packerShifts.length > 0,
+    );
   }
 
   async createPackerReport(dto: CreatePackerReportDto) {
@@ -752,7 +769,11 @@ export class ProductionService {
     ].sort((a, b) => b.date.localeCompare(a.date));
   }
 
-  async updatePackerReport(id: number, dto: UpdatePackerReportDto) {
+  async updatePackerReport(
+    id: number,
+    dto: UpdatePackerReportDto,
+    user: UserDto,
+  ) {
     const report = await this.prisma.packerReport.findUnique({
       where: { id },
     });
@@ -801,6 +822,11 @@ export class ProductionService {
       } catch (error) {
         console.error('Error fetching Kaiten card:', error);
       }
+    }
+
+    if (user.role.shortName === 'PACKER') {
+      dto.comment = report.comment;
+      dto.penaltyCost = report.penaltyCost;
     }
 
     return this.prisma.packerReport.update({
@@ -909,12 +935,13 @@ export class ProductionService {
     const packers = await this.prisma.user.findMany({
       where: {
         role: {
-          shortName: { in: ['PACKER', 'LOGIST'] },
+          shortName: { in: ['PACKER'] },
         },
       },
       select: {
         id: true,
         fullName: true,
+        deletedAt: true,
         packerReports: {
           where: {
             date: {
@@ -978,12 +1005,18 @@ export class ProductionService {
         fullName: packer.fullName,
         itemsByDate,
         shiftsByDate,
+        deleatedAt: packer.deletedAt,
+        reports: packer.packerReports,
+        shifts: packer.packerShifts,
       };
     });
 
     return {
       dates: allDates,
-      packers: result,
+      packers: result.filter(
+        (u) =>
+          u.deleatedAt === null || u.reports.length > 0 || u.shifts.length > 0,
+      ),
       shiftsSumByDate,
       itemsSumByDate,
     };
@@ -1013,5 +1046,105 @@ export class ProductionService {
       throw new NotFoundException(`Other Report with ID ${id} not found`);
     }
     return this.prisma.otherReport.delete({ where: { id } });
+  }
+
+  // LOGISTS
+
+  async getLogists(user: UserDto) {
+    const userSearch = ['LOGIST'].includes(user.role.shortName)
+      ? user.id
+      : { gt: 0 };
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: {
+          shortName: { in: ['LOGIST'] },
+        },
+        id: userSearch,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        deletedAt: true,
+        logistShifts: true,
+      },
+    });
+    return users.filter(
+      (u) => u.deletedAt === null || u.logistShifts.length > 0,
+    );
+  }
+
+  async getlogistShifts(
+    logistId: number,
+    from: string,
+    to: string,
+  ): Promise<LogistShiftResponseDto[]> {
+    const logist = await this.prisma.user.findUnique({
+      where: { id: logistId },
+    });
+    if (!logist) {
+      throw new BadRequestException('logist not found');
+    }
+
+    return this.prisma.logistShift.findMany({
+      where: {
+        userId: logistId,
+        shift_date: {
+          gte: from,
+          lte: to
+        },
+      },
+      select: {
+        id: true,
+        shift_date: true,
+        userId: true,
+        cost: true,
+      },
+    });
+  }
+
+  async createLogistShifts(
+    logistId: number,
+    dto: CreateLogistShiftsDto,
+  ): Promise<LogistShiftResponseDto[]> {
+    const { shiftDates } = dto;
+
+    const logist = await this.prisma.user.findUnique({
+      where: { id: logistId },
+    });
+    if (!logist) {
+      throw new BadRequestException('logist not found');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.logistShift.deleteMany({
+        where: {
+          userId: logistId,
+          shift_date: {
+            startsWith: dto.period,
+          },
+        },
+      });
+
+      const shifts = await Promise.all(
+        shiftDates.map((shift_date) =>
+          tx.logistShift.create({
+            data: {
+              shift_date,
+              userId: logistId,
+              cost: 3500,
+            },
+            select: {
+              id: true,
+              shift_date: true,
+              userId: true,
+              cost: true,
+            },
+          }),
+        ),
+      );
+
+      return shifts;
+    });
   }
 }

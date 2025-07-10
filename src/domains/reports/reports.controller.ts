@@ -76,20 +76,20 @@ export class ReportsController {
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
   async getManagersReportsFromRange(
     @CurrentUser() user: UserDto,
-    @Query('start') start: string,
-    @Query('end') end: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
   ) {
-    if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
-        'Параметр start обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    if (!end || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       throw new BadRequestException(
-        'Параметр end обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    return this.reportService.getManagersReportsFromRange({ start, end }, user);
+    return this.reportService.getManagersReportsFromRange({ from, to }, user);
   }
 
   @Get('rops')

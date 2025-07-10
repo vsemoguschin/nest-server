@@ -24,7 +24,20 @@ export class ReportsService {
   async create(createManagerReportDto: CreateManagerReportDto, user: UserDto) {
     const { calls, makets, maketsDayToDay, userId, date, redirectToMSG } =
       createManagerReportDto;
+    
 
+    // Проверяем, существует ли запись с таким userId и date
+    const existingUser = await this.prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!existingUser) {
+      throw new ConflictException(
+        `пользователя не существует`,
+      );
+    }
     // Проверяем, существует ли запись с таким userId и date
     const existingReport = await this.prisma.managerReport.findFirst({
       where: {
@@ -38,6 +51,7 @@ export class ReportsService {
         `Отчет для пользователя с ID ${userId} и датой ${date} уже существует`,
       );
     }
+  
 
     const report = await this.prisma.managerReport.create({
       data: {
@@ -48,7 +62,7 @@ export class ReportsService {
         date,
         period: date.slice(0, 7),
         redirectToMSG,
-        shiftCost: user.isIntern ? 800 : 666.67,
+        shiftCost: existingUser.isIntern ? 800 : 666.67,
       },
     });
 
@@ -315,7 +329,7 @@ export class ReportsService {
   }
 
   async getManagersReportsFromRange(
-    range: { start: string; end: string },
+    range: { from: string; to: string },
     user: UserDto,
   ) {
     const workspacesSearch =
@@ -325,8 +339,8 @@ export class ReportsService {
     const reports = await this.prisma.managerReport.findMany({
       where: {
         date: {
-          gte: range.start,
-          lt: range.end,
+          gte: range.from,
+          lte: range.to,
         },
         user: {
           workSpaceId: workspacesSearch,
@@ -339,8 +353,8 @@ export class ReportsService {
               where: {
                 deal: {
                   saleDate: {
-                    gte: range.start,
-                    lt: range.end,
+                    gte: range.from,
+                    lte: range.to,
                   },
                   reservation: false,
                   status: {
@@ -359,8 +373,8 @@ export class ReportsService {
             dops: {
               where: {
                 saleDate: {
-                  gte: range.start,
-                  lt: range.end,
+                  gte: range.from,
+                  lte: range.to,
                 },
                 deal: {
                   reservation: false,
@@ -375,16 +389,16 @@ export class ReportsService {
                 adExpenses: {
                   where: {
                     date: {
-                      gte: range.start,
-                      lt: range.end,
+                      gte: range.from,
+                      lte: range.to,
                     },
                   },
                 },
                 reports: {
                   where: {
                     date: {
-                      gte: range.start,
-                      lt: range.end,
+                      gte: range.from,
+                      lte: range.to,
                     },
                   },
                 },

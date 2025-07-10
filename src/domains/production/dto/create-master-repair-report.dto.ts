@@ -1,4 +1,4 @@
-import { IsString, IsBoolean, IsNumber, IsDateString, IsIn, IsOptional } from 'class-validator';
+import { IsString, IsBoolean, IsNumber, IsDateString, IsIn, IsOptional, Min } from 'class-validator';
 
 export class CreateMasterRepairReportDto {
   @IsDateString({}, { message: 'Дата должна быть в формате YYYY-MM-DD' })
@@ -8,35 +8,46 @@ export class CreateMasterRepairReportDto {
   name: string;
 
   @IsNumber({}, { message: 'Метры должны быть числом' })
+  @Min(0, { message: 'Метры должны быть больше или равны нулю' })
   metrs: number;
 
-  @IsNumber({}, { message: 'Элементы должны быть целым числом' })
+  @IsNumber({}, { message: 'Элементы должны быть числом' })
+  @Min(0, { message: 'Элементы должны быть больше или равны нулю' })
   els: number;
 
   @IsString({ message: 'Тип должен быть строкой' })
-  @IsIn(['Стандартная', 'Уличная', 'РГБ', 'Смарт'], { message: 'Недопустимый тип' })
+  @IsIn(['Стандартная', 'Уличная', 'РГБ', 'Смарт'], {
+    message: 'Недопустимый тип',
+  })
   type: string;
 
-  @IsNumber({}, { message: 'Стоимость должна быть целым числом' })
+  @IsNumber({}, { message: 'Стоимость должна быть числом' })
+  @Min(0, { message: 'Стоимость должна быть больше или равны нулю' })
   cost: number;
 
-  @IsNumber({}, { message: 'ID пользователя должен быть целым числом' })
+  @IsNumber({}, { message: 'ID пользователя должен быть числом' })
+  @Min(0, { message: 'ID пользователя должен быть больше или равен нулю' })
   userId: number;
 
-  @IsBoolean({ message: 'Шлифовка должна быть булевым значением' })
-  grinding: boolean;
+  @IsNumber({}, { message: 'Шлифовка должна быть числом' })
+  @Min(0, { message: 'Шлифовка должна быть больше или равна нулю' })
+  grinding: number;
 
-  @IsBoolean({ message: 'Распаковка стандарт должна быть булевым значением' })
-  unpackage: boolean;
+  @IsNumber({}, { message: 'Распаковка стандарт должна быть числом' })
+  @Min(0, { message: 'Распаковка стандарт должна быть больше или равна нулю' })
+  unpackage: number;
 
-  @IsBoolean({ message: 'Распаковка большая должна быть булевым значением' })
-  unpackageBig: boolean;
+  @IsNumber({}, { message: 'Распаковка большая должна быть числом' })
+  @Min(0, { message: 'Распаковка большая должна быть больше или равна нулю' })
+  unpackageBig: number;
 
-  @IsBoolean({ message: 'Контроллер должен быть булевым значением' })
-  smartContr: boolean;
+  @IsNumber({}, { message: 'Контроллер должен быть числом' })
+  @Min(0, { message: 'Контроллер должен быть больше или равен нулю' })
+  smartContr: number;
 
-  @IsBoolean({ message: 'Акустика должна быть булевым значением' })
-  acoustics: boolean;
+  @IsNumber({}, { message: 'Акустика должна быть числом' })
+  @Min(0, { message: 'Акустика должна быть больше или равна нулю' })
+  acoustics: number;
 
   @IsOptional()
   @IsBoolean({ message: 'Штраф должен быть булевым значением' })
@@ -58,40 +69,50 @@ export class UpdateMasterRepairReportDto {
 
   @IsOptional()
   @IsNumber({}, { message: 'Метры должны быть числом' })
+  @Min(0, { message: 'Метры должны быть больше или равны нулю' })
   metrs?: number;
 
   @IsOptional()
-  @IsNumber({}, { message: 'Элементы должны быть целым числом' })
+  @IsNumber({}, { message: 'Элементы должны быть числом' })
+  @Min(0, { message: 'Элементы должны быть больше или равны нулю' })
   els?: number;
 
   @IsOptional()
   @IsString({ message: 'Тип должен быть строкой' })
-  @IsIn(['Стандартная', 'Уличная', 'РГБ', 'Смарт'], { message: 'Недопустимый тип' })
+  @IsIn(['Стандартная', 'Уличная', 'РГБ', 'Смарт'], {
+    message: 'Недопустимый тип',
+  })
   type?: string;
 
   @IsOptional()
-  @IsNumber({}, { message: 'Стоимость должна быть целым числом' })
+  @IsNumber({}, { message: 'Стоимость должна быть числом' })
+  @Min(0, { message: 'Стоимость должна быть больше или равна нулю' })
   cost?: number;
 
   @IsOptional()
-  @IsBoolean({ message: 'Шлифовка должна быть булевым значением' })
-  grinding?: boolean;
+  @IsNumber({}, { message: 'Шлифовка должна быть числом' })
+  @Min(0, { message: 'Шлифовка должна быть больше или равна нулю' })
+  grinding?: number;
 
   @IsOptional()
-  @IsBoolean({ message: 'Распаковка стандарт должна быть булевым значением' })
-  unpackage?: boolean;
+  @IsNumber({}, { message: 'Распаковка стандарт должна быть числом' })
+  @Min(0, { message: 'Распаковка стандарт должна быть больше или равна нулю' })
+  unpackage?: number;
 
   @IsOptional()
-  @IsBoolean({ message: 'Распаковка большая должна быть булевым значением' })
-  unpackageBig?: boolean;
+  @IsNumber({}, { message: 'Распаковка большая должна быть числом' })
+  @Min(0, { message: 'Распаковка большая должна быть больше или равна нулю' })
+  unpackageBig?: number;
 
   @IsOptional()
-  @IsBoolean({ message: 'Контроллер должен быть булевым значением' })
-  smartContr?: boolean;
+  @IsNumber({}, { message: 'Контроллер должен быть числом' })
+  @Min(0, { message: 'Контроллер должен быть больше или равен нулю' })
+  smartContr?: number;
 
   @IsOptional()
-  @IsBoolean({ message: 'Акустика должна быть булевым значением' })
-  acoustics?: boolean;
+  @IsNumber({}, { message: 'Акустика должна быть числом' })
+  @Min(0, { message: 'Акустика должна быть больше или равна нулю' })
+  acoustics?: number;
 
   @IsOptional()
   @IsBoolean({ message: 'Штраф должен быть булевым значением' })
