@@ -113,11 +113,18 @@ export class DashboardsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getWorkspaces(user: UserDto) {
-    let where: Partial<{ deletedAt: null; id: { gt: number } | number }> = {
+    let where: Partial<{
+      department: string;
+      deletedAt: null;
+      id: { gt: number } | number;
+    }> = {
       deletedAt: null,
     };
     if (!['ADMIN', 'G', 'KD'].includes(user.role.shortName)) {
       where = { id: user.workSpaceId, deletedAt: null };
+    }
+    if (['DP'].includes(user.role.shortName)) {
+      where = { department: 'PRODUCTION', deletedAt: null };
     }
     const workspaces = await this.prisma.workSpace.findMany({
       where,

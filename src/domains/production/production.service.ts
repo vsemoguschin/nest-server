@@ -70,9 +70,42 @@ export class ProductionService {
       select: {
         id: true,
         fullName: true,
+        deletedAt: true,
+        otherReport: {
+          where: {
+            date: {
+              startsWith: new Date().toISOString().slice(0, 7),
+            },
+          },
+        },
+        masterReports: {
+          where: {
+            date: {
+              startsWith: new Date().toISOString().slice(0, 7),
+            },
+          },
+        },
+        masterRepairReports: {
+          where: {
+            date: {
+              startsWith: new Date().toISOString().slice(0, 7),
+            },
+          },
+        },
       },
     });
-    return users;
+    return users
+      .filter(
+        (u) =>
+          u.deletedAt === null ||
+          u.masterReports.length ||
+          u.otherReport.length ||
+          u.masterRepairReports.length,
+      )
+      .map((u) => ({
+        fullName: !u.deletedAt ? u.fullName : u.fullName + '(Уволен)',
+        id: u.id,
+      }));
   }
 
   async createMasterReport(dto: CreateMasterReportDto) {
@@ -489,6 +522,7 @@ export class ProductionService {
       select: {
         id: true,
         fullName: true,
+        deletedAt: true,
         masterReports: {
           where: {
             date: {
@@ -586,6 +620,7 @@ export class ProductionService {
       return {
         masterId: master.id,
         fullName: master.fullName,
+        deleatedAt: master.deletedAt,
         elsByDate,
         shiftsByDate,
         rating,
@@ -597,7 +632,12 @@ export class ProductionService {
 
     return {
       dates: allDates,
-      masters: result,
+      masters: result
+        .filter(
+          (u) =>
+            u.deleatedAt === null || 
+            u.rating
+        ),
       shiftsSumByDate,
       regularElsSumByDate,
       specialElsSumByDate,
