@@ -737,6 +737,7 @@ export class DashboardsService {
 
       const userData = w.users
         .map((m) => {
+          console.log(m.fullName, m.isIntern);
           let totalSalary = 0;
           const pays = m.salaryPays.reduce((a, b) => a + b.price, 0) || 0;
           const salaryCorrections = m.salaryCorrections;
@@ -919,8 +920,9 @@ export class DashboardsService {
           // Процент с продаж в зп
           let bonusPercentage = 0;
           let bonus = 0;
+          const isIntern = m.managerReports.find((r) => r.shiftCost === 800);
           if (w.title === 'B2B') {
-            if (!m.isIntern) {
+            if (!isIntern) {
               if (totalSales < 400_000) {
                 bonusPercentage = 0.03;
               } else if (totalSales < 560_000) {
@@ -1006,7 +1008,7 @@ export class DashboardsService {
               dealsInfo.reduce((a, b) => a + b.paid, 0) * bonusPercentage;
           }
           if (w.title === 'ВК') {
-            if (!m.isIntern) {
+            if (!isIntern) {
               if (totalSales < 400_000) {
                 bonusPercentage = 0.03;
               } else if (totalSales >= 400_000 && totalSales < 600_000) {
