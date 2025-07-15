@@ -737,7 +737,7 @@ export class DashboardsService {
 
       const userData = w.users
         .map((m) => {
-          console.log(m.fullName, m.isIntern);
+          // console.log(m.fullName, m.isIntern);
           let totalSalary = 0;
           const pays = m.salaryPays.reduce((a, b) => a + b.price, 0) || 0;
           const salaryCorrections = m.salaryCorrections;
@@ -861,7 +861,8 @@ export class DashboardsService {
             return {
               id: d.deal.id,
               title: isWithoutDesigner
-                ? title.slice(0, 15) + '(БЕЗ ДИЗА)'
+                // ? title.slice(0, 15) + '(БЕЗ ДИЗА)'
+                ? title.slice(0, 15)
                 : title.slice(0, 15),
               saleDate,
               dealPrice,

@@ -152,8 +152,19 @@ export class ProductionService {
                 },
               },
             });
-            dealId = deal?.id ?? 0;
-            console.log(deal);
+            const deals = await this.prisma.deal.findMany({
+              where: {
+                client: {
+                  chatLink: link,
+                },
+              },
+              orderBy: {
+                saleDate: 'desc'
+              }
+            });
+            console.log(deals[0]);
+            dealId = deals.length ? deals[0].id : 0;
+            // console.log(deal);
           }
         }
       } catch (error) {
@@ -1091,7 +1102,7 @@ export class ProductionService {
         userId: logistId,
         shift_date: {
           gte: from,
-          lte: to
+          lte: to,
         },
       },
       select: {

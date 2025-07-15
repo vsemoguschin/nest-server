@@ -6,6 +6,7 @@ import {
   MinLength,
   Min,
   IsOptional,
+  IsNumber,
 } from 'class-validator';
 
 export class CreatePackerReportDto {
@@ -53,4 +54,13 @@ export class CreatePackerReportDto {
   @IsInt({ message: 'ID пользователя должен быть целым числом' })
   @Min(1, { message: 'ID пользователя должен быть больше 0' })
   userId: number;
+
+  @IsNumber({}, { message: 'Штраф должен быть числом' })
+  @Min(0, { message: 'Штраф должен быть больше или равны нулю' })
+  @IsOptional()
+  penaltyCost?: number;
+
+  @IsString()
+  @IsOptional()
+  comment?: string;
 }

@@ -73,4 +73,22 @@ export class ManagersService {
       });
     }
   }
+
+  async changeInternStatus(managerId: number, update: { isIntern: boolean }) {
+    // Проверяем существование пользователя
+    const user = await this.prisma.user.findUnique({
+      where: { id: managerId, deletedAt: null },
+    });
+    if (!user) {
+      throw new NotFoundException(`Менеджер с ID ${managerId} не найден`);
+    }
+    return await this.prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        isIntern: update.isIntern,
+      },
+    });
+  }
 }

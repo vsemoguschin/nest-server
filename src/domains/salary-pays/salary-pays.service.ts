@@ -55,6 +55,7 @@ export class SalaryPaysService {
         type: createDto.type,
         userId: createDto.userId,
         workSpaceId: userExists.workSpaceId,
+        description: createDto.description,
       },
       include: {
         user: true, // Включаем данные пользователя в ответ

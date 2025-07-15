@@ -122,6 +122,7 @@ export class DealsService {
         dealers: true,
         client: true,
         deliveries: true,
+        reviews: true,
         // workSpace: true,
       },
       orderBy: {
@@ -164,6 +165,7 @@ export class DealsService {
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 1)[0]?.status;
       const status = deliveryStatus ?? 'Создана';
+      const haveReviews = el.reviews.length ? 'Есть' : 'Нет';
       const dg = useMyGetDaysDifference(el.client.firstContact, saleDate);
       let daysGone = '';
       if (dg > 31) {
@@ -172,8 +174,10 @@ export class DealsService {
         daysGone = '8-31';
       } else if (2 < dg && dg <= 7) {
         daysGone = '3-7';
-      } else if (dg <= 2) {
-        daysGone = '0-2';
+      } else if (1 <= dg && dg <= 2) {
+        daysGone = '1-2';
+      } else if (dg === 0) {
+        daysGone = '0';
       }
       // console.log(deliveryStatus, status);
 
@@ -208,6 +212,7 @@ export class DealsService {
         deletedAt,
         reservation,
         daysGone,
+        haveReviews,
       };
     });
 
@@ -467,7 +472,7 @@ export class DealsService {
           );
           // console.log(md.data.sizes[0].url);
           // console.log(reviews[i].file[0].path);
-        
+
           reviews[i].file[0].preview = md.data.sizes[0].url || '';
         }),
       );

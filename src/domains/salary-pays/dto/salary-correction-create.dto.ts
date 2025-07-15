@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsNotEmpty, IsIn } from 'class-validator';
+import { IsString, IsInt, IsNotEmpty, IsIn, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 // Перечисление для статуса
@@ -45,4 +45,8 @@ export class salaryCorrection {
   @IsInt()
   @IsNotEmpty()
   userId: number;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
 }
