@@ -80,7 +80,7 @@ export class ManagersService {
       where: { id: managerId, deletedAt: null },
     });
     if (!user) {
-      throw new NotFoundException(`Менеджер с ID ${managerId} не найден`);
+      throw new NotFoundException(`Менеджер с ID ${managerId} не найден или уволен`);
     }
     return await this.prisma.user.update({
       where: {

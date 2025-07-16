@@ -30,17 +30,20 @@ export class SuppliesController {
   @Get()
   @Roles('ADMIN', 'G', 'LOGIST', 'DP', 'FINANCIER')
   async getSupplies(
-    @Query('period') period: string,
-  ): Promise<SupplieCreateDto[]> {
-    if (
-      !period ||
-      (!/^\d{4}-\d{2}-\d{2}$/.test(period) && !/^\d{4}-\d{2}$/.test(period))
-    ) {
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ): Promise<{ supplies: SupplieCreateDto[] }> {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
-        'Параметры period обязательны и должны быть в формате YYYY-MM-DD',
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    return this.supplieService.getSupplies(period);
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.supplieService.getSupplies(from, to);
   }
 
   // Delete

@@ -50,11 +50,12 @@ export class SuppliesService {
     return fullSupplie;
   }
 
-  async getSupplies(period: string) {
-    return await this.prisma.supplie.findMany({
+  async getSupplies(from: string, to: string) {
+    const supplies = await this.prisma.supplie.findMany({
       where: {
         date: {
-          startsWith: period,
+          gte: from,
+          lte: to,
         },
       },
       include: {
@@ -64,6 +65,30 @@ export class SuppliesService {
         date: 'desc',
       },
     });
+    const positions = supplies.flatMap((s) => s.positions).map((p) => p.name);
+    const suppliers = supplies.map(s => s.supplier);
+    const categories = supplies
+      .flatMap((s) => s.positions)
+      .map((p) => p.category);
+    const uniquePositions = Array.from(
+      new Map(positions.map((item) => [item, item])).values(),
+    );
+    const uniqueCategories = Array.from(
+      new Map(categories.map((item) => [item, item])).values(),
+    );
+    const uniqueSuppliers = Array.from(
+      new Map(suppliers.map((item) => [item, item])).values(),
+    );
+
+    // console.log(uniquePositions);
+    return {
+      supplies,
+      filters: {
+        uniquePositions,
+        uniqueCategories,
+        uniqueSuppliers
+      },
+    };
   }
 
   async delete(id: number): Promise<SupplieCreateDto> {

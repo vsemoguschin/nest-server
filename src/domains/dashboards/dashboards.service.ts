@@ -1101,6 +1101,7 @@ export class DashboardsService {
             //зп
             totalSalary: +totalSalary.toFixed(2),
             pays,
+            salaryPays: m.salaryPays,
             // rem,
             dopPays: +dopPays.toFixed(2),
             dealPays: +dealPays.toFixed(2),
