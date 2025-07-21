@@ -5,82 +5,82 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    // const deletedUser = await prisma.user.findMany({
-    //   where: {
-    //     fullName: 'Егор Корякин',
-    //   },
-    // });
-    // await prisma.user.update({
-    //   where: {
-    //     id: deletedUser[0].id,
-    //   },
-    //   data: {
-    //     deletedAt: null,
-    //   },
-    // });
-
-    const dekt = await prisma.user.findFirst({
+    const deletedUser = await prisma.user.findMany({
       where: {
-        fullName: {
-          in: ['Евгения Дегтярева '],
-        },
-      },
-      include: {
-        managerReports: {
-          where: {
-            date: {
-              startsWith: '2025-07',
-            },
-          },
-        },
+        fullName: 'Егор Корякин',
       },
     });
-    if (dekt) {
-      await prisma.user.update({
-        where: {
-          id: dekt.id,
-        },
-        data: {
-          fullName: 'Евгения Дегтярева',
-        },
-      });
-      await prisma.managerReport.updateMany({
-        where: {
-          userId: dekt.id,
-        },
-        data: {
-          shiftCost: 666.67,
-        },
-      });
-    }
-
-    const zenc = await prisma.user.findFirst({
+    await prisma.user.update({
       where: {
-        fullName: {
-          in: ['Святослав Зенков'],
-        },
+        id: deletedUser[0].id,
       },
-      include: {
-        managerReports: {
-          where: {
-            date: {
-              startsWith: '2025-07',
-            },
-          },
-        },
+      data: {
+        deletedAt: null,
       },
     });
-    if (zenc) {
-      await prisma.managerReport.updateMany({
-        where: {
-          userId: zenc?.id,
-        },
-        data: {
-          shiftCost: 666.67,
-        },
-      });
-      console.log(zenc?.managerReports);
-    }
+
+    // const dekt = await prisma.user.findFirst({
+    //   where: {
+    //     fullName: {
+    //       in: ['Евгения Дегтярева '],
+    //     },
+    //   },
+    //   include: {
+    //     managerReports: {
+    //       where: {
+    //         date: {
+    //           startsWith: '2025-07',
+    //         },
+    //       },
+    //     },
+    //   },
+    // });
+    // if (dekt) {
+    //   await prisma.user.update({
+    //     where: {
+    //       id: dekt.id,
+    //     },
+    //     data: {
+    //       fullName: 'Евгения Дегтярева',
+    //     },
+    //   });
+    //   await prisma.managerReport.updateMany({
+    //     where: {
+    //       userId: dekt.id,
+    //     },
+    //     data: {
+    //       shiftCost: 666.67,
+    //     },
+    //   });
+    // }
+
+    // const zenc = await prisma.user.findFirst({
+    //   where: {
+    //     fullName: {
+    //       in: ['Святослав Зенков'],
+    //     },
+    //   },
+    //   include: {
+    //     managerReports: {
+    //       where: {
+    //         date: {
+    //           startsWith: '2025-07',
+    //         },
+    //       },
+    //     },
+    //   },
+    // });
+    // if (zenc) {
+    //   await prisma.managerReport.updateMany({
+    //     where: {
+    //       userId: zenc?.id,
+    //     },
+    //     data: {
+    //       shiftCost: 666.67,
+    //     },
+    //   });
+    //   console.log(zenc?.managerReports);
+    // }
     return;
 
     const reportsJune = await prisma.managerReport.findMany({
