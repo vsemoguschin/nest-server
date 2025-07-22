@@ -44,6 +44,31 @@ export class ProductionController {
     return this.productionService.getPredata(user);
   }
 
+  @Get('orders')
+  @Roles('ADMIN', 'G', 'DP')
+  async getOrders(@Query('from') from: string, @Query('to') to: string) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.productionService.getOrders(from, to);
+  }
+
+  @Get('reports/search')
+  @Roles('ADMIN', 'G', 'DP')
+  async findOrders(@Query('name') name: string) {
+    if (!name || name.trim() === '') {
+      throw new BadRequestException('Параметр name обязателен.');
+    }
+    return this.productionService.findOrders(name);
+  }
+
   @Get('masters')
   @Roles('ADMIN', 'G', 'DP', 'MASTER')
   async getMasters(@CurrentUser() user: UserDto) {
@@ -197,12 +222,12 @@ export class ProductionController {
   async updatePackerReport(
     @Param('id') id: string,
     @Body() updatePackerReportDto: UpdatePackerReportDto,
-    @CurrentUser() user: UserDto
+    @CurrentUser() user: UserDto,
   ) {
     return this.productionService.updatePackerReport(
       +id,
       updatePackerReportDto,
-      user
+      user,
     );
   }
 

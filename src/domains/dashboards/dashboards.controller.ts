@@ -28,7 +28,7 @@ export class DashboardsController {
 
   @Get('/deals')
   @ApiResponse({ status: 200, type: [WorkSpaceDto] })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP', 'MOP', 'ROV', 'MOV', 'MTZ', 'LOGIST' )
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP', 'MOP', 'ROV', 'MOV', 'MTZ', 'LOGIST', 'MARKETER' )
   async getDeals(@CurrentUser() user: UserDto) {
     return this.dashboardsService.getDeals(user);
   }

@@ -36,6 +36,7 @@ export class ProductionService {
     if (['ADMIN', 'G', 'DP'].includes(user.role.shortName)) {
       return {
         tabs: [
+          { value: 'orders', label: 'Заказы' },
           { value: 'table', label: 'Сборка' },
           { value: 'masters', label: 'Сборщики' },
           { value: 'packers-stat', label: 'Упаковка' },
@@ -63,6 +64,288 @@ export class ProductionService {
     if (['FINANCIER'].includes(user.role.shortName)) {
       return { tabs: [{ value: 'supplie', label: 'Закупки' }] };
     }
+  }
+
+  async getOrders(from: string, to: string) {
+    const masterReports = await this.prisma.masterReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const masterRepairReports = await this.prisma.masterRepairReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const otherReports = await this.prisma.otherReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const packersReports = await this.prisma.packerReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    // Объединяем все отчеты с добавлением уникальных ключей, меток и card_id
+    const allReports = [
+      ...masterReports.map((report) => ({
+        ...report,
+        key: `master-report-${report.id}`,
+        report_type: 'Сборка',
+      })),
+      ...masterRepairReports.map((report) => ({
+        ...report,
+        key: `master-repair-${report.id}`,
+        isRepair: true,
+        report_type: 'Ремонт',
+      })),
+      ...otherReports.map((report) => ({
+        ...report,
+        key: `master-other-${report.id}`,
+        isOther: true,
+        type: 'Другое',
+        report_type: 'Другое',
+      })),
+      ...packersReports.map((report) => ({
+        ...report,
+        key: `packer-report-${report.id}`,
+        report_type: 'Упаковка',
+      })),
+    ]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((r) => {
+        let card_id = '';
+        if (r.name.includes('easyneonwork.kaiten.ru/')) {
+          const linkSplit = r.name.split('/');
+          card_id = linkSplit[linkSplit.length - 1].trim();
+        } else {
+          card_id = r.name.trim();
+        }
+        return { ...r, card_id };
+      });
+
+    // Группировка по card_id
+    const groupedByCardId = allReports.reduce(
+      (acc, report) => {
+        if (!acc[report.card_id]) {
+          acc[report.card_id] = [];
+        }
+        acc[report.card_id].push(report);
+        return acc;
+      },
+      {} as Record<string, any[]>,
+    );
+
+    // Преобразуем объект в массив сгруппированных отчетов и сортируем по самой свежей дате
+    return Object.entries(groupedByCardId)
+      .map(([card_id, orders]) => ({
+        name: orders[0].name,
+        card_id,
+        orders,
+      }))
+      .sort((a, b) => {
+        const latestDateA = a.orders.reduce(
+          (latest, report) => (latest > report.date ? latest : report.date),
+          a.orders[0].date,
+        );
+        const latestDateB = b.orders.reduce(
+          (latest, report) => (latest > report.date ? latest : report.date),
+          b.orders[0].date,
+        );
+        return latestDateB.localeCompare(latestDateA);
+      });
+  }
+
+  async findOrders(name: string) {
+    const masterReports = await this.prisma.masterReport.findMany({
+      where: {
+        name: {
+          contains: name,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const masterRepairReports = await this.prisma.masterRepairReport.findMany({
+      where: {
+        name: {
+          contains: name,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const otherReports = await this.prisma.otherReport.findMany({
+      where: {
+        name: {
+          contains: name,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const packersReports = await this.prisma.packerReport.findMany({
+      where: {
+        name: {
+          contains: name,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    // Объединяем все отчеты с добавлением уникальных ключей, меток и card_id
+    const allReports = [
+      ...masterReports.map((report) => ({
+        ...report,
+        key: `master-report-${report.id}`,
+        report_type: 'Сборка',
+      })),
+      ...masterRepairReports.map((report) => ({
+        ...report,
+        key: `master-repair-${report.id}`,
+        isRepair: true,
+        report_type: 'Ремонт',
+      })),
+      ...otherReports.map((report) => ({
+        ...report,
+        key: `master-other-${report.id}`,
+        isOther: true,
+        type: 'Другое',
+        report_type: 'Другое',
+      })),
+      ...packersReports.map((report) => ({
+        ...report,
+        key: `packer-report-${report.id}`,
+        report_type: 'Упаковка',
+      })),
+    ]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((r) => {
+        let card_id = '';
+        if (r.name.includes('easyneonwork.kaiten.ru/')) {
+          const linkSplit = r.name.split('/');
+          card_id = linkSplit[linkSplit.length - 1].trim();
+        } else {
+          card_id = r.name.trim();
+        }
+        return { ...r, card_id };
+      });
+
+    // Группировка по card_id
+    const groupedByCardId = allReports.reduce(
+      (acc, report) => {
+        if (!acc[report.card_id]) {
+          acc[report.card_id] = [];
+        }
+        acc[report.card_id].push(report);
+        return acc;
+      },
+      {} as Record<string, any[]>,
+    );
+
+    // Преобразуем объект в массив сгруппированных отчетов и сортируем по самой свежей дате
+    return Object.entries(groupedByCardId)
+      .map(([card_id, orders]) => ({
+        name: orders[0].name,
+        card_id,
+        orders,
+      }))
+      .sort((a, b) => {
+        const latestDateA = a.orders.reduce(
+          (latest, report) => (latest > report.date ? latest : report.date),
+          a.orders[0].date,
+        );
+        const latestDateB = b.orders.reduce(
+          (latest, report) => (latest > report.date ? latest : report.date),
+          b.orders[0].date,
+        );
+        return latestDateB.localeCompare(latestDateA);
+      });
   }
 
   async getMasters(user: UserDto) {
@@ -159,8 +442,8 @@ export class ProductionService {
                 },
               },
               orderBy: {
-                saleDate: 'desc'
-              }
+                saleDate: 'desc',
+              },
             });
             console.log(deals[0]);
             dealId = deals.length ? deals[0].id : 0;

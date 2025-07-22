@@ -38,6 +38,7 @@ export class PaymentsController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV')
   @ApiOperation({
     summary: 'Удалить платеж',
     description: 'Endpoint: DELETE /payments/:id. Удаляет платеж по id.',

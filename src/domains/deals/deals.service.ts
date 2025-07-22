@@ -106,6 +106,11 @@ export class DealsService {
     if (user.id === 86 || user.id === 88) {
       workspacesSearch = 3;
     }
+    //маркетолог
+    if (user.role.shortName === 'MARKETER') {
+      workspacesSearch = 2;
+    }
+    // console.log(user);
     // Запрашиваем сделки, у которых saleDate попадает в диапазон
     const deals = await this.prisma.deal.findMany({
       where: {

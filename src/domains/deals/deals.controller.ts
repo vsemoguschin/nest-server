@@ -63,7 +63,7 @@ export class DealsController {
     description:
       'Endpoint: GET /deals?period=YYYY-MM. Получить все сделки за указанный период.',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST', 'MARKETER')
   async getList(
     @CurrentUser() user: UserDto,
     @Query('period') period: string,
@@ -101,7 +101,7 @@ export class DealsController {
     summary: 'Получить сделку',
     description: 'Endpoint: GET /deals/:id. Получить все сделки.',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST', 'MARKETER')
   async getOne(@Param('id', ParseIntPipe) id: number): Promise<DealDto> {
     return this.dealsService.findOne(id);
   }
