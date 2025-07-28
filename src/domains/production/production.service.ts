@@ -562,7 +562,18 @@ export class ProductionService {
   }
 
   async getFrezerReports(userId: number, from: string, to: string) {
-    const masterReports = await this.prisma.frezerReport.findMany({
+    const frezerReport = await this.prisma.frezerReport.findMany({
+      where: {
+        userId,
+        date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const otherReports = await this.prisma.otherReport.findMany({
       where: {
         userId,
         date: {
@@ -574,9 +585,15 @@ export class ProductionService {
     });
 
     return [
-      ...masterReports.map((report) => ({
+      ...frezerReport.map((report) => ({
         ...report,
         key: `report-${report.id}`,
+      })),
+      ...otherReports.map((report) => ({
+        ...report,
+        key: `other-${report.id}`,
+        isOther: true,
+        type: 'Другое',
       })),
     ].sort((a, b) => b.date.localeCompare(a.date));
   }
