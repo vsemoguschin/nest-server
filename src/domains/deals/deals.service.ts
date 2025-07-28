@@ -128,6 +128,8 @@ export class DealsService {
         client: true,
         deliveries: true,
         reviews: true,
+        masterReports: true,
+        packerReports: true,
         // workSpace: true,
       },
       orderBy: {
@@ -166,10 +168,7 @@ export class DealsService {
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
       const payments = el.payments;
-      const deliveryStatus = el.deliveries
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .slice(0, 1)[0]?.status;
-      const status = deliveryStatus ?? 'Создана';
+
       const haveReviews = el.reviews.length ? 'Есть' : 'Нет';
       const dg = useMyGetDaysDifference(el.client.firstContact, saleDate);
       let daysGone = '';
@@ -184,9 +183,23 @@ export class DealsService {
       } else if (dg === 0) {
         daysGone = '0';
       }
-      // console.log(deliveryStatus, status);
 
-      // console.log(saleDate.toISOString().slice(0, 10), 234356);
+      let status = 'Создана';
+
+      const deliveryStatus = el.deliveries
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 1)[0]?.status;
+
+      if (el.masterReports.length) {
+        status = 'Сборка';
+      }
+      if (el.packerReports.length) {
+        status = 'Упаковка';
+      }
+      if (deliveryStatus) {
+        status = deliveryStatus;
+      }
+      // console.log(title, status, deliveryStatus);
 
       return {
         id,
@@ -312,6 +325,8 @@ export class DealsService {
         dealers: true,
         client: true,
         deliveries: true,
+        masterReports: true,
+        packerReports: true,
         // workSpace: true,
       },
       orderBy: {
@@ -350,10 +365,22 @@ export class DealsService {
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
       const payments = el.payments;
+
+      let status = 'Создана';
+
       const deliveryStatus = el.deliveries
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 1)[0]?.status;
-      const status = deliveryStatus ?? 'Создана';
+
+      if (el.masterReports.length) {
+        status = 'Сборка';
+      }
+      if (el.packerReports.length) {
+        status = 'Упаковка';
+      }
+      if (deliveryStatus) {
+        status = deliveryStatus;
+      }
       // console.log(saleDate.toISOString().slice(0, 10), 234356);
 
       return {
@@ -456,10 +483,20 @@ export class DealsService {
       throw new NotFoundException(`Сделка с id ${id} не найдено.`);
     }
 
+
     const deliveryStatus = deal.deliveries
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 1)[0]?.status;
-    deal.status = deliveryStatus ?? 'Создана';
+
+    if (deal.masterReports.length) {
+      deal.status = 'Сборка';
+    }
+    if (deal.packerReports.length) {
+      deal.status = 'Упаковка';
+    }
+    if (deliveryStatus) {
+      deal.status = deliveryStatus;
+    }
 
     const { reviews } = deal;
     if (reviews.length > 0) {

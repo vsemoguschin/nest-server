@@ -32,6 +32,8 @@ import {
   CreateOtherReportDto,
   UpdateOtherReportDto,
 } from './dto/other-report.dto';
+import { CreateFrezerReportDto } from './dto/create-frezer-report.dto';
+import { UpdateFrezerReportDto } from './dto/update-frezer-report.dto';
 
 @UseGuards(RolesGuard)
 @Controller('production')
@@ -75,6 +77,12 @@ export class ProductionController {
     return this.productionService.getMasters(user);
   }
 
+  @Get('frezers')
+  @Roles('ADMIN', 'G', 'DP', 'FRZ')
+  async getFrezers(@CurrentUser() user: UserDto) {
+    return this.productionService.getFrezers(user);
+  }
+
   @Post('master-report')
   @Roles('ADMIN', 'G', 'DP', 'MASTER')
   async create(
@@ -107,6 +115,40 @@ export class ProductionController {
     return this.productionService.getMasterReports(+id, from, to);
   }
 
+  @Get('frezer/:id/reports')
+  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  async getFrezerReports(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Param('id') id: string,
+  ) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.productionService.getFrezerReports(+id, from, to);
+  }
+
+  @Patch('frezer-report/:id')
+  @Roles('ADMIN', 'G', 'DP', 'FRZ')
+  async updateFrezerReport(
+    @Param('id') id: string,
+    @Body() updateFrezerReport: UpdateFrezerReportDto,
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.productionService.updateFrezerReport(
+      +id,
+      updateFrezerReport,
+      user,
+    );
+  }
+
   @Patch('master-report/:id')
   @Roles('ADMIN', 'G', 'DP', 'MASTER')
   async update(
@@ -125,6 +167,12 @@ export class ProductionController {
   @Roles('ADMIN', 'G', 'DP')
   async remove(@Param('id') id: string) {
     return this.productionService.deleteMasterReport(+id);
+  }
+
+  @Delete('frezer-report/:id')
+  @Roles('ADMIN', 'G', 'DP')
+  async deleteFrezerReport(@Param('id') id: string) {
+    return this.productionService.deleteFrezerReport(+id);
   }
 
   @Post('master/:masterId/shifts')
@@ -188,7 +236,6 @@ export class ProductionController {
     return this.productionService.getStat(period);
   }
 
-  // Добавить в production/production.controller.ts после существующих роутов
   @Post('packer-report')
   @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
   async createPackerReport(
@@ -333,5 +380,19 @@ export class ProductionController {
     @Body() dto: CreatePackerShiftsDto,
   ): Promise<PackerShiftResponseDto[]> {
     return this.productionService.createLogistShifts(logistId, dto);
+  }
+
+  // FRZ ---------------------
+
+  @Post('frezer-report')
+  @Roles('ADMIN', 'G', 'DP', 'FRZ')
+  async createFrezerReport(
+    @Body() createFrezerReportDto: CreateFrezerReportDto,
+    // @CurrentUser() user: UserDto,
+  ) {
+    return this.productionService.createFrezerReport(
+      createFrezerReportDto,
+      //   user,
+    );
   }
 }

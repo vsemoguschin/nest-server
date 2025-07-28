@@ -26,6 +26,8 @@ import {
   CreateLogistShiftsDto,
   LogistShiftResponseDto,
 } from './dto/logist-shift.dto';
+import { CreateFrezerReportDto } from './dto/create-frezer-report.dto';
+import { UpdateFrezerReportDto } from './dto/update-frezer-report.dto';
 const KAITEN_TOKEN = process.env.KAITEN_TOKEN;
 
 @Injectable()
@@ -41,6 +43,7 @@ export class ProductionService {
           { value: 'masters', label: 'Сборщики' },
           { value: 'packers-stat', label: 'Упаковка' },
           { value: 'package', label: 'Упаковщики' },
+          { value: 'frezer', label: 'Фрезеровка' },
           { value: 'logist', label: 'Логист' },
           { value: 'supplie', label: 'Закупки' },
           { value: 'salaries', label: 'Зарплаты' },
@@ -63,6 +66,9 @@ export class ProductionService {
     }
     if (['FINANCIER'].includes(user.role.shortName)) {
       return { tabs: [{ value: 'supplie', label: 'Закупки' }] };
+    }
+    if (['FRZ'].includes(user.role.shortName)) {
+      return { tabs: [{ value: 'frezer', label: 'Фрезеровка' }] };
     }
   }
 
@@ -397,6 +403,35 @@ export class ProductionService {
       }));
   }
 
+  async getFrezers(user: UserDto) {
+    const userSearch = user.role.shortName === 'FRZ' ? user.id : { gt: 0 };
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: { shortName: 'FRZ' },
+        id: userSearch,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        deletedAt: true,
+        frezerReports: {
+          where: {
+            date: {
+              startsWith: new Date().toISOString().slice(0, 7),
+            },
+          },
+        },
+      },
+    });
+    return users
+      .filter((u) => u.deletedAt === null || u.frezerReports.length)
+      .map((u) => ({
+        fullName: !u.deletedAt ? u.fullName : u.fullName + '(Уволен)',
+        id: u.id,
+      }));
+  }
+
   async createMasterReport(dto: CreateMasterReportDto) {
     const name = dto.name;
     let dealId = 0;
@@ -465,6 +500,14 @@ export class ProductionService {
     });
   }
 
+  async createFrezerReport(dto: CreateFrezerReportDto) {
+    return this.prisma.frezerReport.create({
+      data: {
+        ...dto,
+      },
+    });
+  }
+
   async getMasterReports(userId: number, from: string, to: string) {
     const masterReports = await this.prisma.masterReport.findMany({
       where: {
@@ -514,6 +557,26 @@ export class ProductionService {
         key: `other-${report.id}`,
         isOther: true,
         type: 'Другое',
+      })),
+    ].sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  async getFrezerReports(userId: number, from: string, to: string) {
+    const masterReports = await this.prisma.frezerReport.findMany({
+      where: {
+        userId,
+        date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    return [
+      ...masterReports.map((report) => ({
+        ...report,
+        key: `report-${report.id}`,
       })),
     ].sort((a, b) => b.date.localeCompare(a.date));
   }
@@ -596,6 +659,25 @@ export class ProductionService {
     });
   }
 
+  async updateFrezerReport(
+    id: number,
+    dto: UpdateFrezerReportDto,
+    user: UserDto,
+  ) {
+    const report = await this.prisma.frezerReport.findUnique({
+      where: { id },
+    });
+    if (!report) {
+      throw new NotFoundException(`Report with ID ${id} not found`);
+    }
+    return this.prisma.frezerReport.update({
+      where: { id },
+      data: {
+        ...dto,
+      },
+    });
+  }
+
   async deleteMasterReport(id: number) {
     const report = await this.prisma.masterReport.findUnique({
       where: { id },
@@ -604,6 +686,18 @@ export class ProductionService {
       throw new NotFoundException(`Report with ID ${id} not found`);
     }
     return this.prisma.masterReport.delete({
+      where: { id },
+    });
+  }
+
+  async deleteFrezerReport(id: number) {
+    const report = await this.prisma.frezerReport.findUnique({
+      where: { id },
+    });
+    if (!report) {
+      throw new NotFoundException(`Report with ID ${id} not found`);
+    }
+    return this.prisma.frezerReport.delete({
       where: { id },
     });
   }

@@ -129,6 +129,7 @@ model User {
   packerShifts    PackerShift[]
   logistShifts    LogistShift[]
   otherReport     OtherReport[]
+  frezerReports   FrezerReport[]
 }
 model ManagersPlan {
   id         Int        @id @default(autoincrement()) 
@@ -743,6 +744,22 @@ model OtherReport {
   name         String
   cost         Int
   penaltyCost  Int      @default(0)
+
+  userId       Int
+  user         User    @relation(fields: [userId], references: [id])
+}
+
+model FrezerReport {
+  id           Int      @id @default(autoincrement())
+  date         String
+  items        Int     @default(0)
+  sheets       Int     @default(0)
+  remake       Int     @default(0)
+  hours        Int     @default(0)
+  cost         Int     @default(0)
+  square       Float   @default(0)
+  comment      String  @default("")
+  penaltyCost  Int     @default(0)
 
   userId       Int
   user         User    @relation(fields: [userId], references: [id])
