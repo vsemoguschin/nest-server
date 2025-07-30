@@ -115,6 +115,13 @@ export class ProductionService {
           gte: from,
           lte: to,
         },
+        user: {
+          role: {
+            shortName: {
+              not: 'FRZ',
+            },
+          },
+        },
       },
       include: {
         user: {
@@ -132,6 +139,46 @@ export class ProductionService {
         date: {
           gte: from,
           lte: to,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const frezerReport = await this.prisma.frezerReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+    const frezerOtherReport = await this.prisma.frezerReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+        user: {
+          role: {
+            shortName: 'FRZ',
+          },
         },
       },
       include: {
@@ -195,8 +242,44 @@ export class ProductionService {
       {} as Record<string, any[]>,
     );
 
+    const totals = {
+      frezerReports: frezerReport.length,
+      frezerReportsCost: frezerReport.reduce(
+        (a, b) => a + b.cost - b.penaltyCost,
+        0,
+      ),
+      frezerOtherReport: frezerOtherReport.length,
+      frezerOtherReportCost: frezerOtherReport.reduce((a, b)=> a + b.cost, 0),
+      frezerSalary: frezerReport.reduce(
+        (a, b) => a + b.cost - b.penaltyCost,
+        0,
+      ),
+
+      els: masterReports.reduce((a, b) => a + b.els, 0),
+      metrs: masterReports.reduce((a, b) => a + b.metrs, 0),
+      mastersSalary: masterReports.reduce(
+        (a, b) => a + (b.cost - b.penaltyCost),
+        0,
+      ),
+      mastersReports: masterReports.length,
+      packersReports: packersReports.length,
+      packages: packersReports.reduce((a, b) => a + b.items, 0),
+      packagersSalary: packersReports.reduce(
+        (a, b) => a + (b.cost - b.penaltyCost),
+        0,
+      ),
+      repairs: masterRepairReports.length,
+      repairsCost: masterRepairReports.reduce((a, b) => a + b.cost, 0),
+      ordersCost: allReports.reduce((a, b) => a + b.cost, 0),
+      penalties: allReports.filter((p) => p.penaltyCost > 0).length,
+      penaltiesCost: allReports.reduce((a, b) => a + b.penaltyCost, 0),
+      otherReports: otherReports.length,
+      otherReportsCost: otherReports.reduce((a, b) => a + b.cost, 0),
+      totalCost: allReports.reduce((a, b) => a + (b.cost - b.penaltyCost), 0),
+    };
+
     // Преобразуем объект в массив сгруппированных отчетов и сортируем по самой свежей дате
-    return Object.entries(groupedByCardId)
+    const orders = Object.entries(groupedByCardId)
       .map(([card_id, orders]) => ({
         name: orders[0].name,
         card_id,
@@ -213,6 +296,10 @@ export class ProductionService {
         );
         return latestDateB.localeCompare(latestDateA);
       });
+    return {
+      orders,
+      totals,
+    };
   }
 
   async findOrders(name: string) {

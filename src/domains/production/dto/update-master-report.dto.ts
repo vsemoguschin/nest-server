@@ -36,6 +36,7 @@ export class UpdateMasterReportDto {
     'ВБ',
     'ОЗОН',
     'Подарок',
+    'Уличный контражур',
   ])
   @IsOptional()
   type?: string;

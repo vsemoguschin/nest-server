@@ -17,6 +17,7 @@ const types = [
   'ВБ',
   'ОЗОН',
   'Подарок',
+  'Уличный контражур',
 ];
 
 export class CreateRopReportDto {

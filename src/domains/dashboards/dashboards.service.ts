@@ -1323,26 +1323,26 @@ export class DashboardsService {
     }
 
     //допы этого месяца за сделки прошлого  месяца
-    const lastDops = await this.prisma.dop.findMany({
-      where: {
-        deal: {
-          saleDate: {
-            startsWith: '2025-04',
-          },
-          reservation: false,
-          status: {
-            not: 'Возврат',
-          },
-        },
-        saleDate: {
-          startsWith: period,
-        },
-      },
-    });
-    console.log(
-      'dops',
-      lastDops.reduce((acc, dop) => acc + dop.price, 0),
-    );
+    // const lastDops = await this.prisma.dop.findMany({
+    //   where: {
+    //     deal: {
+    //       saleDate: {
+    //         startsWith: '2025-04',
+    //       },
+    //       reservation: false,
+    //       status: {
+    //         not: 'Возврат',
+    //       },
+    //     },
+    //     saleDate: {
+    //       startsWith: period,
+    //     },
+    //   },
+    // });
+    // console.log(
+    //   'dops',
+    //   lastDops.reduce((acc, dop) => acc + dop.price, 0),
+    // );
 
     const allWorkspaces = await this.prisma.workSpace.findMany({
       where: {

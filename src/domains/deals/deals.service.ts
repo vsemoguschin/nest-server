@@ -35,6 +35,17 @@ export class DealsService {
   ) {}
 
   async create(createDealDto: CreateDealDto, user: UserDto) {
+    const client = await this.prisma.client.findUnique({
+      where: {
+        id: createDealDto.clientId,
+      },
+      include: {
+        deals: true,
+      },
+    });
+    if (!client) {
+      throw new NotFoundException(`Клиент не найден.`);
+    }
     const newDeal = await this.prisma.deal.create({
       data: {
         ...createDealDto,
@@ -83,6 +94,16 @@ export class DealsService {
         comment: 'Сделка создана',
       },
     });
+
+    if (client.deals.length)
+      await this.prisma.client.update({
+        where: {
+          id: client.id,
+        },
+        data: {
+          isRegular: true,
+        },
+      });
 
     // console.log(newDeal);
     return newDeal;
@@ -168,6 +189,7 @@ export class DealsService {
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
       const payments = el.payments;
+      const isRegular = el.client.isRegular ? 'Постоянный клиент' : 'Новый клиент'
 
       const haveReviews = el.reviews.length ? 'Есть' : 'Нет';
       const dg = useMyGetDaysDifference(el.client.firstContact, saleDate);
@@ -231,6 +253,7 @@ export class DealsService {
         reservation,
         daysGone,
         haveReviews,
+        isRegular
       };
     });
 
@@ -365,6 +388,7 @@ export class DealsService {
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
       const payments = el.payments;
+      const isRegular = el.client.isRegular ? 'Постоянный клиент' : 'Новый клиент'
 
       let status = 'Создана';
 
@@ -411,6 +435,7 @@ export class DealsService {
         maketType,
         deletedAt,
         reservation,
+        isRegular
       };
     });
 
@@ -482,7 +507,6 @@ export class DealsService {
     if (!deal) {
       throw new NotFoundException(`Сделка с id ${id} не найдено.`);
     }
-
 
     const deliveryStatus = deal.deliveries
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())

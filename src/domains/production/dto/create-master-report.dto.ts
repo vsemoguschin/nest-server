@@ -34,6 +34,7 @@ export class CreateMasterReportDto {
       'ОЗОН',
       'Подарок',
       'Ремонт',
+      'Уличный контражур'
     ],
     { message: 'Недопустимый тип' },
   )
