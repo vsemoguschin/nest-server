@@ -347,10 +347,10 @@ export class DashboardsService {
       },
     });
 
-    console.log(
-      'workSpacesPayments',
-      workSpaces.flatMap((w) => w.payments).reduce((a, b) => a + b.price, 0),
-    );
+    // console.log(
+    //   'workSpacesPayments',
+    //   workSpaces.flatMap((w) => w.payments).reduce((a, b) => a + b.price, 0),
+    // );
 
     // все платежи за сделки за период прошлый
     const allPaymentsPrevDeals = workSpaces
@@ -1127,16 +1127,16 @@ export class DashboardsService {
           };
         })
         .filter((u) => u.totalSales || !u.fired);
-      console.log('dealspays', dealsPayments);
-      console.log(
-        'ws: ' + w.title,
-        workSpacePayments.reduce((a, b) => a + b.price, 0),
-      );
-      console.log(
-        'разница',
-        dealsPayments - workSpacePayments.reduce((a, b) => a + b.price, 0),
-      );
-      console.log('--------------');
+      // console.log('dealspays', dealsPayments);
+      // console.log(
+      //   'ws: ' + w.title,
+      //   workSpacePayments.reduce((a, b) => a + b.price, 0),
+      // );
+      // console.log(
+      //   'разница',
+      //   dealsPayments - workSpacePayments.reduce((a, b) => a + b.price, 0),
+      // );
+      // console.log('--------------');
 
       // Определение топов
       const topTotalSales = [...userData]

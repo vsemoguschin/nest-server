@@ -32,6 +32,7 @@ function getLastMonths(dateStr: string, m: number): string[] {
     result.push(formattedDate);
   }
 
+  // return result.sort((a, b) => a.localeCompare(b));
   return result.sort((a, b) => a.localeCompare(b));
 }
 
@@ -756,26 +757,40 @@ export class PlanfactService {
           supplies: {
             data: {
               category: string;
-              data: { period: string; value: number }[];
+              data: { period: string; value: number; changePercent: number }[];
             }[];
-            totals: number[];
+            totals: { value: number; changePercent: number }[];
           };
           productionSalaries: {
             data: {
               role: string;
-              data: { period: string; value: number }[];
+              data: { period: string; value: number; changePercent: number }[];
             }[];
-            totals: number[];
+            totals: { value: number; changePercent: number }[];
           };
         };
         commercial: {
           adExpenses: {
             data: {
               title: string;
-              data: { period: string; value: number }[];
+              data: { period: string; value: number; changePercent: number }[];
             }[];
-            totals: number[];
+            totals: { value: number; changePercent: number }[];
           };
+          commercialSalaries: {
+            data: {
+              role: string;
+              data: { period: string; value: number; changePercent: number }[];
+            }[];
+            totals: { value: number; changePercent: number }[];
+          };
+        };
+        totals: {
+          data: {
+            title: string;
+            data: { value: number; changePercent: number }[];
+          }[];
+          totals: { value: number; changePercent: number }[];
         };
       };
     };
@@ -803,6 +818,14 @@ export class PlanfactService {
             data: [],
             totals: [],
           },
+          commercialSalaries: {
+            data: [],
+            totals: [],
+          },
+        },
+        totals: {
+          data: [],
+          totals: [],
         },
       },
     };
@@ -949,63 +972,6 @@ export class PlanfactService {
       Promise.resolve([]),
     );
 
-    const supplieCategories = await this.prisma.suppliePosition.findMany({
-      select: {
-        category: true,
-      },
-      distinct: ['category'],
-    });
-
-    const supplies = await Promise.all(
-      supplieCategories.map(async (sup) => {
-        const data = await Promise.all(
-          periods.map(async (p) => {
-            const supplies = await this.prisma.supplie.findMany({
-              where: {
-                date: {
-                  startsWith: p,
-                },
-                positions: {
-                  some: {
-                    category: sup.category,
-                  },
-                },
-              },
-              include: {
-                positions: true,
-              },
-            });
-
-            return {
-              period: p,
-              value: supplies
-                .flatMap((s) => s.positions)
-                .filter((p) => p.category === sup.category)
-                .reduce((a, b) => a + b.priceForItem * b.quantity, 0),
-            };
-          }),
-        );
-        return {
-          category: sup.category || 'Без категории',
-          data,
-        };
-      }),
-    );
-
-    // Сортировка по значению value последнего периода по убыванию
-    res.expenses.production.supplies.data = supplies.sort((a, b) => {
-      const lastA = a.data[a.data.length - 1]?.value || 0;
-      const lastB = b.data[b.data.length - 1]?.value || 0;
-      return lastB - lastA;
-    });
-
-    res.expenses.production.supplies.totals = [
-      supplies.reduce((a, b) => a + b.data[0].value, 0),
-      supplies.reduce((a, b) => a + b.data[1].value, 0),
-      supplies.reduce((a, b) => a + b.data[2].value, 0),
-      supplies.reduce((a, b) => a + b.data[3].value, 0),
-    ];
-
     // Присваивание в нужный формат
     res.income = {
       allDealsPrice: income.map((r) => ({
@@ -1025,6 +991,87 @@ export class PlanfactService {
       })),
     };
 
+    const supplieCategories = await this.prisma.suppliePosition.findMany({
+      select: {
+        category: true,
+      },
+      distinct: ['category'],
+    });
+
+    const supplies = await Promise.all(
+      supplieCategories.map(async (sup) => {
+        const data = await Promise.all(
+          periods.map(async (p, index) => {
+            const supplies = await this.prisma.supplie.findMany({
+              where: {
+                date: {
+                  startsWith: p,
+                },
+                positions: {
+                  some: {
+                    category: sup.category,
+                  },
+                },
+              },
+              include: {
+                positions: true,
+              },
+            });
+
+            const value = supplies
+              .flatMap((s) => s.positions)
+              .filter((p) => p.category === sup.category)
+              .reduce((a, b) => a + b.priceForItem * b.quantity, 0);
+
+            const sendDeals = res.income.sendDeals[index].value;
+
+            return {
+              period: p,
+              value,
+              changePercent: sendDeals
+                ? +((value / sendDeals) * 100).toFixed(2)
+                : 0,
+            };
+          }),
+        );
+        return {
+          category: sup.category || 'Без категории',
+          data,
+        };
+      }),
+    );
+
+    // Сортировка по значению value последнего периода по убыванию
+    res.expenses.production.supplies.data = supplies.sort((a, b) => {
+      const lastA = a.data[a.data.length - 1]?.value || 0;
+      const lastB = b.data[b.data.length - 1]?.value || 0;
+      return lastB - lastA;
+    });
+
+    const getTotals = (
+      model: {
+        data: {
+          // period: string;
+          value: number;
+          changePercent: number;
+        }[];
+      }[],
+    ) => {
+      // console.log(model);
+      return periods.map((p, i) => {
+        const sendDeals = res.income.sendDeals[i].value;
+        const value = model.reduce((a, b) => a + b.data[i].value, 0);
+        // const value = model[i].data.reduce((a, b) => a + b.value, 0);
+
+        return {
+          value,
+          changePercent: sendDeals ? +((value / sendDeals) * 100) : 0,
+        };
+      });
+    };
+
+    res.expenses.production.supplies.totals = getTotals(supplies);
+
     const prodRoles = [
       'Упаковщики',
       'Фрезеровщики',
@@ -1041,7 +1088,7 @@ export class PlanfactService {
       prodRoles.map(async (role) => {
         if (role === 'Фрезеровщики') {
           const data = await Promise.all(
-            periods.map(async (p) => {
+            periods.map(async (p, index) => {
               const frezerReports = await this.prisma.frezerReport.findMany({
                 where: {
                   date: {
@@ -1049,12 +1096,19 @@ export class PlanfactService {
                   },
                 },
               });
+
+              const sendDeals = res.income.sendDeals[index].value;
+              const value = frezerReports.reduce(
+                (a, b) => a + b.cost - b.penaltyCost,
+                0,
+              );
+
               return {
                 period: p,
-                value: frezerReports.reduce(
-                  (a, b) => a + b.cost - b.penaltyCost,
-                  0,
-                ),
+                value,
+                changePercent: sendDeals
+                  ? +((value / sendDeals) * 100).toFixed(2)
+                  : 0,
               };
             }),
           );
@@ -1065,7 +1119,7 @@ export class PlanfactService {
         }
         if (role === 'Сборщики') {
           const data = await Promise.all(
-            periods.map(async (p) => {
+            periods.map(async (p, index) => {
               const masterReports = await this.prisma.masterReport.findMany({
                 where: {
                   date: {
@@ -1073,12 +1127,17 @@ export class PlanfactService {
                   },
                 },
               });
+              const sendDeals = res.income.sendDeals[index].value;
+              const value = masterReports.reduce(
+                (a, b) => a + b.cost - b.penaltyCost,
+                0,
+              );
               return {
                 period: p,
-                value: masterReports.reduce(
-                  (a, b) => a + b.cost - b.penaltyCost,
-                  0,
-                ),
+                value,
+                changePercent: sendDeals
+                  ? +((value / sendDeals) * 100).toFixed(2)
+                  : 0,
               };
             }),
           );
@@ -1089,7 +1148,7 @@ export class PlanfactService {
         }
         if (role === 'Упаковщики') {
           const data = await Promise.all(
-            periods.map(async (p) => {
+            periods.map(async (p, index) => {
               const packerReports = await this.prisma.packerReport.findMany({
                 where: {
                   date: {
@@ -1097,12 +1156,17 @@ export class PlanfactService {
                   },
                 },
               });
+              const sendDeals = res.income.sendDeals[index].value;
+              const value = packerReports.reduce(
+                (a, b) => a + b.cost - b.penaltyCost,
+                0,
+              );
               return {
                 period: p,
-                value: packerReports.reduce(
-                  (a, b) => a + b.cost - b.penaltyCost,
-                  0,
-                ),
+                value,
+                changePercent: sendDeals
+                  ? +((value / sendDeals) * 100).toFixed(2)
+                  : 0,
               };
             }),
           );
@@ -1113,7 +1177,7 @@ export class PlanfactService {
         }
         if (role === 'Ремонты') {
           const data = await Promise.all(
-            periods.map(async (p) => {
+            periods.map(async (p, index) => {
               const repairReports =
                 await this.prisma.masterRepairReport.findMany({
                   where: {
@@ -1122,12 +1186,17 @@ export class PlanfactService {
                     },
                   },
                 });
+              const sendDeals = res.income.sendDeals[index].value;
+              const value = repairReports.reduce(
+                (a, b) => a + b.cost - b.penaltyCost,
+                0,
+              );
               return {
                 period: p,
-                value: repairReports.reduce(
-                  (a, b) => a + b.cost - b.penaltyCost,
-                  0,
-                ),
+                value,
+                changePercent: sendDeals
+                  ? +((value / sendDeals) * 100).toFixed(2)
+                  : 0,
               };
             }),
           );
@@ -1138,7 +1207,7 @@ export class PlanfactService {
         }
         if (role === 'Другое') {
           const data = await Promise.all(
-            periods.map(async (p) => {
+            periods.map(async (p, index) => {
               const otherReports = await this.prisma.otherReport.findMany({
                 where: {
                   date: {
@@ -1146,12 +1215,17 @@ export class PlanfactService {
                   },
                 },
               });
+              const sendDeals = res.income.sendDeals[index].value;
+              const value = otherReports.reduce(
+                (a, b) => a + b.cost - b.penaltyCost,
+                0,
+              );
               return {
                 period: p,
-                value: otherReports.reduce(
-                  (a, b) => a + b.cost - b.penaltyCost,
-                  0,
-                ),
+                value,
+                changePercent: sendDeals
+                  ? +((value / sendDeals) * 100).toFixed(2)
+                  : 0,
               };
             }),
           );
@@ -1173,16 +1247,21 @@ export class PlanfactService {
       });
 
     // Подсчет totals для каждого периода
-    const totals = periods.map((p) => {
-      return sortedProdSalaries.reduce((sum, role) => {
+    const prodSalariesTotals = periods.map((p, index) => {
+      const sendDeals = res.income.sendDeals[index].value;
+      const value = sortedProdSalaries.reduce((sum, role) => {
         const periodData = role.data.find((d) => d.period === p);
         return sum + (periodData?.value || 0);
       }, 0);
+      return {
+        value,
+        changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+      };
     });
 
     res.expenses.production.productionSalaries = {
       data: sortedProdSalaries,
-      totals,
+      totals: prodSalariesTotals,
     };
 
     const adSources = await this.prisma.adSource.findMany({
@@ -1195,7 +1274,7 @@ export class PlanfactService {
     const adExpenses = await Promise.all(
       adSources.map(async (ads) => {
         const data = await Promise.all(
-          periods.map(async (p) => {
+          periods.map(async (p, index) => {
             const adExpenses = await this.prisma.adExpense.findMany({
               where: {
                 date: {
@@ -1213,10 +1292,15 @@ export class PlanfactService {
                 },
               },
             });
+            const sendDeals = res.income.sendDeals[index].value;
+            const value = adExpenses.reduce((a, b) => a + b.price, 0);
 
             return {
               period: p,
-              value: adExpenses.reduce((a, b) => a + b.price, 0),
+              value,
+              changePercent: sendDeals
+                ? +((value / sendDeals) * 100).toFixed(2)
+                : 0,
             };
           }),
         );
@@ -1233,12 +1317,256 @@ export class PlanfactService {
       return lastB - lastA;
     });
 
-    res.expenses.commercial.adExpenses.totals = [
-      adExpenses.reduce((a, b) => a + b.data[0].value, 0),
-      adExpenses.reduce((a, b) => a + b.data[1].value, 0),
-      adExpenses.reduce((a, b) => a + b.data[2].value, 0),
-      adExpenses.reduce((a, b) => a + b.data[3].value, 0),
+    res.expenses.commercial.adExpenses.totals = getTotals(adExpenses);
+
+    const mopSalaries = await Promise.all(
+      periods.map(async (p, index) => {
+        const data = await this.dashboardsService.getComercialData(user, p);
+
+        const value = data.users
+          .map((u) => {
+            const { totalSalary, salaryCorrections } = u;
+            const salaryCorrectionMinus = salaryCorrections
+              .filter((c) => c.type === 'Вычет')
+              .reduce((a, b) => a + b.price, 0);
+            const salaryCorrectionPlus = salaryCorrections
+              .filter((s) => s.type === 'Прибавка')
+              .reduce((a, b) => a + b.price, 0);
+            const salary =
+              totalSalary + salaryCorrectionPlus - salaryCorrectionMinus;
+            // prevPeriodsDealsPays +
+            // prevPeriodsDopsPays;
+            return {
+              role: u.role === 'Директор отдела продаж' ? 'РОПы' : u.role,
+              manager: u.fullName,
+              salary: +salary.toFixed(2),
+            };
+          })
+          .filter((u) => u.salary > 0 && u.role === 'Менеджер отдела продаж')
+          .reduce(
+            (acc, { role, manager, salary }) => {
+              const existingRole = acc.find((item) => item.role === role);
+              if (existingRole) {
+                existingRole.value += salary;
+                existingRole.salaries.push({ role, manager, salary });
+              } else {
+                acc.push({
+                  role,
+                  value: salary,
+                  salaries: [{ role, manager, salary }],
+                });
+              }
+              return acc;
+            },
+            [] as {
+              role: string;
+              value: number;
+              salaries: { role: string; manager: string; salary: number }[];
+            }[],
+          )
+          .reduce((a, b) => a + b.value, 0);
+        const sendDeals = res.income.sendDeals[index].value;
+
+        return {
+          value,
+          period: p,
+          changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+        };
+      }),
+    );
+    const ropSalaries = await Promise.all(
+      periods.map(async (p, index) => {
+        const data = await this.dashboardsService.getComercialData(user, p);
+
+        const value = data.ropData.reduce((a, b) => a + b.salaryThisPeriod, 0);
+        const sendDeals = res.income.sendDeals[index].value;
+
+        return {
+          value,
+          period: p,
+          changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+        };
+      }),
+    );
+    const disSalaries = await Promise.all(
+      periods.map(async (p, index) => {
+        const designers = await this.prisma.user.findMany({
+          where: {
+            role: {
+              shortName: 'DIZ',
+            },
+          },
+          include: {
+            salaryPays: {
+              where: {
+                period: p,
+              },
+            },
+          },
+        });
+        const value = designers.reduce(
+          (a, b) => a + b.salaryPays.reduce((a, b) => a + b.price, 0),
+          0,
+        );
+        const sendDeals = res.income.sendDeals[index].value;
+        return {
+          period: p,
+          value,
+          changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+          // more: designers
+          //   .map((d) => ({
+          //     role: 'Дизайнер',
+          //     manager: d.fullName,
+          //     salary: +d.salaryPays.reduce((a, b) => a + b.price, 0).toFixed(2),
+          //   }))
+          //   .filter((d) => d.salary > 0),
+        };
+      }),
+    );
+    const movSalaries = await Promise.all(
+      periods.map(async (p, index) => {
+        const movs = await this.prisma.user.findMany({
+          where: {
+            role: {
+              shortName: 'MOV',
+            },
+          },
+          include: {
+            salaryPays: {
+              where: {
+                period,
+              },
+            },
+          },
+        });
+        const value = movs.reduce(
+          (a, b) => a + b.salaryPays.reduce((a, b) => a + b.price, 0),
+          0,
+        );
+        const sendDeals = res.income.sendDeals[index].value;
+        return {
+          period: p,
+          value,
+          changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+          // more: movs
+          //   .map((d) => ({
+          //     role: 'Менеджеры отдела ведения',
+          //     manager: d.fullName,
+          //     salary: +d.salaryPays.reduce((a, b) => a + b.price, 0).toFixed(2),
+          //   }))
+          //   .filter((d) => d.salary > 0),
+        };
+      }),
+    );
+    const kdSalaries = await Promise.all(
+      periods.map(async (p, index) => {
+        const sendDeals = res.income.sendDeals[index].value;
+
+        return {
+          period: p,
+          value: 100_000,
+          changePercent: sendDeals
+            ? +((100_000 / sendDeals) * 100).toFixed(2)
+            : 0,
+        };
+      }),
+    );
+    const comSalariesData = [
+      {
+        role: 'Коммерческий директор?',
+        data: kdSalaries,
+      },
+      {
+        role: 'РОПы',
+        data: ropSalaries,
+      },
+      {
+        role: 'Менеджеры отдела продаж',
+        data: mopSalaries,
+      },
+      {
+        role: 'Менеджеры отдела ведения',
+        data: movSalaries,
+      },
+      {
+        role: 'Дизайнеры',
+        data: disSalaries,
+      },
     ];
+
+    res.expenses.commercial.commercialSalaries.data = comSalariesData.sort(
+      (a, b) => {
+        const lastA = a.data[a.data.length - 1]?.value || 0;
+        const lastB = b.data[b.data.length - 1]?.value || 0;
+        return lastB - lastA;
+      },
+    );
+
+    res.expenses.commercial.commercialSalaries.totals =
+      getTotals(comSalariesData);
+
+    const mainTotals = [
+      {
+        title: 'Расходы на поставки',
+        data: res.expenses.production.supplies.totals.map((item, index) => {
+          const sendDeals = res.income.sendDeals[index].value;
+          return {
+            value: item.value,
+            changePercent: sendDeals
+              ? +((item.value / sendDeals) * 100).toFixed(2)
+              : 0,
+          };
+        }),
+      },
+      {
+        title: 'Зарплаты производства',
+        data: res.expenses.production.productionSalaries.totals.map(
+          (item, index) => {
+            const sendDeals = res.income.sendDeals[index].value;
+            return {
+              value: item.value,
+              changePercent: sendDeals
+                ? +((item.value / sendDeals) * 100).toFixed(2)
+                : 0,
+            };
+          },
+        ),
+      },
+      {
+        title: 'Расходы на рекламу',
+        data: res.expenses.commercial.adExpenses.totals.map((item, index) => {
+          const sendDeals = res.income.sendDeals[index].value;
+          return {
+            value: item.value,
+            changePercent: sendDeals
+              ? +((item.value / sendDeals) * 100).toFixed(2)
+              : 0,
+          };
+        }),
+      },
+      {
+        title: 'Зарплаты коммерческого отдела',
+        data: res.expenses.commercial.commercialSalaries.totals.map(
+          (item, index) => {
+            const sendDeals = res.income.sendDeals[index].value;
+            return {
+              value: item.value,
+              changePercent: sendDeals
+                ? +((item.value / sendDeals) * 100).toFixed(2)
+                : 0,
+            };
+          },
+        ),
+      },
+    ];
+
+    res.expenses.totals.data = mainTotals.sort((a, b) => {
+      const lastA = a.data[a.data.length - 1].value || 0;
+      const lastB = b.data[b.data.length - 1].value || 0;
+      return lastB - lastA;
+    });
+
+    res.expenses.totals.totals = getTotals(mainTotals);
 
     return res;
   }
