@@ -62,6 +62,9 @@ model Group {
   users      User[]
   clients    Client[]
   deals      Deal[]
+  dops       Dop[]
+  payments   Payment[]
+  reports    RopReport[]
 }
 
 // РОЛЬ
@@ -169,6 +172,9 @@ model RopReport {
 
   workSpaceId         Int
   workSpace           WorkSpace  @relation(fields: [workSpaceId], references: [id])
+
+  groupId         Int?
+  group           Group?  @relation(fields: [groupId], references: [id])
 }
 // Суммы выплат
 model salaryPay {
@@ -409,6 +415,9 @@ model Payment {
 
   workSpaceId  Int
   workspace    WorkSpace  @relation(fields: [workSpaceId], references: [id])
+
+  groupId           Int?
+  group             Group?      @relation( fields: [groupId], references: [id])
 }
 
 
@@ -430,6 +439,9 @@ model Dop {
   
   workSpaceId      Int
   workSpace        WorkSpace     @relation(fields: [workSpaceId], references: [id])
+
+  groupId           Int?
+  group             Group?      @relation( fields: [groupId], references: [id])
 }
 // Типы допов
 model DopsType {

@@ -33,6 +33,7 @@ export class PaymentsService {
         userId: user.id,
         period: createPaymentDto.date.slice(0, 7),
         workSpaceId: existingDeal.workSpaceId,
+        groupId: existingDeal.groupId,
       },
     });
 

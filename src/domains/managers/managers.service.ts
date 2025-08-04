@@ -10,7 +10,7 @@ export class ManagersService {
   async getManagers(currentUser: UserDto) {
     const workspacesSearch =
       currentUser.role.department === 'administration' ||
-      currentUser.role.shortName === 'KD' || currentUser.id === 21
+      currentUser.role.shortName === 'KD'
         ? { gt: 0 }
         : currentUser.workSpaceId;
     return this.prisma.user.findMany({

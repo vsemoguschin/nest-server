@@ -5,21 +5,36 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    // const names = ['ИзиСветильник', 'ИзиБук', 'Авито'];
-    const names = ['ИзиСветильник', 'ИзиБук', 'ИзиКурс'];
+    const names = ['ИзиСветильник', 'ИзиБук', 'Авито'];
+
+    await prisma.group.update({
+      where: {
+        id: 3,
+      },
+      data: {
+        title: 'ВК',
+      },
+    });
+
+    await prisma.group.create({
+      data: {
+        title: 'ИзиКурс',
+        workSpaceId: 2,
+      },
+    });
 
     Promise.all(
       names.map(async (n) => {
-        const ws = await prisma.workSpace.create({
-          data: {
-            title: n,
-            department: 'COMMERCIAL',
-          },
-        });
+        // await prisma.workSpace.create({
+        //   data: {
+        //     title: n,
+        //     department: 'COMMERCIAL',
+        //   },
+        // });
         await prisma.group.create({
           data: {
             title: n,
-            workSpaceId: ws.id,
+            workSpaceId: 3,
           },
         });
       }),

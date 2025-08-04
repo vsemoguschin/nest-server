@@ -32,6 +32,12 @@ export class ReportsController {
     return this.reportService.getWorkSpaces(user);
   }
 
+  @Get('groups-list')
+  @Roles('ADMIN', 'G', 'KD', 'DO')
+  async getGroups(@CurrentUser() user: UserDto) {
+    return this.reportService.getGroups(user);
+  }
+
   @Post('manager')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
   @ApiOperation({ summary: 'Создать отчет менеджера' })
@@ -148,6 +154,19 @@ export class ReportsController {
       );
     }
     return this.reportService.getRopsReportsPredata(date, id);
+  }
+
+  @Get('group/:id/data')
+  async getRopGroupData(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('date') date: string,
+  ) {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException(
+        'Параметр date обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.reportService.getRopsReportsGroupPredata(date, id);
   }
 
   @Get('manager/:id/data')

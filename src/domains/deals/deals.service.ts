@@ -50,7 +50,6 @@ export class DealsService {
       data: {
         ...createDealDto,
         workSpaceId: user.workSpaceId,
-        groupId: user.groupId,
         userId: user.id,
         period: createDealDto.saleDate.slice(0, 7),
       },
@@ -115,7 +114,6 @@ export class DealsService {
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'KD' ||
       user.role.shortName === 'LOGIST' ||
-      user.id === 21 ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;
@@ -300,7 +298,6 @@ export class DealsService {
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'LOGIST' ||
       user.role.shortName === 'KD' ||
-      user.id === 21 ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;
@@ -737,17 +734,40 @@ export class DealsService {
     });
   }
 
-  async getDatas() {
+  async getDatas(user: UserDto) {
     const methods = await this.prisma.clothingMethod.findMany();
     const sources = await this.prisma.dealSource.findMany();
     const adTags = await this.prisma.adTag.findMany();
     const spheres = await this.prisma.sphere.findMany();
+
+    let groupSearch: {
+      id: { gt: number } | number;
+      workSpaceId?: number;
+    } = { id: user.groupId };
+
+    if (['ADMIN', 'G', 'KD'].includes(user.role.shortName)) {
+      groupSearch = {
+        id: { gt: 0 },
+        workSpaceId: 0,
+      };
+    }
+    if (['DO'].includes(user.role.shortName)) {
+      groupSearch = {
+        id: { gt: 0 },
+        workSpaceId: user.groupId,
+      };
+    }
+
+    const userGroups = await this.prisma.group.findMany({
+      where: groupSearch,
+    });
 
     return {
       methods: methods.map((el) => el.title.trim()),
       sources: sources.map((el) => el.title.trim()),
       adTags: adTags.map((el) => el.title.trim()),
       spheres: spheres.map((el) => el.title.trim()),
+      userGroups,
     };
   }
 

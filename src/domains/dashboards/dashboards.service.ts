@@ -126,10 +126,6 @@ export class DashboardsService {
     if (['DP'].includes(user.role.shortName)) {
       where = { department: 'PRODUCTION', deletedAt: null };
     }
-    if (user.id === 21) {
-      where = { department: 'COMMERCIAL', deletedAt: null };
-    }
-    // console.log(user);
     const workspaces = await this.prisma.workSpace.findMany({
       where,
       include: {
@@ -162,12 +158,6 @@ export class DashboardsService {
       workSpacesSearch = {
         id: user.workSpaceId,
         deletedAt: null,
-      };
-    }
-    if (user.id === 21) {
-      workSpacesSearch = {
-        deletedAt: null,
-        id: { gt: 0 },
       };
     }
     const workSpaces = await this.prisma.workSpace.findMany({
@@ -205,9 +195,7 @@ export class DashboardsService {
   // comercial
   async getComercialData(user: UserDto, period: string) {
     const workspacesSearch =
-      user.role.department === 'administration' ||
-      user.role.shortName === 'KD' ||
-      user.id === 21
+      user.role.department === 'administration' || user.role.shortName === 'KD'
         ? { gt: 0 }
         : user.workSpaceId;
 
@@ -873,8 +861,8 @@ export class DashboardsService {
             return {
               id: d.deal.id,
               title: isWithoutDesigner
-                ? // ? title.slice(0, 15) + '(БЕЗ ДИЗА)'
-                  title.slice(0, 15)
+                // ? title.slice(0, 15) + '(БЕЗ ДИЗА)'
+                ? title.slice(0, 15)
                 : title.slice(0, 15),
               saleDate,
               dealPrice,
@@ -2202,34 +2190,16 @@ export class DashboardsService {
   }
 
   async getPays(user: UserDto, period: string) {
-    let workSpacesSearch = {
-      deletedAt: null as null,
-      id: { gt: 0 } as { gt: number } | number,
-      department: { not: '' } as { not: string } | string,
-    };
-
-    if (
-      user.role.department === 'administration' ||
-      user.role.shortName === 'KD'
-    ) {
-      workSpacesSearch = {
-        department: { not: '' },
-        deletedAt: null,
-        id: { gt: 0 },
-      };
-    }
-
-    if (user.id === 21) {
-      workSpacesSearch = {
-        department: 'COMMERCIAL',
-        deletedAt: null,
-        id: { gt: 0 },
-      };
-    }
+    const workspacesSearch =
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
 
     const workspaces = await this.prisma.workSpace.findMany({
-      where: workSpacesSearch,
-
+      where: {
+        id: workspacesSearch,
+        deletedAt: null,
+      },
       include: {
         salaryPays: {
           where: {

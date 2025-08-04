@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsBoolean,
   IsIn,
+  IsInt,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 const clientGenders = ['M', 'F', 'IT'];
@@ -42,11 +43,11 @@ export class CreateClientDto {
   adLink?: string = '';
 
   @IsString({ message: 'гендер должно быть строкой (пол).' })
-  @IsIn(clientGenders, {message: 'неправильный гендер'})
+  @IsIn(clientGenders, { message: 'неправильный гендер' })
   gender: string;
 
   @IsString({ message: 'type должно быть строкой (тип клиента).' })
-  @IsIn(clientTypes, {message: "неправильный тип"})
+  @IsIn(clientTypes, { message: 'неправильный тип' })
   type: string;
 
   @IsString({ message: 'info должно быть строкой (информация о клиенте).' })
@@ -67,4 +68,7 @@ export class CreateClientDto {
     message: 'isRegular должно быть true или false (Постоянный/нет?).',
   })
   isRegular: boolean = false;
+
+  @IsInt({ message: 'groupId должен быть целым числом (ID группы).' })
+  groupId: number;
 }

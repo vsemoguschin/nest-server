@@ -42,6 +42,7 @@ export class DopsService {
         userId: createDopDto.userId, // Берем из текущего пользователя
         dealId: createDopDto.dealId,
         workSpaceId: managerExists.workSpaceId,
+        groupId: managerExists.groupId,
       },
     });
 

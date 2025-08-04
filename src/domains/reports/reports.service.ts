@@ -329,9 +329,7 @@ export class ReportsService {
     user: UserDto,
   ) {
     const workspacesSearch =
-      user.role.department === 'administration' ||
-      user.role.shortName === 'KD' ||
-      user.id === 21
+      user.role.department === 'administration' || user.role.shortName === 'KD'
         ? { gt: 0 }
         : user.workSpaceId;
     const reports = await this.prisma.managerReport.findMany({
@@ -469,9 +467,7 @@ export class ReportsService {
 
   async getWorkSpaces(user: UserDto) {
     const workspacesSearch =
-      user.role.department === 'administration' ||
-      user.role.shortName === 'KD' ||
-      user.id === 21
+      user.role.department === 'administration' || user.role.shortName === 'KD'
         ? { gt: 0 }
         : user.workSpaceId;
 
@@ -479,13 +475,43 @@ export class ReportsService {
       where: {
         deletedAt: null,
         id: workspacesSearch,
-        department: 'COMMERCIAL',
       },
     });
     if (!workspaces || workspaces.length === 0) {
       throw new NotFoundException('Нет доступных рабочих пространств');
     }
     return workspaces;
+  }
+
+  async getGroups(user: UserDto) {
+    let groupSearch: {
+      id: { gt: number } | number;
+      workSpaceId?: number;
+    } = { id: user.groupId };
+
+    if (['ADMIN', 'G', 'KD'].includes(user.role.shortName)) {
+      groupSearch = {
+        id: { gt: 0 },
+        workSpaceId: 0,
+      };
+    }
+    if (['DO'].includes(user.role.shortName)) {
+      groupSearch = {
+        id: { gt: 0 },
+        workSpaceId: user.groupId,
+      };
+    }
+
+    const groups = await this.prisma.group.findMany({
+      where: {
+        deletedAt: null,
+        ...groupSearch,
+      },
+    });
+    if (!groups || groups.length === 0) {
+      throw new NotFoundException('Нет доступных рабочих групп');
+    }
+    return groups;
   }
 
   async getRopsReportsPredata(date: string, id: number) {
@@ -544,6 +570,71 @@ export class ReportsService {
       date, //дата
       workSpaceId: workSpace?.id,
       workSpace: workSpace.title,
+      dealSales, //сумма сделок
+      dealsAmount, //количество сделок
+      dopSales, //сумма доп продаж
+      totalSales, //общая сумма продаж
+      averageBill: +averageBill.toFixed(), //средний чек
+      dealsDayToDayCount, // заказов день в день
+    };
+  }
+
+  async getRopsReportsGroupPredata(date: string, id: number) {
+    const group = await this.prisma.group.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        deals: {
+          where: {
+            saleDate: date,
+            reservation: false,
+            status: {
+              not: 'Возврат',
+            },
+          },
+          include: {
+            client: true,
+          },
+        },
+        payments: {
+          where: {
+            date,
+          },
+        },
+        dops: {
+          where: {
+            saleDate: date,
+            deal: {
+              reservation: false,
+              status: {
+                not: 'Возврат',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!group) {
+      throw new NotFoundException(`Пространство с ID ${id} не найден`);
+    }
+
+    const dateDeals = group.deals.filter((d) => d.saleDate === date);
+    const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
+    const dateDops = group.dops.filter((d) => d.saleDate === date);
+    const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
+    const totalSales = dopSales + dealSales;
+    const dealsAmount = dateDeals.length;
+    const averageBill = dealsAmount ? totalSales / dealsAmount : 0;
+    const dealsDayToDayCount = dateDeals.filter(
+      (d) => d.saleDate === d.client.firstContact,
+    ).length;
+
+    return {
+      date, //дата
+      groupId: group?.id,
+      group: group.title,
       dealSales, //сумма сделок
       dealsAmount, //количество сделок
       dopSales, //сумма доп продаж
@@ -679,9 +770,7 @@ export class ReportsService {
     user: UserDto,
   ) {
     const workspacesSearch =
-      user.role.department === 'administration' || user.id === 21
-        ? { gt: 0 }
-        : user.workSpaceId;
+      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
     const reports = await this.prisma.ropReport.findMany({
       where: {
         date: {
