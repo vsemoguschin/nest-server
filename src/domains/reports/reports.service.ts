@@ -24,7 +24,6 @@ export class ReportsService {
   async create(createManagerReportDto: CreateManagerReportDto, user: UserDto) {
     const { calls, makets, maketsDayToDay, userId, date, redirectToMSG } =
       createManagerReportDto;
-    
 
     // Проверяем, существует ли запись с таким userId и date
     const existingUser = await this.prisma.user.findUnique({
@@ -34,9 +33,7 @@ export class ReportsService {
     });
 
     if (!existingUser) {
-      throw new ConflictException(
-        `пользователя не существует`,
-      );
+      throw new ConflictException(`пользователя не существует`);
     }
     // Проверяем, существует ли запись с таким userId и date
     const existingReport = await this.prisma.managerReport.findFirst({
@@ -51,7 +48,6 @@ export class ReportsService {
         `Отчет для пользователя с ID ${userId} и датой ${date} уже существует`,
       );
     }
-  
 
     const report = await this.prisma.managerReport.create({
       data: {
@@ -333,7 +329,9 @@ export class ReportsService {
     user: UserDto,
   ) {
     const workspacesSearch =
-      user.role.department === 'administration' || user.role.shortName === 'KD'
+      user.role.department === 'administration' ||
+      user.role.shortName === 'KD' ||
+      user.id === 21
         ? { gt: 0 }
         : user.workSpaceId;
     const reports = await this.prisma.managerReport.findMany({
@@ -471,7 +469,9 @@ export class ReportsService {
 
   async getWorkSpaces(user: UserDto) {
     const workspacesSearch =
-      user.role.department === 'administration' || user.role.shortName === 'KD'
+      user.role.department === 'administration' ||
+      user.role.shortName === 'KD' ||
+      user.id === 21
         ? { gt: 0 }
         : user.workSpaceId;
 
@@ -479,6 +479,7 @@ export class ReportsService {
       where: {
         deletedAt: null,
         id: workspacesSearch,
+        department: 'COMMERCIAL',
       },
     });
     if (!workspaces || workspaces.length === 0) {
@@ -678,7 +679,9 @@ export class ReportsService {
     user: UserDto,
   ) {
     const workspacesSearch =
-      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+      user.role.department === 'administration' || user.id === 21
+        ? { gt: 0 }
+        : user.workSpaceId;
     const reports = await this.prisma.ropReport.findMany({
       where: {
         date: {

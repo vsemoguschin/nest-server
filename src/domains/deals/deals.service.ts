@@ -115,6 +115,7 @@ export class DealsService {
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'KD' ||
       user.role.shortName === 'LOGIST' ||
+      user.id === 21 ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;
@@ -189,7 +190,9 @@ export class DealsService {
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
       const payments = el.payments;
-      const isRegular = el.client.isRegular ? 'Постоянный клиент' : 'Новый клиент'
+      const isRegular = el.client.isRegular
+        ? 'Постоянный клиент'
+        : 'Новый клиент';
 
       const haveReviews = el.reviews.length ? 'Есть' : 'Нет';
       const dg = useMyGetDaysDifference(el.client.firstContact, saleDate);
@@ -253,7 +256,7 @@ export class DealsService {
         reservation,
         daysGone,
         haveReviews,
-        isRegular
+        isRegular,
       };
     });
 
@@ -297,6 +300,7 @@ export class DealsService {
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'LOGIST' ||
       user.role.shortName === 'KD' ||
+      user.id === 21 ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;
@@ -388,7 +392,9 @@ export class DealsService {
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
       const payments = el.payments;
-      const isRegular = el.client.isRegular ? 'Постоянный клиент' : 'Новый клиент'
+      const isRegular = el.client.isRegular
+        ? 'Постоянный клиент'
+        : 'Новый клиент';
 
       let status = 'Создана';
 
@@ -435,7 +441,7 @@ export class DealsService {
         maketType,
         deletedAt,
         reservation,
-        isRegular
+        isRegular,
       };
     });
 
