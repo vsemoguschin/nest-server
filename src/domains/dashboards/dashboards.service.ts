@@ -130,6 +130,9 @@ export class DashboardsService {
       where,
       include: {
         groups: {
+          where: {
+            deletedAt: null,
+          },
           include: {
             users: {
               where: { deletedAt: null },

@@ -6,13 +6,19 @@ const prisma = new PrismaClient();
 async function main() {
   try {
     const names = [20, 21, 23, 22];
-    prisma.group.deleteMany({
+    const gs = await prisma.group.deleteMany({
       where: {
         id: {
           in: names,
         },
       },
     });
+    // await prisma.group.delete({
+    //   where: {
+    //     id: 20,
+    //   },
+    // });
+    // console.log(gs);
   } catch (e) {
     console.log(e);
   }
