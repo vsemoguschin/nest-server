@@ -50,4 +50,8 @@ export class CreateRopReportDto {
   @IsInt()
   @IsNotEmpty()
   workSpaceId: number;
+
+  @IsInt()
+  @IsNotEmpty()
+  groupId: number;
 }

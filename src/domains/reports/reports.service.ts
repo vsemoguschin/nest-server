@@ -66,13 +66,32 @@ export class ReportsService {
   }
 
   async createRopReport(createRopReportDto: CreateRopReportDto) {
-    const { calls, makets, workSpaceId, date, maketsDayToDay, redirectToMSG } =
-      createRopReportDto;
+    const {
+      calls,
+      makets,
+      workSpaceId,
+      date,
+      maketsDayToDay,
+      redirectToMSG,
+      groupId,
+    } = createRopReportDto;
+    // return console.log(createRopReportDto);
+
+    // Проверяем, существует ли группа
+    const existingGroup = await this.prisma.group.findUnique({
+      where: {
+        id: groupId,
+      },
+    });
+
+    if (!existingGroup) {
+      throw new ConflictException(`Группа не существует`);
+    }
 
     // Проверяем, существует ли запись с таким userId и date
     const existingReport = await this.prisma.ropReport.findFirst({
       where: {
-        workSpaceId,
+        groupId,
         date,
       },
     });
@@ -87,11 +106,12 @@ export class ReportsService {
       data: {
         calls,
         makets,
-        workSpaceId,
+        workSpaceId: existingGroup.workSpaceId,
         date,
         maketsDayToDay,
         redirectToMSG,
         period: date.slice(0, 7),
+        groupId,
       },
     });
 
@@ -492,7 +512,7 @@ export class ReportsService {
     if (['ADMIN', 'G', 'KD'].includes(user.role.shortName)) {
       groupSearch = {
         id: { gt: 0 },
-        workSpaceId: 0,
+        // workSpaceId: 0,
       };
     }
     if (['DO'].includes(user.role.shortName)) {
@@ -693,6 +713,7 @@ export class ReportsService {
             },
           },
         },
+        group: true,
       },
       orderBy: {
         date: 'desc',
@@ -743,6 +764,7 @@ export class ReportsService {
         date: formatDate(date), //дата
         workSpaceId: r.workSpaceId,
         workSpace: r.workSpace.title,
+        group: r.group?.title || 'Нет группы',
         calls, // количество заявок
         dealSales, //сумма сделок
         dealsAmount, //количество сделок
@@ -827,6 +849,7 @@ export class ReportsService {
             },
           },
         },
+        group: true,
       },
       orderBy: {
         date: 'desc',
@@ -883,6 +906,7 @@ export class ReportsService {
         date: formatDate(date), //дата
         workSpaceId: r.workSpaceId,
         workSpace: r.workSpace.title,
+        group: r.group?.title || 'Нет группы',
         calls, // количество заявок
         dealSales, //сумма сделок
         dealsAmount, //количество сделок

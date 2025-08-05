@@ -150,6 +150,7 @@ export class DealsService {
         reviews: true,
         masterReports: true,
         packerReports: true,
+        group: true,
         // workSpace: true,
       },
       orderBy: {
@@ -188,6 +189,7 @@ export class DealsService {
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
       const payments = el.payments;
+      const group = el.group.title;
       const isRegular = el.client.isRegular
         ? 'Постоянный клиент'
         : 'Новый клиент';
@@ -228,6 +230,7 @@ export class DealsService {
         id,
         payments,
         title,
+        group,
         totalPrice,
         price,
         clientType,
@@ -351,6 +354,7 @@ export class DealsService {
         deliveries: true,
         masterReports: true,
         packerReports: true,
+        group: true,
         // workSpace: true,
       },
       orderBy: {
@@ -384,6 +388,7 @@ export class DealsService {
       const client = el.client; //передаю полность
       const workSpaceId = el.workSpaceId;
       const groupId = el.groupId;
+      const group = el.group.title;
       const saleDate = el.saleDate;
       const maketType = el.maketType;
       const deletedAt = el.deletedAt;
@@ -433,6 +438,7 @@ export class DealsService {
         paid,
         workSpaceId,
         groupId,
+        group,
         chatLink,
         saleDate,
         maketType,
