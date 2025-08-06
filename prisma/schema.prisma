@@ -65,6 +65,7 @@ model Group {
   dops       Dop[]
   payments   Payment[]
   reports    RopReport[]
+  adExpenses AdExpense[]
 }
 
 // РОЛЬ
@@ -357,6 +358,9 @@ model AdExpense {
 
   workSpaceId   Int
   workSpace     WorkSpace  @relation( fields: [workSpaceId], references: [id])
+
+  groupId       Int?
+  group         Group?  @relation(fields: [groupId], references: [id])
 }
 
 // Методы закрытия

@@ -46,10 +46,18 @@ export class DealsService {
     if (!client) {
       throw new NotFoundException(`Клиент не найден.`);
     }
+    const group = await this.prisma.group.findUnique({
+      where: {
+        id: createDealDto.groupId,
+      },
+    });
+    if (!group) {
+      throw new NotFoundException(`Проект не найден.`);
+    }
     const newDeal = await this.prisma.deal.create({
       data: {
         ...createDealDto,
-        workSpaceId: user.workSpaceId,
+        workSpaceId: group.workSpaceId,
         userId: user.id,
         period: createDealDto.saleDate.slice(0, 7),
       },

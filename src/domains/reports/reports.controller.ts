@@ -98,19 +98,19 @@ export class ReportsController {
     return this.reportService.getManagersReportsFromRange({ from, to }, user);
   }
 
-  @Get('rops')
-  @Roles('ADMIN', 'G', 'KD', 'DO')
-  async getRopsReports(
-    @CurrentUser() user: UserDto,
-    @Query('period') period: string,
-  ) {
-    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
-      throw new BadRequestException(
-        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
-      );
-    }
-    return this.reportService.getRopsReports(period, user);
-  }
+  // @Get('rops')
+  // @Roles('ADMIN', 'G', 'KD', 'DO')
+  // async getRopsReports(
+  //   @CurrentUser() user: UserDto,
+  //   @Query('period') period: string,
+  // ) {
+  //   if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+  //     throw new BadRequestException(
+  //       'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+  //     );
+  //   }
+  //   return this.reportService.getRopsReports(period, user);
+  // }
 
   @Get('rops/range')
   @Roles('ADMIN', 'G', 'KD', 'DO')

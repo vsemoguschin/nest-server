@@ -526,6 +526,9 @@ export class ReportsService {
       where: {
         deletedAt: null,
         ...groupSearch,
+        workSpace: {
+          department: 'COMMERCIAL',
+        },
       },
     });
     if (!groups || groups.length === 0) {
@@ -664,128 +667,128 @@ export class ReportsService {
     };
   }
 
-  async getRopsReports(period: string, user: UserDto) {
-    const workspacesSearch =
-      user.role.department === 'administration' || user.role.shortName === 'KD'
-        ? { gt: 0 }
-        : user.workSpaceId;
-    const reports = await this.prisma.ropReport.findMany({
-      where: {
-        period,
-        workSpaceId: workspacesSearch,
-      },
-      include: {
-        workSpace: {
-          include: {
-            deals: {
-              where: {
-                saleDate: {
-                  startsWith: period,
-                },
-                reservation: false,
-              },
-              include: {
-                client: true,
-              },
-            },
-            dops: {
-              where: {
-                saleDate: {
-                  startsWith: period,
-                },
-                deal: {
-                  reservation: false,
-                  status: {
-                    not: 'Возврат',
-                  },
-                },
-              },
-            },
-            payments: {
-              where: {
-                date: {
-                  startsWith: period,
-                },
-              },
-            },
-            adExpenses: {
-              where: { period },
-            },
-          },
-        },
-        group: true,
-      },
-      orderBy: {
-        date: 'desc',
-      },
-    });
+  // async getRopsReports(period: string, user: UserDto) {
+  //   const workspacesSearch =
+  //     user.role.department === 'administration' || user.role.shortName === 'KD'
+  //       ? { gt: 0 }
+  //       : user.workSpaceId;
+  //   const reports = await this.prisma.ropReport.findMany({
+  //     where: {
+  //       period,
+  //       workSpaceId: workspacesSearch,
+  //     },
+  //     include: {
+  //       workSpace: {
+  //         include: {
+  //           deals: {
+  //             where: {
+  //               saleDate: {
+  //                 startsWith: period,
+  //               },
+  //               reservation: false,
+  //             },
+  //             include: {
+  //               client: true,
+  //             },
+  //           },
+  //           dops: {
+  //             where: {
+  //               saleDate: {
+  //                 startsWith: period,
+  //               },
+  //               deal: {
+  //                 reservation: false,
+  //                 status: {
+  //                   not: 'Возврат',
+  //                 },
+  //               },
+  //             },
+  //           },
+  //           payments: {
+  //             where: {
+  //               date: {
+  //                 startsWith: period,
+  //               },
+  //             },
+  //           },
+  //           adExpenses: {
+  //             where: { period },
+  //           },
+  //         },
+  //       },
+  //       group: true,
+  //     },
+  //     orderBy: {
+  //       date: 'desc',
+  //     },
+  //   });
 
-    return reports.map((r) => {
-      const { date, calls, makets, maketsDayToDay, redirectToMSG } = r;
-      const dateExpenses = r.workSpace.adExpenses.filter(
-        (e) => e.date === date,
-      );
+  //   return reports.map((r) => {
+  //     const { date, calls, makets, maketsDayToDay, redirectToMSG } = r;
+  //     const dateExpenses = r.workSpace.adExpenses.filter(
+  //       (e) => e.date === date,
+  //     );
 
-      const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
-      const dateDeals = r.workSpace.deals.filter((d) => d.saleDate === date);
-      const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
-      const dateDops = r.workSpace.dops.filter((d) => d.saleDate === date);
-      const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
-      const totalSales = dopSales + dealSales;
-      const dealsAmount = dateDeals.length;
-      const averageBill = dealsAmount ? totalSales / dealsAmount : 0;
-      const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
-      const conversionMaket = calls ? +((makets / calls) * 100).toFixed(2) : 0;
-      const conversionToSale = makets
-        ? +((dealsAmount / makets) * 100).toFixed(2)
-        : 0;
+  //     const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
+  //     const dateDeals = r.workSpace.deals.filter((d) => d.saleDate === date);
+  //     const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
+  //     const dateDops = r.workSpace.dops.filter((d) => d.saleDate === date);
+  //     const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
+  //     const totalSales = dopSales + dealSales;
+  //     const dealsAmount = dateDeals.length;
+  //     const averageBill = dealsAmount ? totalSales / dealsAmount : 0;
+  //     const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
+  //     const conversionMaket = calls ? +((makets / calls) * 100).toFixed(2) : 0;
+  //     const conversionToSale = makets
+  //       ? +((dealsAmount / makets) * 100).toFixed(2)
+  //       : 0;
 
-      const dealsDayToDayCount = dateDeals.filter(
-        (d) => d.saleDate === d.client.firstContact,
-      ).length;
+  //     const dealsDayToDayCount = dateDeals.filter(
+  //       (d) => d.saleDate === d.client.firstContact,
+  //     ).length;
 
-      const conversionDealsDayToDay = calls
-        ? +((dealsDayToDayCount / calls) * 100).toFixed(2)
-        : 0;
+  //     const conversionDealsDayToDay = calls
+  //       ? +((dealsDayToDayCount / calls) * 100).toFixed(2)
+  //       : 0;
 
-      const callCost = calls ? +(dateExpensesPrice / calls).toFixed(2) : 0;
-      const drr = totalSales
-        ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
-        : 0;
+  //     const callCost = calls ? +(dateExpensesPrice / calls).toFixed(2) : 0;
+  //     const drr = totalSales
+  //       ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
+  //       : 0;
 
-      const conversionMaketDayToDay = calls
-        ? +((maketsDayToDay / calls) * 100).toFixed(2)
-        : 0;
+  //     const conversionMaketDayToDay = calls
+  //       ? +((maketsDayToDay / calls) * 100).toFixed(2)
+  //       : 0;
 
-      // console.log(callCost);
+  //     // console.log(callCost);
 
-      return {
-        id: r.id,
-        date: formatDate(date), //дата
-        workSpaceId: r.workSpaceId,
-        workSpace: r.workSpace.title,
-        group: r.group?.title || 'Нет группы',
-        calls, // количество заявок
-        dealSales, //сумма сделок
-        dealsAmount, //количество сделок
-        dopSales, //сумма доп продаж
-        totalSales, //общая сумма продаж
-        averageBill: +averageBill.toFixed(), //средний чек
-        makets, //количество макетов
-        maketsDayToDay, //количество макетов день в день
-        conversionMaketDayToDay, //количество макетов день в день
-        redirectToMSG, //количество редиректов
-        conversion, //конверсия
-        conversionMaket, //конверсия в макет (количество макетов/колво сделок)
-        conversionToSale, //конверсия из макета в продажу(колво сделок/колво макетов)
-        dealsDayToDayCount, // заказов день в день
-        conversionDealsDayToDay, // конверсия заказов день в день (заказы день в день/заявки)
-        callCost, //Стоимость заявки(по формуле)
-        drr, //ДРР(по формуле)
-        dateExpensesPrice, //стоимость рекламы
-      };
-    });
-  }
+  //     return {
+  //       id: r.id,
+  //       date: formatDate(date), //дата
+  //       workSpaceId: r.workSpaceId,
+  //       workSpace: r.workSpace.title,
+  //       group: r.group?.title || 'Нет группы',
+  //       calls, // количество заявок
+  //       dealSales, //сумма сделок
+  //       dealsAmount, //количество сделок
+  //       dopSales, //сумма доп продаж
+  //       totalSales, //общая сумма продаж
+  //       averageBill: +averageBill.toFixed(), //средний чек
+  //       makets, //количество макетов
+  //       maketsDayToDay, //количество макетов день в день
+  //       conversionMaketDayToDay, //количество макетов день в день
+  //       redirectToMSG, //количество редиректов
+  //       conversion, //конверсия
+  //       conversionMaket, //конверсия в макет (количество макетов/колво сделок)
+  //       conversionToSale, //конверсия из макета в продажу(колво сделок/колво макетов)
+  //       dealsDayToDayCount, // заказов день в день
+  //       conversionDealsDayToDay, // конверсия заказов день в день (заказы день в день/заявки)
+  //       callCost, //Стоимость заявки(по формуле)
+  //       drr, //ДРР(по формуле)
+  //       dateExpensesPrice, //стоимость рекламы
+  //     };
+  //   });
+  // }
 
   async getRopsReportsFromRange(
     range: { start: string; end: string },
@@ -793,16 +796,18 @@ export class ReportsService {
   ) {
     const workspacesSearch =
       user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+
     const reports = await this.prisma.ropReport.findMany({
       where: {
         date: {
           gte: range.start,
-          lt: range.end,
+          lte: range.end,
         },
         workSpaceId: workspacesSearch,
       },
       include: {
-        workSpace: {
+        workSpace: true,
+        group: {
           include: {
             deals: {
               where: {
@@ -849,23 +854,23 @@ export class ReportsService {
             },
           },
         },
-        group: true,
       },
       orderBy: {
         date: 'desc',
       },
     });
 
+    // console.log(reports);
+
     return reports.map((r) => {
       const { date, calls, makets, maketsDayToDay, redirectToMSG } = r;
-      const dateExpenses = r.workSpace.adExpenses.filter(
-        (e) => e.date === date,
-      );
+      const dateExpenses = r.group!.adExpenses.filter((e) => e.date === date);
 
       const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
-      const dateDeals = r.workSpace.deals.filter((d) => d.saleDate === date);
+      const dateDeals = r.group!.deals.filter((d) => d.saleDate === date);
       const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
-      const dateDops = r.workSpace.dops.filter((d) => d.saleDate === date);
+      const dateDops = r.group!.dops.filter((d) => d.saleDate === date);
+
       const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
       const totalSales = dopSales + dealSales;
       const dealsAmount = dateDeals.length;
@@ -880,11 +885,18 @@ export class ReportsService {
         (d) => d.saleDate === d.client.firstContact,
       ).length;
 
-      console.log(
-        dateDeals
-          .filter((d) => d.saleDate === d.client.firstContact)
-          .map((d) => d.title),
-      );
+      // console.log(
+      //   dateDeals
+      //     // .filter((d) => d.saleDate === d.client.firstContact)
+      //     .map((d) => ({ title: d.title, price: d.price }))
+      //     .reduce((a, b) => a + b.price, 0),
+      // );
+      // console.log(
+      //   dateDops
+      //     // .filter((d) => d.saleDate === d.client.firstContact)
+      //     .map((d) => ({ title: d.type, price: d.price, data: d.saleDate, deal: d.dealId }))
+      //     // .reduce((a, b) => a + b.price, 0),
+      // );
 
       const conversionDealsDayToDay = calls
         ? +((dealsDayToDayCount / calls) * 100).toFixed(2)
