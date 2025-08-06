@@ -325,7 +325,7 @@ export class PlanfactService {
                   accountNumber,
                   operationStatus: 'Transaction',
                   from: new Date(range.from),
-                  to: new Date(range.to),
+                  to: range.to + 'T23:59:59.999Z',
                   withBalances: true,
                   limit: limit,
                 },
@@ -333,9 +333,7 @@ export class PlanfactService {
               },
             );
 
-            // console.log(response.data.operations);
-
-            const operations = await Promise.all(
+            await Promise.all(
               response.data.operations.map(async (op: OperationFromApi) => {
                 // Проверяем и создаем CounterParty, если не существует
                 // console.log(op);
@@ -407,8 +405,69 @@ export class PlanfactService {
                   });
                 }
 
-                // if(operation) 
-                console.log(operation);
+                if (
+                  operation.operationType === 'Поступление' &&
+                  operation.payPurpose.startsWith('Пополнение по операции СБП')
+                ) {
+                  const { operationPositions } = operation;
+                  const operationPositionsIds = operationPositions.map(
+                    (p) => p.id,
+                  );
+                  await this.prisma.operationPosition.updateMany({
+                    where: {
+                      id: {
+                        in: operationPositionsIds,
+                      },
+                    },
+                    data: {
+                      expenseCategoryId: 2, //Продажа через СБП
+                    },
+                  });
+                }
+
+                if (
+                  operation.operationType === 'Поступление' &&
+                  operation.operationPositions.find(
+                    (p) => p.counterPartyId === 495,
+                  )
+                ) {
+                  const { operationPositions } = operation;
+                  const operationPositionsIds = operationPositions.map(
+                    (p) => p.id,
+                  );
+                  await this.prisma.operationPosition.updateMany({
+                    where: {
+                      id: {
+                        in: operationPositionsIds,
+                      },
+                    },
+                    data: {
+                      expenseCategoryId: 3, //Продажа "Долями"
+                    },
+                  });
+                }
+
+                if (
+                  operation.operationType === 'Поступление' &&
+                  operation.operationPositions.find(
+                    (p) => p.counterPartyId === 526,
+                  )
+                ) {
+                  const { operationPositions } = operation;
+                  const operationPositionsIds = operationPositions.map(
+                    (p) => p.id,
+                  );
+                  await this.prisma.operationPosition.updateMany({
+                    where: {
+                      id: {
+                        in: operationPositionsIds,
+                      },
+                    },
+                    data: {
+                      expenseCategoryId: 10, //наложка от сдека
+                    },
+                  });
+                }
 
                 // console.log(operation);
                 return operation;
