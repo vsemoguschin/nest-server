@@ -309,14 +309,14 @@ export class PlanfactService {
       if (account && account.isReal) {
         // console.log('acc');
         const fetchOperationsForAccount = async (accountNumber: string) => {
-          const agent = new SocksProxyAgent('socks5h://localhost:8080');
+          // const agent = new SocksProxyAgent('socks5h://localhost:8080');
 
           try {
             const response = await axios.get(
               'https://business.tbank.ru/openapi/api/v1/statement',
               {
-                httpsAgent: agent, // Используем SOCKS-прокси
-                proxy: false, // Отключаем системный прокси
+                // httpsAgent: agent, // Используем SOCKS-прокси
+                // proxy: false, // Отключаем системный прокси
                 headers: {
                   Authorization: 'Bearer ' + tToken,
                   'Content-Type': 'application/json',
