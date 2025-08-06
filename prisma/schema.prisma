@@ -59,13 +59,14 @@ model Group {
   workSpaceId Int
   workSpace  WorkSpace @relation(fields: [workSpaceId], references: [id])
 
-  users      User[]
-  clients    Client[]
-  deals      Deal[]
-  dops       Dop[]
-  payments   Payment[]
-  reports    RopReport[]
-  adExpenses AdExpense[]
+  users       User[]
+  clients     Client[]
+  deals       Deal[]
+  dops        Dop[]
+  payments    Payment[]
+  reports     RopReport[]
+  adExpenses  AdExpense[]
+  adSources   AdSource[]
 }
 
 // РОЛЬ
@@ -337,6 +338,9 @@ model AdSource {
   // Внешний ключ для связи с пространством
   workSpaceId  Int
   workSpace    WorkSpace  @relation( fields: [workSpaceId], references: [id])
+
+  groupId       Int?
+  group         Group?  @relation(fields: [groupId], references: [id])
 }
 
 // Источники сделок

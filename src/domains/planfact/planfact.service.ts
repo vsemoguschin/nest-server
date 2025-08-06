@@ -309,14 +309,14 @@ export class PlanfactService {
       if (account && account.isReal) {
         // console.log('acc');
         const fetchOperationsForAccount = async (accountNumber: string) => {
-          // const agent = new SocksProxyAgent('socks5h://localhost:8080');
+          const agent = new SocksProxyAgent('socks5h://localhost:8080');
 
           try {
             const response = await axios.get(
               'https://business.tbank.ru/openapi/api/v1/statement',
               {
-                // httpsAgent: agent, // Используем SOCKS-прокси
-                // proxy: false, // Отключаем системный прокси
+                httpsAgent: agent, // Используем SOCKS-прокси
+                proxy: false, // Отключаем системный прокси
                 headers: {
                   Authorization: 'Bearer ' + tToken,
                   'Content-Type': 'application/json',
@@ -373,6 +373,7 @@ export class PlanfactService {
                 }
 
                 // Создаем операцию в базе, если не существует
+
                 const operation = await this.prisma.operation.upsert({
                   where: { operationId: op.operationId },
                   update: {},
@@ -390,7 +391,9 @@ export class PlanfactService {
                     // counterPartyId: counterParty.id,
                   },
                   include: {
-                    operationPositions: true,
+                    operationPositions: {
+                      include: { counterParty: true },
+                    },
                   },
                 });
 
@@ -403,6 +406,9 @@ export class PlanfactService {
                     },
                   });
                 }
+
+                // if(operation) 
+                console.log(operation);
 
                 // console.log(operation);
                 return operation;
@@ -1370,7 +1376,9 @@ export class PlanfactService {
         return {
           value,
           period: p,
-          changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+          changePercent: sendDeals
+            ? +((value / sendDeals) * 100).toFixed(2)
+            : 0,
         };
       }),
     );
@@ -1384,7 +1392,9 @@ export class PlanfactService {
         return {
           value,
           period: p,
-          changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+          changePercent: sendDeals
+            ? +((value / sendDeals) * 100).toFixed(2)
+            : 0,
         };
       }),
     );
@@ -1412,7 +1422,9 @@ export class PlanfactService {
         return {
           period: p,
           value,
-          changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+          changePercent: sendDeals
+            ? +((value / sendDeals) * 100).toFixed(2)
+            : 0,
           // more: designers
           //   .map((d) => ({
           //     role: 'Дизайнер',
@@ -1447,7 +1459,9 @@ export class PlanfactService {
         return {
           period: p,
           value,
-          changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+          changePercent: sendDeals
+            ? +((value / sendDeals) * 100).toFixed(2)
+            : 0,
           // more: movs
           //   .map((d) => ({
           //     role: 'Менеджеры отдела ведения',

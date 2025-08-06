@@ -864,8 +864,8 @@ export class DashboardsService {
             return {
               id: d.deal.id,
               title: isWithoutDesigner
-                // ? title.slice(0, 15) + '(БЕЗ ДИЗА)'
-                ? title.slice(0, 15)
+                ? // ? title.slice(0, 15) + '(БЕЗ ДИЗА)'
+                  title.slice(0, 15)
                 : title.slice(0, 15),
               saleDate,
               dealPrice,
@@ -1636,6 +1636,11 @@ export class DashboardsService {
           sales: 0,
           amount: 0,
         },
+        {
+          name: '',
+          sales: 0,
+          amount: 0,
+        },
       ],
       sources: [],
       adTags: [],
@@ -1780,6 +1785,11 @@ export class DashboardsService {
             sales: 0,
             amount: 0,
           },
+          {
+            name: '',
+            sales: 0,
+            amount: 0,
+          },
         ],
         sources: [],
         adTags: [],
@@ -1845,6 +1855,7 @@ export class DashboardsService {
 
         deal.dealers.map((dealer) => {
           const userIndex = data.users.findIndex((u) => u.id === dealer.userId);
+          // console.log(dealer.user, data.users[userIndex]);
           data.users[userIndex].sales += dealer.price;
         });
         // console.log(deal.maketType);

@@ -40,6 +40,7 @@ export class AdService {
       include: {
         // dealSource: true,
         adSource: true,
+        group: true,
         workSpace: {
           include: {
             reports: {
@@ -62,6 +63,7 @@ export class AdService {
         ...s, 
         source: s.adSource?.title,
         workSpace: s.workSpace.title,
+        group: s.group?.title || 'Без проекта'
       };
     });
   }

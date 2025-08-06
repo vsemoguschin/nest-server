@@ -759,18 +759,17 @@ export class DealsService {
     if (['ADMIN', 'G', 'KD'].includes(user.role.shortName)) {
       groupSearch = {
         id: { gt: 0 },
-        workSpaceId: 0,
       };
     }
     if (['DO'].includes(user.role.shortName)) {
       groupSearch = {
         id: { gt: 0 },
-        workSpaceId: user.groupId,
+        workSpaceId: user.workSpaceId,
       };
     }
 
     const userGroups = await this.prisma.group.findMany({
-      where: groupSearch,
+      where: { ...groupSearch, workSpace: { department: 'COMMERCIAL' } },
     });
 
     return {

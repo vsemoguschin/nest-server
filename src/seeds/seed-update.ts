@@ -5,36 +5,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    const reports = await prisma.ropReport.findMany({
-      include: {
-        workSpace: {
-          include: {
-            groups: true,
-          },
-        },
-        group: true,
-      },
-    });
-    await Promise.all(
-      reports.map(async (r) => {
-        const { workSpace, group, groupId } = r;
-        // console.log(r.groupId);
-        if (!groupId) {
-          const primalGroup = workSpace.groups.sort((a, b) => a.id - b.id)[0];
-          await prisma.ropReport.update({
-            where: {
-              id: r.id,
-            },
-            data: {
-              groupId: primalGroup.id,
-            },
-          });
-          // console.log(primalGroup);
-        }
-      }),
-    );
-
-    const adExpenses = await prisma.adExpense.findMany({
+    const adSources = await prisma.adSource.findMany({
       include: {
         workSpace: {
           include: {
@@ -46,12 +17,12 @@ async function main() {
     });
 
     await Promise.all(
-      adExpenses.map(async (adex) => {
+      adSources.map(async (adex) => {
         const { workSpace, groupId } = adex;
         // console.log(r.groupId);
         if (!groupId) {
           const primalGroup = workSpace.groups.sort((a, b) => a.id - b.id)[0];
-          await prisma.adExpense.update({
+          await prisma.adSource.update({
             where: {
               id: adex.id,
             },
