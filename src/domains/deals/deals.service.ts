@@ -54,6 +54,13 @@ export class DealsService {
     if (!group) {
       throw new NotFoundException(`Проект не найден.`);
     }
+    if (group.id === 16) {
+      createDealDto.discont = '';
+      createDealDto.maketType = '';
+    } else {
+      createDealDto.discontAmount = 0;
+      createDealDto.courseType = '';
+    }
     const newDeal = await this.prisma.deal.create({
       data: {
         ...createDealDto,
@@ -198,6 +205,8 @@ export class DealsService {
       const reservation = el.reservation;
       const payments = el.payments;
       const group = el.group.title;
+      const courseType = el.courseType;
+      const discontAmount = el.discontAmount;
       const isRegular = el.client.isRegular
         ? 'Постоянный клиент'
         : 'Новый клиент';
@@ -266,6 +275,8 @@ export class DealsService {
         daysGone,
         haveReviews,
         isRegular,
+        courseType,
+        discontAmount,
       };
     });
 
@@ -402,6 +413,8 @@ export class DealsService {
       const deletedAt = el.deletedAt;
       const reservation = el.reservation;
       const payments = el.payments;
+      const courseType = el.courseType;
+      const discontAmount = el.discontAmount;
       const isRegular = el.client.isRegular
         ? 'Постоянный клиент'
         : 'Новый клиент';
@@ -453,6 +466,8 @@ export class DealsService {
         deletedAt,
         reservation,
         isRegular,
+        courseType,
+        discontAmount,
       };
     });
 
@@ -595,6 +610,8 @@ export class DealsService {
       period: 'Период',
       category: 'Категория',
       reservation: 'Бронь',
+      discontAmount: 'Размер скидки',
+      courseType: 'Тип курса',
     };
 
     // Сравниваем поля updateDealDto с dealExists
@@ -649,27 +666,7 @@ export class DealsService {
     // Обновляем сделку
     const updatedDeal = await this.prisma.deal.update({
       where: { id },
-      data: {
-        saleDate: updateDealDto.saleDate,
-        card_id: updateDealDto.card_id,
-        title: updateDealDto.title,
-        price: updateDealDto.price,
-        status: updateDealDto.status,
-        clothingMethod: updateDealDto.clothingMethod,
-        description: updateDealDto.description,
-        source: updateDealDto.source,
-        adTag: updateDealDto.adTag,
-        discont: updateDealDto.discont,
-        sphere: updateDealDto.sphere,
-        city: updateDealDto.city,
-        region: updateDealDto.region,
-        paid: updateDealDto.paid,
-        maketType: updateDealDto.maketType,
-        maketPresentation: updateDealDto.maketPresentation,
-        period: updateDealDto.period,
-        category: updateDealDto.category,
-        reservation: updateDealDto.reservation,
-      },
+      data: updateDealDto,
     });
 
     // Создаем отдельную запись в аудите для каждого измененного поля

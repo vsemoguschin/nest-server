@@ -20,13 +20,14 @@ const statuses = [
   'Вручена',
   'Возврат',
 ];
-const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная'];
+const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная', ''];
 const maketTypes = [
   'Дизайнерский',
   'Заготовка из базы',
   'Рекламный',
   'Визуализатор',
   'Из рассылки',
+  '',
 ];
 
 // const categories = ['Услуги', 'Товары для бизнеса', 'Мебель', 'Интерьер', ''];
@@ -34,6 +35,14 @@ const categories = [
   'Предложения услуг',
   'Оборудование для бизнеса',
   'Мебель и интерьер',
+  '',
+];
+
+const courseTypes = [
+  'Старт',
+  'Старт + Профильный',
+  'Доп. Профильный',
+  'Частный',
   '',
 ];
 
@@ -95,9 +104,6 @@ export class CreateDealDto {
   @IsNotEmpty({ message: 'ТЕГ обязательное поле' })
   adTag: string;
 
-  @IsIn(disconts, { message: 'Не верная скидка' })
-  discont: string;
-
   @IsString({ message: 'sphere должно быть строкой (сфера деятельности).' })
   @IsOptional()
   @IsNotEmpty()
@@ -118,9 +124,6 @@ export class CreateDealDto {
   @IsBoolean({ message: 'paid должно быть true или false (оплачена?).' })
   @IsOptional()
   paid?: boolean = false;
-
-  @IsIn(maketTypes, { message: 'Не верный тип макета' })
-  maketType: string;
 
   @IsString({ message: 'дата презентации макета должно быть строкой.' })
   @IsNotEmpty()
@@ -155,4 +158,20 @@ export class CreateDealDto {
   @IsBoolean({ message: 'reservation должно быть true или false (бронь?).' })
   @IsOptional()
   reservation: boolean = false;
+
+  @IsInt({ message: 'discontAmount должен быть целым числом' })
+  @Min(0, { message: 'discontAmount должна быть больше нуля.' })
+  discontAmount: number;
+
+  @IsOptional()
+  @IsIn(disconts, { message: 'Не верная скидка' })
+  discont: string | '';
+
+  @IsOptional()
+  @IsIn(courseTypes, { message: 'Не верный тип курса' })
+  courseType?: string | '';
+
+  @IsOptional()
+  @IsIn(maketTypes, { message: 'Не верный тип макета' })
+  maketType: string | '';
 }

@@ -21,13 +21,14 @@ const statuses = [
   'Вручена',
   'Возврат',
 ];
-const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная'];
+const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная', ''];
 const maketTypes = [
   'Дизайнерский',
   'Заготовка из базы',
   'Рекламный',
   'Визуализатор',
   'Из рассылки',
+  ''
 ];
 
 // const categories = ['Услуги', 'Товары для бизнеса', 'Мебель', 'Интерьер', ''];
@@ -35,6 +36,14 @@ const categories = [
   'Предложения услуг',
   'Оборудование для бизнеса',
   'Мебель и интерьер',
+  '',
+];
+
+const courseTypes = [
+  'Старт',
+  'Старт + Профильный',
+  'Доп. Профильный',
+  'Частный',
   '',
 ];
 
@@ -93,10 +102,6 @@ export class UpdateDealDto {
   @IsOptional()
   adTag?: string;
 
-  @IsOptional()
-  @IsIn(disconts, { message: 'Не верная скидка' })
-  discont?: string;
-
   @IsString({ message: 'sphere должно быть строкой (сфера деятельности).' })
   @IsOptional() // Разрешает undefined
   @ValidateIf((obj) => obj.sphere !== undefined && obj.sphere !== null) // Проверяем только если явно указано
@@ -121,10 +126,6 @@ export class UpdateDealDto {
   @IsBoolean({ message: 'reservation должно быть true или false (бронь?).' })
   @IsOptional()
   reservation?: boolean = false;
-
-  @IsOptional()
-  @IsIn(maketTypes, { message: 'Не верный тип макета' })
-  maketType?: string;
 
   @IsString({ message: 'дата презентации макета должно быть строкой.' })
   // @IsNotEmpty()
@@ -151,4 +152,20 @@ export class UpdateDealDto {
   @IsOptional() // Поле необязательное
   @IsIn(categories, { message: 'Не верная категория' })
   category?: string | '';
+
+  @IsInt({ message: 'discontAmount должен быть целым числом' })
+  @Min(0, { message: 'discontAmount должна быть больше нуля.' })
+  discontAmount: number;
+
+  @IsOptional()
+  @IsIn(disconts, { message: 'Не верная скидка' })
+  discont: string | '';
+
+  @IsOptional()
+  @IsIn(courseTypes, { message: 'Не верный тип курса' })
+  courseType?: string | '';
+
+  @IsOptional()
+  @IsIn(maketTypes, { message: 'Не верный тип макета' })
+  maketType: string | '';
 }

@@ -244,27 +244,30 @@ model Client {
 //--СДЕЛКА---------------------------------------------------------
 model Deal {
   id                Int        @id @default(autoincrement())
-  saleDate          String   // Дата продажи (обязательное поле)
+  saleDate          String     // Дата продажи (обязательное поле)
   card_id           String      // ID карточки дизайна
-  title             String   // Название сделки
-  price             Int      // Стоимость
+  title             String     // Название сделки
+  price             Int        // Стоимость
   status            String     @default("Создана") // Допустимые значения: "Создана", "Изготовление", "Готов", "Готов к отправке", "Отправлена", "Вручена"
-  clothingMethod    String   // Метод закрытия (clothingMethod)
+  clothingMethod    String     // Метод закрытия (clothingMethod)
   description       String     @default("") // Описание сделки
-  source            String   // Источник сделки
-  adTag             String   // ТЕГ
-  discont           String   // Скидка. Допустимые значения: "Без скидки", "Желтая", "ОПТ", "Рассылка", "Красная"
+  source            String     // Источник сделки
+  adTag             String     // ТЕГ
+  discont           String     // Скидка. Допустимые значения: "Без скидки", "Желтая", "ОПТ", "Рассылка", "Красная"
   sphere            String     @default("") // Сфера деятельности
   city              String     @default("") // Город
   region            String     @default("") // Регион
   paid              Boolean    @default(false) // Оплачена?
-  maketType         String   // Тип макета. Допустимые значения: "Дизайнерский", "Заготовка из базы", "Рекламный", "Визуализатор", "Из рассылки"
-  category          String    @default("")
-  maketPresentation String   // Дата презентации макета
+  maketType         String     @default("") // Тип макета. Допустимые значения: "Дизайнерский", "Заготовка из базы", "Рекламный", "Визуализатор", "Из рассылки"
+  category          String     @default("")
+  maketPresentation String     // Дата презентации макета
   period            String     @default("") // Период, например "2025-02"; значение можно вычислять на уровне приложения
   deletedAt         DateTime?  // Поле для мягкого удаления
   createdAt         DateTime   @default(now())
   reservation       Boolean    @default(false) // Бронь
+
+  courseType        String     @default("")
+  discontAmount     Int        @default(0)
 
   // Внешний ключ для связи с пространством
   workSpaceId       Int
