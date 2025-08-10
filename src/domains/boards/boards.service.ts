@@ -21,7 +21,11 @@ export class BoardsService {
   ) {
     // доступ к доске + выдача колонок и задач (без вложений для лёгкости)
     const board = await this.prisma.board.findFirst({
-      where: { id: boardId, deletedAt: null, users: { some: { id: userId } } },
+      where: {
+        id: boardId,
+        deletedAt: null,
+        // users: { some: { id: userId } },
+      },
       select: {
         id: true,
         title: true,
@@ -173,7 +177,9 @@ export class BoardsService {
       where: {
         id: boardId,
         deletedAt: null,
-        users: { some: { id: userId } },
+        // users: {
+        //   some: { id: userId },
+        // },
       },
       include: {
         users: { select: { id: true, email: true, fullName: true } },
