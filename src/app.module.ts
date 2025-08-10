@@ -28,6 +28,10 @@ import { WebhooksModule } from './domains/webhooks/webhooks.module';
 import { SuppliesModule } from './domains/supplies/supplies.module';
 import { WbModule } from './domains/wb/wb.module';
 import { ProductionModule } from './domains/production/production.module';
+import { BoardsModule } from './domains/boards/boards.module';
+import { ColumnsModule } from './domains/columns/columns.module';
+import { TasksModule } from './domains/board_tasks/board_tasks.module';
+import { KanbanFilesModule } from './domains/kanban-files/kanban-files.module';
 
 @Module({
   imports: [
@@ -57,6 +61,10 @@ import { ProductionModule } from './domains/production/production.module';
     SuppliesModule,
     WbModule,
     ProductionModule,
+    BoardsModule,
+    ColumnsModule,
+    TasksModule,
+    KanbanFilesModule,
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],

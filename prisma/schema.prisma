@@ -135,6 +135,15 @@ model User {
   logistShifts    LogistShift[]
   otherReport     OtherReport[]
   frezerReports   FrezerReport[]
+
+  // Канбан
+  boards        Board[]            @relation("BoardUsers")
+  tasks         KanbanTask[]       @relation("TaskMembers")
+  createdTasks  KanbanTask[]       @relation("TaskCreator")
+
+  comments      KanbanTaskComments[]
+  audits        KanbanTaskAudit[]
+  uploadedFiles KanbanFile[]       @relation("KanbanFileUploader")
 }
 model ManagersPlan {
   id         Int        @id @default(autoincrement()) 
@@ -505,7 +514,7 @@ model File {
   size      Int      @default(0)
   preview   String   @default("")
   path      String   @default("")
-  directory      String   @default("")
+  directory String   @default("")
 
   reviewId  Int        // Связь с отзывом
   review    Review  @relation(fields: [reviewId], references: [id])
@@ -880,4 +889,168 @@ model OperationPosition {
 
   expenseCategoryId  Int?            // Связь с категорией
   expenseCategory    ExpenseCategory?  @relation(fields: [expenseCategoryId], references: [id])
+}
+
+//// ========= BOARD =========
+model Board {
+  id          Int          @id @default(autoincrement())
+  title       String
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  columns     Column[]
+  tasks       KanbanTask[]
+
+  // участники доски (многие-ко-многим)
+  users       User[]       @relation("BoardUsers")
+
+  @@index([deletedAt])
+  // При необходимости уникальности названия в рамках рабочего пространства:
+  // @@unique([workspaceId, title])
+}
+
+//// ========= COLUMN =========
+model Column {
+  id         Int        @id @default(autoincrement())
+  title      String
+  position   Decimal     @db.Decimal(10, 4) // порядок в доске (drag & drop)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  deletedAt  DateTime?
+
+  tasks      KanbanTask[]
+
+  boardId    Int
+  board      Board       @relation(fields: [boardId], references: [id], onDelete: Restrict)
+
+  @@index([boardId, position])
+  @@index([deletedAt])
+  // Если нужно запретить одинаковые названия колонок внутри одной доски:
+  // @@unique([boardId, title])
+}
+
+//// ========= KANBAN TASK =========
+model KanbanTask {
+  id           Int        @id @default(autoincrement())
+  title        String
+  description  String     @default("")
+  position     Decimal    @db.Decimal(10, 4) // порядок внутри колонки
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+  deadLine     DateTime?
+
+  // участники и создатель
+  members      User[]     @relation("TaskMembers")
+  creatorId    Int
+  creator      User      @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+
+  // вложения канбана (через связующую таблицу)
+  attachments  KanbanTaskAttachment[]
+
+  comments     KanbanTaskComments[]
+  tags         KanbanTaskTags[]
+  audits       KanbanTaskAudit[]
+
+  boardId      Int
+  board        Board      @relation(fields: [boardId], references: [id], onDelete: Restrict)
+
+  columnId     Int
+  column       Column     @relation(fields: [columnId], references: [id], onDelete: Restrict)
+
+  @@index([boardId, columnId, position])
+  @@index([deletedAt])
+  // Если нужно ограничить дубликаты названий в пределах доски:
+  // @@unique([boardId, title])
+}
+
+//// ========= COMMENTS =========
+model KanbanTaskComments {
+  id        Int         @id @default(autoincrement())
+  text      String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  deletedAt DateTime?
+
+  authorId  Int
+  author    User       @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  taskId    Int
+  task      KanbanTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([deletedAt])
+}
+
+//// ========= TAGS =========
+model KanbanTaskTags {
+  id        Int         @id @default(autoincrement())
+  name      String
+  color     String      @default("")
+  createdAt DateTime    @default(now())
+
+  taskId    Int
+  task      KanbanTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // запрет дубликата одинакового тега в пределах одной задачи
+  @@unique([taskId, name])
+  @@index([taskId])
+}
+
+//// ========= AUDIT =========
+model KanbanTaskAudit {
+  id        Int         @id @default(autoincrement())
+  createdAt DateTime    @default(now())
+
+  userId    Int
+  user      User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  taskId    Int
+  task      KanbanTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  action    String      // примеры: CREATE, UPDATE_TITLE, MOVE, ADD_MEMBER
+  payload   Json?       // произвольные данные (fromColumnId, toColumnId, fieldsChanged, ...)
+
+  @@index([taskId, createdAt])
+}
+
+//// ========= KANBAN FILE (ОТДЕЛЬНО ОТ ТВОЕЙ File) =========
+model KanbanFile {
+  id           Int         @id @default(autoincrement())
+  name         String      @default("")
+  ya_name      String      @default("")
+  size         Int         @default(0)
+  preview      String      @default("") // URL превью, если есть
+  path         String      @default("") // полный URL/путь
+  directory    String      @default("")
+  mimeType     String?
+
+  createdAt    DateTime    @default(now())
+  deletedAt    DateTime?
+
+  uploadedById Int
+  uploadedBy   User       @relation("KanbanFileUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  taskLinks    KanbanTaskAttachment[]
+
+  @@index([deletedAt])
+  @@index([uploadedById])
+  // Если ключ в облаке уникален, можно включить:
+  // @@unique([ya_name])
+}
+
+//// ========= ATTACHMENT (TASK ↔ FILE) =========
+model KanbanTaskAttachment {
+  id        Int         @id @default(autoincrement())
+  taskId    Int
+  fileId    Int
+  task      KanbanTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  file      KanbanFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+
+  @@unique([taskId, fileId]) // не даём прикрепить один и тот же файл к задаче повторно
+  @@index([taskId])
+  @@index([fileId])
 }
