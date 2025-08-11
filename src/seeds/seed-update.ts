@@ -3,125 +3,36 @@ import axios from 'axios';
 
 const prisma = new PrismaClient();
 
-const createNewWorkSpace = async () => {
-  const newWorkSpace = await prisma.workSpace.create({
-    data: {
-      title: 'Easyprint',
-      department: 'COMMERCIAL',
-    },
-  });
-
-  const newWorkSpaceGroup = await prisma.group.create({
-    data: {
-      title: 'Easyprint',
-      workSpaceId: newWorkSpace.id,
-    },
-  });
-
-  const newWorkSpaceAdSource = await prisma.adSource.create({
-    data: {
-      title: 'ВК таргет ИЗИПРИНТ',
-      workSpaceId: newWorkSpace.id,
-      groupId: newWorkSpaceGroup.id,
-    },
-  });
-};
-
-
-const createNewAdSources = async () => {
-  const book = await prisma.adSource.create({
-    data: {
-      title: 'ВК таргет ИЗИБУК',
-      workSpaceId: 3,
-      groupId: 19,
-    },
-  });
-  const svet = await prisma.adSource.create({
-    data: {
-      title: 'ВК таргет НОЧНИКИ',
-      workSpaceId: 3,
-      groupId: 17,
-    },
-  });
-  const course = await prisma.adSource.create({
-    data: {
-      title: 'ВК таргет ИЗИКУРС',
-      workSpaceId: 2,
-      groupId: 16,
-    },
-  });
-};
-
 async function main() {
   try {
-    await createNewWorkSpace();
-    await createNewAdSources();
 
-    const adExpense = await prisma.adExpense.findMany({
+    await prisma.adSource.updateMany({
       where: {
-        group: null,
-      },
-      include: {
-        workSpace: {
-          include: {
-            groups: true,
-          },
+        id: {
+          in: [6, 7],
         },
-        group: true,
+      },
+      data: {
+        workSpaceId: 3,
+        groupId: 18,
       },
     });
 
-    await Promise.all(
-      adExpense.map(async (adex) => {
-        const { workSpace, groupId } = adex;
-        // console.log(r.groupId);
-        if (!groupId) {
-          const primalGroup = workSpace.groups.sort((a, b) => a.id - b.id)[0];
-          await prisma.adExpense.update({
-            where: {
-              id: adex.id,
-            },
-            data: {
-              groupId: primalGroup.id,
-            },
-          });
-          // console.log(primalGroup);
-        }
-      }),
-    );
-
-    const adSource = await prisma.adSource.findMany({
+    const adExpense = await prisma.adExpense.updateMany({
       where: {
-        group: null,
-      },
-      include: {
-        workSpace: {
-          include: {
-            groups: true,
-          },
+        date: {
+          startsWith: '2025-08',
         },
-        group: true,
+        workSpaceId: 2,
+        groupId: 2
+      },
+      data: {
+        workSpaceId: 3,
+        groupId: 18,
       },
     });
 
-    await Promise.all(
-      adSource.map(async (adex) => {
-        const { workSpace, groupId } = adex;
-        // console.log(r.groupId);
-        if (!groupId) {
-          const primalGroup = workSpace.groups.sort((a, b) => a.id - b.id)[0];
-          await prisma.adSource.update({
-            where: {
-              id: adex.id,
-            },
-            data: {
-              groupId: primalGroup.id,
-            },
-          });
-          // console.log(primalGroup);
-        }
-      }),
-    );
+    console.log(adExpense);
   } catch (e) {
     console.log(e);
   }

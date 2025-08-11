@@ -116,7 +116,8 @@ export class DashboardsController {
         'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
       );
     }
-    return this.dashboardsService.getStatistics(user, period);
+    return this.dashboardsService.getStatisticsByGroups(user, period);
+    // return this.dashboardsService.getStatistics(user, period);
   }
 
   //Получить данные по выплатам за указанный период
