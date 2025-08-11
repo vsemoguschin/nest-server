@@ -24,6 +24,7 @@ export class AdService {
         ...adExpenseCreateDto,
         period: adExpenseCreateDto.date.slice(0, 7),
         workSpaceId: adSource.workSpaceId,
+        groupId: adSource.groupId,
       },
     });
     // console.log(newAdExpense);
@@ -60,10 +61,10 @@ export class AdService {
 
     return sources.map((s) => {
       return {
-        ...s, 
+        ...s,
         source: s.adSource?.title,
         workSpace: s.workSpace.title,
-        group: s.group?.title || 'Без проекта'
+        group: s.group?.title || 'Без проекта',
       };
     });
   }

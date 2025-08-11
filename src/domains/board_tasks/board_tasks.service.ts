@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { MoveTaskDto } from './dto/move-task.dto';
 
 @Injectable()
 export class TasksService {
@@ -172,7 +173,7 @@ export class TasksService {
     await this.assertBoardAccess(userId, boardId);
 
     const exists = await this.prisma.kanbanTask.findFirst({
-      where: { id: taskId, boardId, columnId, deletedAt: null },
+      where: { id: taskId, deletedAt: null },
       select: { id: true },
     });
     if (!exists) throw new NotFoundException('Task not found');
@@ -208,5 +209,112 @@ export class TasksService {
       data: { deletedAt: new Date() },
     });
     return { success: true };
+  }
+
+  // src/domains/tasks/tasks.service.ts
+  async move(
+    userId: number,
+    boardId: number,
+    taskId: number,
+    dto: MoveTaskDto,
+  ) {
+    await this.assertBoardAccess(userId, boardId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const task = await tx.kanbanTask.findFirst({
+        where: { id: taskId, boardId, deletedAt: null },
+        select: { id: true, columnId: true, position: true },
+      });
+      if (!task) throw new NotFoundException('Task not found');
+
+      const targetColumn = await tx.column.findFirst({
+        where: { id: dto.toColumnId, boardId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!targetColumn) throw new NotFoundException('Target column not found');
+
+      // 1) Определяем новую position
+      let newPos: any;
+      if (dto.afterTaskId) {
+        const after = await tx.kanbanTask.findFirst({
+          where: {
+            id: dto.afterTaskId,
+            boardId,
+            columnId: targetColumn.id,
+            deletedAt: null,
+          },
+          select: { position: true },
+        });
+        const next = await tx.kanbanTask.findFirst({
+          where: {
+            boardId,
+            columnId: targetColumn.id,
+            deletedAt: null,
+            // первая позиция строго больше after.position
+            position: { gt: after?.position ?? 0 },
+          },
+          orderBy: { position: 'asc' },
+          select: { position: true },
+        });
+        if (!after) {
+          // если afterTaskId не нашли — в конец
+          const last = await tx.kanbanTask.findFirst({
+            where: { boardId, columnId: targetColumn.id, deletedAt: null },
+            orderBy: { position: 'desc' },
+            select: { position: true },
+          });
+          newPos = (Number(last?.position ?? 0) + 1000).toFixed(4);
+        } else if (!next) {
+          newPos = (Number(after.position) + 1000).toFixed(4);
+        } else {
+          // среднее между after и next
+          newPos = (
+            (Number(after.position) + Number(next.position)) /
+            2
+          ).toFixed(4);
+        }
+      } else if (dto.position) {
+        // простая нумерация 1..N — пересчёт позиций в целых числах
+        // (если оставляешь decimal-гепы — можно тоже вычислять среднее)
+        const tasks = await tx.kanbanTask.findMany({
+          where: {
+            boardId,
+            columnId: targetColumn.id,
+            deletedAt: null,
+            NOT: { id: taskId },
+          },
+          orderBy: { position: 'asc' },
+          select: { id: true },
+        });
+        // вставим на индекс (position-1)
+        const arr = tasks.map((t) => t.id);
+        const idx = Math.max(0, Math.min(arr.length, dto.position - 1));
+        arr.splice(idx, 0, taskId);
+        // перенумерация 1..N
+        await Promise.all(
+          arr.map((id, i) =>
+            tx.kanbanTask.update({ where: { id }, data: { position: i + 1 } }),
+          ),
+        );
+        newPos = idx + 1;
+      } else {
+        // по умолчанию — в конец
+        const last = await tx.kanbanTask.findFirst({
+          where: { boardId, columnId: targetColumn.id, deletedAt: null },
+          orderBy: { position: 'desc' },
+          select: { position: true },
+        });
+        newPos = (Number(last?.position ?? 0) + 1000).toFixed(4);
+      }
+
+      // 2) Обновляем колонку и позицию
+      const updated = await tx.kanbanTask.update({
+        where: { id: taskId },
+        data: { columnId: targetColumn.id, position: newPos },
+        select: { id: true, columnId: true, position: true, updatedAt: true },
+      });
+
+      return updated;
+    });
   }
 }

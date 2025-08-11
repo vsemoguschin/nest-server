@@ -19,6 +19,7 @@ import { TasksService } from './board_tasks.service';
 import { UserDto } from '../users/dto/user.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { KanbanFilesService } from '../kanban-files/kanban-files.service';
+import { MoveTaskDto } from './dto/move-task.dto';
 
 @UseGuards(RolesGuard)
 @Controller('boards/:boardId/columns/:columnId/tasks')
@@ -88,5 +89,16 @@ export class TasksController {
       columnId,
       taskId,
     );
+  }
+
+  @Patch('/boards/:boardId/tasks/:taskId/move')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  async moveTask(
+    @CurrentUser() user: UserDto,
+    @Param('boardId', ParseIntPipe) boardId: number,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Body() dto: MoveTaskDto,
+  ) {
+    return this.tasksService.move(user.id, boardId, taskId, dto);
   }
 }
