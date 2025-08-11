@@ -27,6 +27,7 @@ const createNewWorkSpace = async () => {
   });
 };
 
+
 const createNewAdSources = async () => {
   const book = await prisma.adSource.create({
     data: {
@@ -53,7 +54,6 @@ const createNewAdSources = async () => {
 
 async function main() {
   try {
-    // return await createNewWorkSpace()
     await createNewWorkSpace();
     await createNewAdSources();
 
@@ -78,6 +78,39 @@ async function main() {
         if (!groupId) {
           const primalGroup = workSpace.groups.sort((a, b) => a.id - b.id)[0];
           await prisma.adExpense.update({
+            where: {
+              id: adex.id,
+            },
+            data: {
+              groupId: primalGroup.id,
+            },
+          });
+          // console.log(primalGroup);
+        }
+      }),
+    );
+
+    const adSource = await prisma.adSource.findMany({
+      where: {
+        group: null,
+      },
+      include: {
+        workSpace: {
+          include: {
+            groups: true,
+          },
+        },
+        group: true,
+      },
+    });
+
+    await Promise.all(
+      adSource.map(async (adex) => {
+        const { workSpace, groupId } = adex;
+        // console.log(r.groupId);
+        if (!groupId) {
+          const primalGroup = workSpace.groups.sort((a, b) => a.id - b.id)[0];
+          await prisma.adSource.update({
             where: {
               id: adex.id,
             },
