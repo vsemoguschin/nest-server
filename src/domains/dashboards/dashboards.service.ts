@@ -141,6 +141,7 @@ export class DashboardsService {
                 role: true,
                 tg: true,
                 id: true,
+                email: true
               },
             },
           },

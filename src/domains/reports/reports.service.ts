@@ -795,7 +795,11 @@ export class ReportsService {
     user: UserDto,
   ) {
     const workspacesSearch =
-      user.role.department === 'administration' ? { gt: 0 } : user.workSpaceId;
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
+
+    // console.log(user);
 
     const reports = await this.prisma.ropReport.findMany({
       where: {

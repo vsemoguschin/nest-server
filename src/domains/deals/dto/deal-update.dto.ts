@@ -77,8 +77,8 @@ export class UpdateDealDto {
   @Min(1, { message: 'Стоимость должна быть больше нуля.' })
   price?: number;
 
-  @IsIn(statuses, { message: 'Неверный статус' })
-  status?: string = statuses[0]; // Значение по умолчанию
+  // @IsIn(statuses, { message: 'Неверный статус' })
+  // status?: string = statuses[0]; // Значение по умолчанию
 
   @IsString({ message: 'clothingMethod должно быть строкой (метод закрытия).' })
   // @IsNotEmpty({ message: 'Метод закрытия обязательное поле' })
