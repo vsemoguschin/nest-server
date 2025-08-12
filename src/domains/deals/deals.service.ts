@@ -129,7 +129,8 @@ export class DealsService {
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'KD' ||
       user.role.shortName === 'LOGIST' ||
-      user.role.shortName === 'MOV'
+      user.role.shortName === 'MOV' ||
+      user.role.shortName === 'MARKETER'
         ? { gt: 0 }
         : user.workSpaceId;
 
@@ -141,10 +142,6 @@ export class DealsService {
     if (user.id === 86 || user.id === 88) {
       workspacesSearch = 3;
     }
-    //маркетолог
-    // if (user.role.shortName === 'MARKETER') {
-    //   workspacesSearch = 2;
-    // }
     // console.log(user);
     // Запрашиваем сделки, у которых saleDate попадает в диапазон
     const deals = await this.prisma.deal.findMany({
