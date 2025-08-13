@@ -49,8 +49,6 @@ export class TasksController {
   @Patch(':taskId')
   async updateTask(
     @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
-    @Param('columnId', ParseIntPipe) columnId: number,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: UpdateTaskDto,
   ) {
@@ -61,11 +59,9 @@ export class TasksController {
   @Delete(':taskId')
   async deleteTask(
     @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
-    @Param('columnId', ParseIntPipe) columnId: number,
     @Param('taskId', ParseIntPipe) taskId: number,
   ) {
-    return this.tasksService.remove(user.id, boardId, columnId, taskId);
+    return this.tasksService.remove(user.id, taskId);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
@@ -84,14 +80,13 @@ export class TasksController {
     );
   }
 
-  @Patch('/boards/:boardId/tasks/:taskId/move')
+  @Patch(':taskId/move')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
   async moveTask(
     @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: MoveTaskDto,
   ) {
-    return this.tasksService.move(user.id, boardId, taskId, dto);
+    return this.tasksService.move(user.id, taskId, dto);
   }
 }

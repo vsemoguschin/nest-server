@@ -63,20 +63,23 @@ export class BoardsService {
           position: c.position,
           tasks: c.tasks.map((t) => {
             const previewAtt = t.attachments.find(
-              (att) => att.file.mimeType === 'image/jpeg',
+              (att) =>
+                att.file.mimeType === 'image/jpeg' ||
+                att.file.mimeType === 'image/png',
             );
 
+            let url = '';
+            // console.log(previewAtt?.file);
             if (previewAtt) {
-              const url = previewAtt.file.preview;
               const newSize = 'M'; // Можно получить из ввода пользователя или состояния
-              const urlObj = new URL(url);
+              const urlObj = new URL(previewAtt.file.preview);
               urlObj.searchParams.set('size', newSize);
-              const newUrl = urlObj.toString();
+              url = urlObj.toString();
 
-              console.log(newUrl);
+              // console.log(newUrl);
             }
 
-            const preview = previewAtt?.file.preview ?? null;
+            const preview = url ?? null;
             return {
               id: t.id,
               title: t.title,

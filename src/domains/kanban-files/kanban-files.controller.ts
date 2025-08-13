@@ -20,13 +20,13 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserDto } from '../users/dto/user.dto';
 
 @UseGuards(RolesGuard)
-@Controller('boards/:boardId/columns/:columnId/tasks/:taskId/attachments')
+@Controller('attachments')
 export class KanbanFilesController {
   constructor(private readonly filesService: KanbanFilesService) {}
 
   // Загрузка одного файла и привязка к задаче
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
-  @Post()
+  @Post('tasks/:taskId')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -35,16 +35,12 @@ export class KanbanFilesController {
   )
   async upload(
     @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
-    @Param('columnId', ParseIntPipe) columnId: number,
     @Param('taskId', ParseIntPipe) taskId: number,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('File is required');
     return this.filesService.uploadForTask({
       userId: user.id,
-      boardId,
-      columnId,
       taskId,
       file,
     });
@@ -67,16 +63,10 @@ export class KanbanFilesController {
   @Delete(':attachmentId')
   async remove(
     @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
-    @Param('columnId', ParseIntPipe) columnId: number,
-    @Param('taskId', ParseIntPipe) taskId: number,
     @Param('attachmentId', ParseIntPipe) attachmentId: number,
   ) {
     return this.filesService.removeFromTask({
       userId: user.id,
-      boardId,
-      columnId,
-      taskId,
       attachmentId,
     });
   }

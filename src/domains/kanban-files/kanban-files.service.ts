@@ -13,17 +13,12 @@ const YDS_ORDER = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
 type UploadArgs = {
   userId: number;
-  boardId: number;
-  columnId: number;
   taskId: number;
   file: Express.Multer.File;
 };
 
 type RemoveArgs = {
   userId: number;
-  boardId: number;
-  columnId: number;
-  taskId: number;
   attachmentId: number;
 };
 
@@ -109,13 +104,35 @@ export class KanbanFilesService {
     });
 
     // 3. СВЕЖИЙ запрос метаданных (без циклов ожидания)
-    const md = await axios.get(this.YD_RES, {
+    let md = await axios.get(this.YD_RES, {
       params: {
         path: absPath,
         fields: 'name,path,size,mime_type,preview,resource_id,sha256,md5,sizes',
       },
       headers: { Authorization: `OAuth ${this.TOKEN}` },
     });
+    let attempts = 0;
+    while (attempts < 3) {
+      md = await axios.get(this.YD_RES, {
+        params: {
+          path: absPath,
+          fields:
+            'name,path,size,mime_type,preview,resource_id,sha256,md5,sizes',
+        },
+        headers: { Authorization: `OAuth ${this.TOKEN}` },
+      });
+
+      if (md.data.sizes) {
+        break; // Выходим из цикла, если получили sizes
+      }
+
+      attempts++;
+      if (attempts < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 4000)); // Задержка 1 секунда перед следующей попыткой
+      }
+    }
+
+    console.log(md.data);
 
     return md.data as {
       name: string;
@@ -267,12 +284,16 @@ export class KanbanFilesService {
 
   /** Удалить вложение; если файл больше не используется — удалить с Я.Диска и из БД */
   async removeFromTask(args: RemoveArgs) {
-    const { userId, boardId, columnId, taskId, attachmentId } = args;
-    await this.assertBoardAccess(userId, boardId);
-    await this.assertTask(boardId, columnId, taskId);
+    const { userId, attachmentId } = args;
+    // await this.assertBoardAccess(userId, boardId);
+    // await this.assertTask(boardId, columnId, taskId);
+    const att = await this.prisma.kanbanFile.findFirst({
+      where: { id: attachmentId, deletedAt: null },
+    });
+    if (!att) throw new NotFoundException('Att not found');
 
     const link = await this.prisma.kanbanTaskAttachment.findFirst({
-      where: { id: attachmentId, taskId },
+      where: { id: attachmentId },
       include: { file: true },
     });
     if (!link) throw new NotFoundException('Attachment not found');
@@ -331,16 +352,20 @@ export class KanbanFilesService {
 
   /** Загрузка и привязка к задаче */
   async uploadForTask(args: UploadArgs) {
-    const { userId, boardId, columnId, taskId, file } = args;
-    await this.assertBoardAccess(userId, boardId);
-    await this.assertTask(boardId, columnId, taskId);
+    const { userId, taskId, file } = args;
+    // await this.assertBoardAccess(userId, boardId);
+    const task = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { id: true, boardId: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
 
     // гарантируем структуру папок доски
-    await this.ensureBoardFolder(boardId);
+    // await this.ensureBoardFolder(boardId);
 
     const { category, ext } = this.resolveCategory(file);
     const yaName = `${uuidv4()}${ext}`;
-    const directory = `boards/${boardId}/${category}`; // ← ИЗМЕНИЛОСЬ
+    const directory = `boards/${task.boardId}/${category}`; // ← ИЗМЕНИЛОСЬ
     const absPath = `EasyCRM/${directory}/${yaName}`; // ← ИЗМЕНИЛОСЬ
 
     const meta = await this.uploadToYandexDisk({
