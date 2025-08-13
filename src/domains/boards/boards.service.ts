@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBoardDto } from './dto/create-board.dto';
 import { KanbanFilesService } from '../kanban-files/kanban-files.service';
+import axios from 'axios';
 
 @Injectable()
 export class BoardsService {
@@ -56,40 +57,58 @@ export class BoardsService {
     return {
       id: board.id,
       title: board.title,
-      columns: board.columns.map((c) => {
-        return {
-          id: c.id,
-          title: c.title,
-          position: c.position,
-          tasks: c.tasks.map((t) => {
-            const previewAtt = t.attachments.find(
-              (att) =>
-                att.file.mimeType === 'image/jpeg' ||
-                att.file.mimeType === 'image/png',
-            );
+      columns: await Promise.all(
+        board.columns.map(async (c) => {
+          return {
+            id: c.id,
+            title: c.title,
+            position: c.position,
+            tasks: await Promise.all(
+              c.tasks.map(async (t) => {
+                const previewAtt = t.attachments.find(
+                  (att) =>
+                    att.file.mimeType === 'image/jpeg' ||
+                    att.file.mimeType === 'image/png',
+                );
 
-            let url = '';
-            // console.log(previewAtt?.file);
-            if (previewAtt) {
-              const newSize = 'M'; // Можно получить из ввода пользователя или состояния
-              const urlObj = new URL(previewAtt.file.preview);
-              urlObj.searchParams.set('size', newSize);
-              url = urlObj.toString();
+                if (previewAtt) {
+                  const md = await axios.get(
+                    'https://cloud-api.yandex.net/v1/disk/resources',
+                    {
+                      params: { path: previewAtt.file.path }, // сузили ответ
+                      headers: {
+                        Authorization: `OAuth ${process.env.YA_TOKEN}`,
+                      },
+                    },
+                  );
 
-              // console.log(newUrl);
-            }
+                  // console.log(md.data);
 
-            const preview = url ?? null;
-            return {
-              id: t.id,
-              title: t.title,
-              preview,
-              path: previewAtt?.file.path || '',
-              attachmentsLength: t.attachments.length,
-            };
-          }),
-        };
-      }),
+                  const size =
+                    md.data?.sizes.find((s) => s.name === 'M').url ||
+                    md.data?.preview;
+
+                  return {
+                    id: t.id,
+                    title: t.title,
+                    preview: size || '',
+                    path: previewAtt.file.path, // если хотите потом брать свежую ссылку
+                    attachmentsLength: t.attachments.length,
+                  };
+                }
+
+                return {
+                  id: t.id,
+                  title: t.title,
+                  preview: '',
+                  path: '',
+                  attachmentsLength: t.attachments.length,
+                };
+              }),
+            ),
+          };
+        }),
+      ),
     };
   }
 
