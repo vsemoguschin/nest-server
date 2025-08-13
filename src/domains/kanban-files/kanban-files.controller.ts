@@ -24,26 +24,36 @@ import { UserDto } from '../users/dto/user.dto';
 export class KanbanFilesController {
   constructor(private readonly filesService: KanbanFilesService) {}
 
-  // Загрузка одного файла и привязка к задаче
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  // // Загрузка одного файла и привязка к задаче
+  // @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  // @Post('tasks/:taskId')
+  // @UseInterceptors(
+  //   FileInterceptor('file', {
+  //     storage: memoryStorage(),
+  //     limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  //   }),
+  // )
+  // async upload(
+  //   @CurrentUser() user: UserDto,
+  //   @Param('taskId', ParseIntPipe) taskId: number,
+  //   @UploadedFile() file?: Express.Multer.File,
+  // ) {
+  //   if (!file) throw new BadRequestException('File is required');
+  //   return this.filesService.uploadForTask({
+  //     userId: user.id,
+  //     taskId,
+  //     file,
+  //   });
+  // }
+
   @Post('tasks/:taskId')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
-    }),
-  )
-  async upload(
+  @UseInterceptors(FileInterceptor('file'))
+  async createReview(
+    @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
-    @UploadedFile() file?: Express.Multer.File,
   ) {
-    if (!file) throw new BadRequestException('File is required');
-    return this.filesService.uploadForTask({
-      userId: user.id,
-      taskId,
-      file,
-    });
+    return this.filesService.createLikeReview(file, user, taskId);
   }
 
   // Список вложений задачи

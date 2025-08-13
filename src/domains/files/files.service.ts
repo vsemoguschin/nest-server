@@ -70,6 +70,7 @@ export class FilesService {
         preview: md.data.sizes[0].url || '',
         directory,
         path: filePath,
+        mimeType: md.data.mime_type || '',
       }; // Возвращаем публичную ссылку
     } catch (error) {
       console.error('Ошибка при загрузке файла на Яндекс.Диск:', error);

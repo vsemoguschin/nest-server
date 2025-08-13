@@ -27,7 +27,7 @@ export class ReviewsService {
         `${Date.now()}-userId${userId}-dealId${dealId}.` +
         file.originalname.split('.')[file.originalname.split('.').length - 1];
       const newFile = await this.filesService.uploadToYandexDisk(
-        'reviews',
+        'boards/2/images',
         file.buffer,
         ya_name,
         file.originalname,

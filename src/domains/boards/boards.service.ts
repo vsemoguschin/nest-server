@@ -71,22 +71,28 @@ export class BoardsService {
                     att.file.mimeType === 'image/png',
                 );
 
+                let size = '';
+                console.log(t.attachments);
+
                 if (previewAtt) {
-                  const md = await axios.get(
-                    'https://cloud-api.yandex.net/v1/disk/resources',
-                    {
-                      params: { path: previewAtt.file.path }, // сузили ответ
-                      headers: {
-                        Authorization: `OAuth ${process.env.YA_TOKEN}`,
+                  try {
+                    const md = await axios.get(
+                      'https://cloud-api.yandex.net/v1/disk/resources',
+                      {
+                        params: { path: previewAtt.file.path }, // сузили ответ
+                        headers: {
+                          Authorization: `OAuth ${process.env.YA_TOKEN}`,
+                        },
                       },
-                    },
-                  );
+                    );
+                    size =
+                      md.data?.sizes.find((s) => s.name === 'XXL').url ||
+                      md.data?.preview;
+                  } catch (e) {
+                    console.log(e.response.data);
+                  }
 
                   // console.log(md.data);
-
-                  const size =
-                    md.data?.sizes.find((s) => s.name === 'M').url ||
-                    md.data?.preview;
 
                   return {
                     id: t.id,

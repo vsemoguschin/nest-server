@@ -8,6 +8,8 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'node:path';
+import { UserDto } from '../users/dto/user.dto';
+import { FilesService } from '../files/files.service';
 
 const YDS_ORDER = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
@@ -29,7 +31,10 @@ export class KanbanFilesService {
   private readonly YD_RES = 'https://cloud-api.yandex.net/v1/disk/resources';
   private readonly TOKEN = process.env.YA_TOKEN as string; // обязателен
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly filesService: FilesService,
+  ) {}
 
   /** Проверяем доступ пользователя к доске */
   private async assertBoardAccess(userId: number, boardId: number) {
@@ -439,5 +444,64 @@ export class KanbanFilesService {
 
     // совсем fallback — самый крупный
     return sorted[sorted.length - 1]?.url || md.preview || null;
+  }
+
+  async createLikeReview(
+    file: Express.Multer.File,
+    user: UserDto,
+    taskId: number,
+  ) {
+    try {
+      // Шаг 1: Загружаем файл на Яндекс.Диск
+
+      // return console.log(filePath, file);
+      // const filePath = `${userId}/${Date.now()}-${file.originalname}`;
+      const task = await this.prisma.kanbanTask.findFirst({
+        where: { id: taskId, deletedAt: null },
+        select: { id: true, boardId: true },
+      });
+      if (!task) throw new NotFoundException('Task not found');
+
+      const ya_name =
+        `${Date.now()}-boardId${taskId}-taskId${taskId}` +
+        file.originalname.split('.')[file.originalname.split('.').length - 1];
+      const newFile = await this.filesService.uploadToYandexDisk(
+        'boards/2/images',
+        file.buffer,
+        ya_name,
+        file.originalname,
+      );
+
+      const dbFile = await this.prisma.kanbanFile.create({
+        data: {
+          ...newFile,
+          
+          uploadedById: user.id,
+        },
+      });
+
+      const link = await this.prisma.kanbanTaskAttachment.create({
+        data: { taskId, fileId: dbFile.id },
+        include: { file: true },
+      });
+
+      return {
+        id: link.id,
+        file: {
+          id: dbFile.id,
+          name: dbFile.name,
+          path: dbFile.path,
+          preview: dbFile.preview,
+          size: dbFile.size,
+          mimeType: dbFile.mimeType,
+          directory: dbFile.directory,
+          ya_name: dbFile.ya_name,
+          createdAt: dbFile.createdAt,
+        },
+      };
+    } catch (error) {
+      console.error('Ошибка при создании отзыва:', error);
+      throw error;
+    }
   }
 }
