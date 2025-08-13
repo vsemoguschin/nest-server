@@ -72,19 +72,20 @@ export class BoardsService {
                 );
 
                 let size = '';
-                console.log(t.attachments);
+                // console.log(t.attachments);
 
                 if (previewAtt) {
                   try {
                     const md = await axios.get(
                       'https://cloud-api.yandex.net/v1/disk/resources',
                       {
-                        params: { path: previewAtt.file.path }, // сузили ответ
+                        params: { path: previewAtt.file.path },
                         headers: {
                           Authorization: `OAuth ${process.env.YA_TOKEN}`,
                         },
                       },
                     );
+                    console.log(md.data);
                     size =
                       md.data?.sizes.find((s) => s.name === 'XXL').url ||
                       md.data?.preview;
@@ -97,7 +98,7 @@ export class BoardsService {
                   return {
                     id: t.id,
                     title: t.title,
-                    preview: size || '',
+                    preview: previewAtt.file.preview || '',
                     path: previewAtt.file.path, // если хотите потом брать свежую ссылку
                     attachmentsLength: t.attachments.length,
                   };
