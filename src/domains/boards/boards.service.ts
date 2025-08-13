@@ -84,6 +84,7 @@ export class BoardsService {
               id: t.id,
               title: t.title,
               preview,
+              path: previewAtt?.file.path || '',
               attachmentsLength: t.attachments.length,
             };
           }),

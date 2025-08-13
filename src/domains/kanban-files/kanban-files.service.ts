@@ -132,7 +132,7 @@ export class KanbanFilesService {
       }
     }
 
-    console.log(md.data);
+    // console.log(md.data);
 
     return md.data as {
       name: string;
