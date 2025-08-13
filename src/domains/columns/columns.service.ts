@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CreateColumnDto } from './dto/create-column.dto';
 
 @Injectable()
 export class ColumnsService {
@@ -51,18 +52,17 @@ export class ColumnsService {
 
   async create(
     userId: number,
-    boardId: number,
-    dto: { title: string; position?: number },
+    dto: CreateColumnDto,
   ) {
-    await this.assertBoardAccess(userId, boardId);
+    await this.assertBoardAccess(userId, dto.boardId);
 
-    const position = dto.position ?? (await this.computeNextPosition(boardId));
+    const position = dto.position ?? (await this.computeNextPosition(dto.boardId));
 
     return this.prisma.column.create({
       data: {
         title: dto.title,
         position,
-        boardId,
+        boardId: dto.boardId,
       },
       select: {
         id: true,
@@ -76,17 +76,15 @@ export class ColumnsService {
 
   async update(
     userId: number,
-    boardId: number,
     columnId: number,
     dto: { title?: string; position?: number },
   ) {
-    await this.assertBoardAccess(userId, boardId);
-
     const existing = await this.prisma.column.findFirst({
-      where: { id: columnId, boardId, deletedAt: null },
-      select: { id: true },
+      where: { id: columnId, deletedAt: null },
+      select: { id: true, boardId: true },
     });
     if (!existing) throw new NotFoundException('Column not found');
+    await this.assertBoardAccess(userId, existing.boardId);
 
     return this.prisma.column.update({
       where: { id: columnId },
@@ -105,14 +103,13 @@ export class ColumnsService {
   }
 
   /** Мягкое удаление */
-  async remove(userId: number, boardId: number, columnId: number) {
-    await this.assertBoardAccess(userId, boardId);
-
+  async remove(userId: number, columnId: number) {
     const col = await this.prisma.column.findFirst({
-      where: { id: columnId, boardId, deletedAt: null },
-      select: { id: true },
+      where: { id: columnId, deletedAt: null },
+      select: { id: true, boardId: true },
     });
     if (!col) throw new NotFoundException('Column not found');
+    await this.assertBoardAccess(userId, col.boardId);
 
     await this.prisma.column.update({
       where: { id: columnId },

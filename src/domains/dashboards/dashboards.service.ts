@@ -158,7 +158,7 @@ export class DashboardsService {
       id: { gt: 0 } as { gt: number } | number,
     };
 
-    if (!['ADMIN', 'G', 'KD', 'ROV', 'MOV'].includes(user.role.shortName)) {
+    if (!['ADMIN', 'G', 'KD', 'ROV', 'MOV', 'MARKETER'].includes(user.role.shortName)) {
       workSpacesSearch = {
         id: user.workSpaceId,
         deletedAt: null,

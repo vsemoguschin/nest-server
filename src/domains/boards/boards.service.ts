@@ -14,12 +14,7 @@ export class BoardsService {
     private readonly files: KanbanFilesService,
   ) {}
 
-  async getKanban(
-    userId: number,
-    boardId: number,
-    opts?: { tasksLimit?: number; withCovers?: boolean; coverSize?: string },
-  ) {
-    // доступ к доске + выдача колонок и задач (без вложений для лёгкости)
+  async getKanban(userId: number, boardId: number) {
     const board = await this.prisma.board.findFirst({
       where: {
         id: boardId,
@@ -39,13 +34,17 @@ export class BoardsService {
             tasks: {
               where: { deletedAt: null },
               orderBy: { position: 'asc' },
-              take: opts?.tasksLimit ?? undefined,
               select: {
                 id: true,
                 title: true,
                 description: true,
                 position: true,
                 tags: { select: { name: true } },
+                attachments: {
+                  include: {
+                    file: true,
+                  },
+                },
               },
             },
           },
@@ -54,72 +53,40 @@ export class BoardsService {
     });
     if (!board) throw new NotFoundException('Board not found or access denied');
 
-    if (!opts?.withCovers) return board; // как раньше
+    return {
+      id: board.id,
+      title: board.title,
+      columns: board.columns.map((c) => {
+        return {
+          id: c.id,
+          title: c.title,
+          position: c.position,
+          tasks: c.tasks.map((t) => {
+            const previewAtt = t.attachments.find(
+              (att) => att.file.mimeType === 'image/jpeg',
+            );
 
-    // Если нужны coverUrl — найдём для каждой задачи последний image-аттач
-    const coverSize = (opts.coverSize || 'M').toUpperCase();
+            if (previewAtt) {
+              const url = previewAtt.file.preview;
+              const newSize = 'M'; // Можно получить из ввода пользователя или состояния
+              const urlObj = new URL(url);
+              urlObj.searchParams.set('size', newSize);
+              const newUrl = urlObj.toString();
 
-    // соберём все taskIds
-    const tasksFlat = board.columns.flatMap((c) => c.tasks);
-    const taskIds = tasksFlat.map((t) => t.id);
-    if (!taskIds.length) return board;
+              console.log(newUrl);
+            }
 
-    // найдём последние image-вложения по каждой задаче
-    const lastImages = await this.prisma.kanbanTaskAttachment.groupBy({
-      by: ['taskId'],
-      where: {
-        taskId: { in: taskIds },
-        file: { mimeType: { startsWith: 'image/' } },
-      },
-      _max: { createdAt: true },
-    });
-
-    // сопоставим (taskId, createdAt) → возьмём attachment с этим createdAt и подтащим file.path
-    const coversRaw = await this.prisma.kanbanTaskAttachment.findMany({
-      where: {
-        OR: lastImages.map((li) => ({
-          taskId: li.taskId,
-          createdAt: li._max.createdAt!,
-        })),
-      },
-      select: {
-        taskId: true,
-        file: { select: { path: true } },
-      },
-    });
-
-    const coverMap = new Map<number, string>(); // taskId -> file.path
-    for (const c of coversRaw) {
-      if (c.file?.path) coverMap.set(c.taskId, c.file.path);
-    }
-
-    // Получим url нужного размера на Я.Диске
-    const urls = await Promise.all(
-      tasksFlat.map(async (t) => {
-        const filePath = coverMap.get(t.id);
-        if (!filePath) return { taskId: t.id, url: null as string | null };
-        try {
-          const url = await this.files.getPreviewSizeUrl(filePath, coverSize);
-          return { taskId: t.id, url: url };
-        } catch {
-          return { taskId: t.id, url: null };
-        }
+            const preview = previewAtt?.file.preview ?? null;
+            return {
+              id: t.id,
+              title: t.title,
+              preview,
+              attachmentsLength: t.attachments.length,
+            };
+          }),
+        };
       }),
-    );
-    const urlByTask = new Map(urls.map((x) => [x.taskId, x.url]));
-
-    // Впишем coverUrl в результат
-    for (const col of board.columns) {
-      col.tasks = col.tasks.map(
-        (t) =>
-          ({
-            ...t,
-            coverUrl: urlByTask.get(t.id) || null,
-          }) as any,
-      );
-    }
-
-    return board;
+    };
   }
 
   async create(userId: number, dto: CreateBoardDto) {
@@ -168,7 +135,7 @@ export class BoardsService {
         },
       },
     });
-    console.log(list);
+    // console.log(list);
     return list;
   }
 

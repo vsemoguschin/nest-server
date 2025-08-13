@@ -28,15 +28,8 @@ export class BoardsController {
   async getKanban(
     @CurrentUser() user: UserDto,
     @Param('id', ParseIntPipe) id: number,
-    @Query('tasksLimit') tasksLimit?: string,
-    @Query('withCovers') withCovers?: string, // ← ?withCovers=1
-    @Query('coverSize') coverSize?: string, // ← ?coverSize=M
   ) {
-    return this.boardsService.getKanban(user.id, id, {
-      tasksLimit: tasksLimit ? Number(tasksLimit) : undefined,
-      withCovers: withCovers === '1' || withCovers === 'true',
-      coverSize: coverSize || 'M',
-    });
+    return this.boardsService.getKanban(user.id, id);
   }
 
   @Roles('ADMIN', 'G', 'KD')

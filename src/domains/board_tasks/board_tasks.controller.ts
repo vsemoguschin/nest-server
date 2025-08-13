@@ -22,7 +22,7 @@ import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 import { MoveTaskDto } from './dto/move-task.dto';
 
 @UseGuards(RolesGuard)
-@Controller('boards/:boardId/columns/:columnId/tasks')
+@Controller('tasks')
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
@@ -31,13 +31,8 @@ export class TasksController {
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
   @Post()
-  async createTask(
-    @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
-    @Param('columnId', ParseIntPipe) columnId: number,
-    @Body() dto: CreateTaskDto,
-  ) {
-    return this.tasksService.create(user.id, boardId, columnId, dto);
+  async createTask(@CurrentUser() user: UserDto, @Body() dto: CreateTaskDto) {
+    return this.tasksService.create(user.id, dto);
   }
 
   // Полная информация по карточке
@@ -45,11 +40,9 @@ export class TasksController {
   @Get(':taskId')
   async getOne(
     @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
-    @Param('columnId', ParseIntPipe) columnId: number,
     @Param('taskId', ParseIntPipe) taskId: number,
   ) {
-    return this.tasksService.getOne(user.id, boardId, columnId, taskId);
+    return this.tasksService.getOne(user.id, taskId);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
@@ -61,7 +54,7 @@ export class TasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: UpdateTaskDto,
   ) {
-    return this.tasksService.update(user.id, boardId, columnId, taskId, dto);
+    return this.tasksService.update(user.id, taskId, dto);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')

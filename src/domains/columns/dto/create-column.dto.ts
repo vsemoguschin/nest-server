@@ -9,4 +9,7 @@ export class CreateColumnDto {
   @IsOptional()
   @IsNumber()
   position?: number;
+
+  @IsNumber()
+  boardId: number;
 }

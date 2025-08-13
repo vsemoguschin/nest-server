@@ -39,23 +39,18 @@ export class TasksService {
     return last ? Number(last.position) + 1 : 1;
   }
 
-  async create(
-    userId: number,
-    boardId: number,
-    columnId: number,
-    dto: CreateTaskDto,
-  ) {
-    await this.assertBoardAccess(userId, boardId);
-
+  async create(userId: number, dto: CreateTaskDto) {
+    console.log(dto);
     // убеждаемся, что колонка принадлежит этой доске и не удалена
     const column = await this.prisma.column.findFirst({
-      where: { id: columnId, boardId, deletedAt: null },
-      select: { id: true },
+      where: { id: dto.columnId, deletedAt: null },
+      select: { id: true, boardId: true },
     });
     if (!column) throw new NotFoundException('Column not found');
+    await this.assertBoardAccess(userId, column.boardId);
 
     const position =
-      dto.position ?? (await this.nextPosition(boardId, columnId));
+      dto.position ?? (await this.nextPosition(column.boardId, column.id));
 
     // подготовка связей
     const connectMembers = dto.memberIds?.length
@@ -71,8 +66,8 @@ export class TasksService {
         title: dto.title,
         description: dto.description ?? '',
         position,
-        boardId,
-        columnId,
+        boardId: column.boardId,
+        columnId: column.id,
         creatorId: userId,
         ...(connectMembers.length
           ? { members: { connect: connectMembers } }
@@ -89,26 +84,10 @@ export class TasksService {
     return task;
   }
 
-  async getOne(
-    userId: number,
-    boardId: number,
-    columnId: number,
-    taskId: number,
-  ) {
-    await this.assertBoardAccess(userId, boardId);
-
-    // убеждаемся что колонка принадлежит доске
-    const column = await this.prisma.column.findFirst({
-      where: { id: columnId, boardId, deletedAt: null },
-      select: { id: true },
-    });
-    if (!column) throw new NotFoundException('Column not found');
-
+  async getOne(userId: number, taskId: number) {
     const task = await this.prisma.kanbanTask.findFirst({
       where: {
         id: taskId,
-        boardId,
-        columnId,
         deletedAt: null,
       },
       include: {
@@ -160,23 +139,17 @@ export class TasksService {
     });
 
     if (!task) throw new NotFoundException('Task not found');
+    await this.assertBoardAccess(userId, task.boardId);
     return task;
   }
 
-  async update(
-    userId: number,
-    boardId: number,
-    columnId: number,
-    taskId: number,
-    dto: UpdateTaskDto,
-  ) {
-    await this.assertBoardAccess(userId, boardId);
-
+  async update(userId: number, taskId: number, dto: UpdateTaskDto) {
     const exists = await this.prisma.kanbanTask.findFirst({
       where: { id: taskId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, boardId: true },
     });
     if (!exists) throw new NotFoundException('Task not found');
+    await this.assertBoardAccess(userId, exists.boardId);
 
     return this.prisma.kanbanTask.update({
       where: { id: taskId },

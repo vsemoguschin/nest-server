@@ -19,7 +19,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserDto } from '../users/dto/user.dto';
 
 @UseGuards(RolesGuard)
-@Controller('boards/:boardId/columns')
+@Controller('columns')
 export class ColumnsController {
   constructor(private readonly columnsService: ColumnsService) {}
 
@@ -38,10 +38,9 @@ export class ColumnsController {
   @Post()
   async create(
     @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
     @Body() dto: CreateColumnDto,
   ) {
-    return this.columnsService.create(user.id, boardId, dto);
+    return this.columnsService.create(user.id, dto);
   }
 
   // Обновить колонку (название/позицию)
@@ -49,11 +48,10 @@ export class ColumnsController {
   @Patch(':id')
   async update(
     @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateColumnDto,
   ) {
-    return this.columnsService.update(user.id, boardId, id, dto);
+    return this.columnsService.update(user.id, id, dto);
   }
 
   // Удалить (soft) колонку
@@ -61,9 +59,8 @@ export class ColumnsController {
   @Delete(':id')
   async remove(
     @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.columnsService.remove(user.id, boardId, id);
+    return this.columnsService.remove(user.id, id);
   }
 }

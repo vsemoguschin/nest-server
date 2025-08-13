@@ -13,6 +13,9 @@ export class CreateTaskDto {
   @MaxLength(300)
   title!: string;
 
+  @IsNumber()
+  columnId: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(10_000)
