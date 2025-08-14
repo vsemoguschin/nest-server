@@ -8,10 +8,14 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { MoveTaskDto } from './dto/move-task.dto';
 import axios from 'axios';
+import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly files: KanbanFilesService,
+  ) {}
 
   /** Проверяем доступ к доске — пользователь должен быть участником */
   private async assertBoardAccess(userId: number, boardId: number) {
@@ -108,6 +112,12 @@ export class TasksService {
                 ya_name: true,
                 directory: true,
                 createdAt: true,
+                uploadedBy: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                  },
+                },
               },
             },
           },
@@ -142,7 +152,86 @@ export class TasksService {
     if (!task) throw new NotFoundException('Task not found');
     await this.assertBoardAccess(userId, task.boardId);
 
-    return task;
+    return {
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      position: task.position,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      deletedAt: task.deletedAt,
+      deadLine: task.deadLine,
+      creatorId: task.creatorId,
+      boardId: task.boardId,
+      columnId: task.columnId,
+      tags: task.tags,
+      members: task.members,
+      attachments: await Promise.all(
+        task.attachments.map(async (att) => {
+          return {
+            id: att.id,
+            taskId: att.taskId,
+            fileId: att.fileId,
+            createdAt: att.createdAt,
+            file: {
+              id: att.file.id,
+              name: att.file.name,
+              path: att.file.path,
+              preview: await this.files.getFileOriginal(
+                att.file.mimeType || '',
+                att.file.path,
+              ),
+              mimeType: att.file.mimeType,
+              size: att.file.size,
+              ya_name: att.file.ya_name,
+              directory: att.file.directory,
+              createdAt: att.file.createdAt,
+              uploadedBy: {
+                id: att.file.uploadedBy.id,
+                fullName: att.file.uploadedBy.fullName,
+              },
+            },
+          };
+        }),
+      ),
+
+      comments: [],
+      audits: [],
+      board: {
+        id: 2,
+        title: 'Производство',
+        description: null,
+        createdAt: '2025-08-10T15:21:12.273Z',
+        updatedAt: '2025-08-10T15:21:12.273Z',
+        deletedAt: null,
+      },
+      column: {
+        id: 7,
+        title: 'Выгрузка заказов',
+        position: '1',
+        createdAt: '2025-08-10T15:21:16.947Z',
+        updatedAt: '2025-08-10T16:59:46.394Z',
+        deletedAt: null,
+        boardId: 2,
+      },
+      creator: {
+        id: 2,
+        fullName: 'ADMIN',
+        email: 'ex@ru',
+        password:
+          '$2b$04$4uZsXXN0vSFqgbDDeevODe2BeMRagl8jdLXaO7wG.iOGiqPH5LnXW',
+        info: '',
+        tg: '',
+        tg_id: 0,
+        status: '',
+        deletedAt: null,
+        createdAt: '2025-03-12T09:37:09.293Z',
+        roleId: 1,
+        isIntern: false,
+        workSpaceId: 1,
+        groupId: 1,
+      },
+    };
   }
 
   async update(userId: number, taskId: number, dto: UpdateTaskDto) {

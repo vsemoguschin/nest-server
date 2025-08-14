@@ -565,7 +565,8 @@ export class DealsService {
               headers: { Authorization: `OAuth ${process.env.YA_TOKEN}` },
             },
           );
-          // console.log(md.data.sizes[0].url);
+          console.log(md.data);
+          console.log(filePath);
           // console.log(reviews[i].file[0].path);
 
           reviews[i].file[0].preview = md.data.sizes[0].url || '';

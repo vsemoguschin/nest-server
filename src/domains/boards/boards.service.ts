@@ -86,9 +86,8 @@ export class BoardsService {
                       },
                     );
                     console.log(md.data);
-                    size =
-                      md.data?.sizes.find((s) => s.name === 'XXL').url ||
-                      md.data?.preview;
+                    console.log(previewAtt.file.path);
+                    size = md.data.sizes[0].url || '';
                   } catch (e) {
                     console.log(e.response.data);
                   }
@@ -98,7 +97,7 @@ export class BoardsService {
                   return {
                     id: t.id,
                     title: t.title,
-                    preview: previewAtt.file.preview || '',
+                    preview: size,
                     path: previewAtt.file.path, // если хотите потом брать свежую ссылку
                     attachmentsLength: t.attachments.length,
                   };

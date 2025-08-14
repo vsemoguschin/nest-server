@@ -463,7 +463,7 @@ export class KanbanFilesService {
       if (!task) throw new NotFoundException('Task not found');
 
       const ya_name =
-        `${Date.now()}-boardId${taskId}-taskId${taskId}` +
+        `${Date.now()}-boardId${taskId}-taskId${taskId}.` +
         file.originalname.split('.')[file.originalname.split('.').length - 1];
       const newFile = await this.filesService.uploadToYandexDisk(
         'boards/2/images',
@@ -475,7 +475,7 @@ export class KanbanFilesService {
       const dbFile = await this.prisma.kanbanFile.create({
         data: {
           ...newFile,
-          
+
           uploadedById: user.id,
         },
       });
@@ -503,5 +503,25 @@ export class KanbanFilesService {
       console.error('Ошибка при создании отзыва:', error);
       throw error;
     }
+  }
+
+  /** Получить метаданные ресурса с Я.Диска (свежие) */
+  async getFileOriginal(mimeType: string, path: string ) {
+    if (
+      mimeType === 'image/jpeg' ||
+      mimeType === 'image/png'
+    ) {
+      const md = await axios.get(
+        'https://cloud-api.yandex.net/v1/disk/resources',
+        {
+          params: { path },
+          headers: {
+            Authorization: `OAuth ${process.env.YA_TOKEN}`,
+          },
+        },
+      );
+      return md.data.sizes[0].url || '';
+    }
+    return '';
   }
 }
