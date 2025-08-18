@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 import { CreateTaskDto } from './dto/create-task.dto';
 
-// ⚠️ Проверь пути к декораторам/гарду/DTO пользователя
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -20,6 +19,7 @@ import { UserDto } from '../users/dto/user.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 import { MoveTaskDto } from './dto/move-task.dto';
+import { UpdateTaskTagsDto } from './dto/update-task-tags.dto';
 
 @UseGuards(RolesGuard)
 @Controller('tasks')
@@ -88,5 +88,17 @@ export class TasksController {
     @Body() dto: MoveTaskDto,
   ) {
     return this.tasksService.move(user.id, taskId, dto);
+  }
+
+  /**
+   * Заменить теги у задачи на присланный список имён.
+   * Пример тела: { "tags": ["bug", "urgent"] }
+   */
+  @Post(':taskId/tags')
+  async replace(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Body() dto: UpdateTaskTagsDto,
+  ) {
+    return this.tasksService.replaceTaskTags(taskId, dto);
   }
 }

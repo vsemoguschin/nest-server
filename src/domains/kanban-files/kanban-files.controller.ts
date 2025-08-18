@@ -9,6 +9,7 @@ import {
   BadRequestException,
   Delete,
   Get,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -56,16 +57,14 @@ export class KanbanFilesController {
     return this.filesService.createLikeReview(file, user, taskId);
   }
 
-  // Список вложений задачи
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
-  @Get()
-  async list(
-    @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
-    @Param('columnId', ParseIntPipe) columnId: number,
-    @Param('taskId', ParseIntPipe) taskId: number,
-  ) {
-    return this.filesService.listForTask(user.id, boardId, columnId, taskId);
+  /**
+   * Получает список вложений для указанной задачи.
+   * @param taskId - Идентификатор задачи
+   * @returns Список вложений задачи
+   */
+  @Get('tasks/:taskId')
+  async getAttachmentsByTaskId(@Param('taskId') taskId: number) {
+    return await this.filesService.getAttachmentsByTaskId(taskId);
   }
 
   // Удалить вложение (и файл на диске, если больше нигде не используется)

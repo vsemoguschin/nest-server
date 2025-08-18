@@ -15,6 +15,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserDto } from '../users/dto/user.dto';
+import { CreateBoardTagDto } from './dto/create-board-tag.dto';
 
 @ApiTags('Boards')
 @ApiBearerAuth()
@@ -42,6 +43,23 @@ export class BoardsController {
   @Get()
   async listBoards(@CurrentUser() user: UserDto) {
     return this.boardsService.listForUser(user.id);
+  }
+
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Get(':id/tags')
+  async getTags(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.boardsService.getTags(id, user);
+  }
+
+  @Post(':boardId/tags')
+  create(
+    @Param('boardId', ParseIntPipe) boardId: number,
+    @Body() dto: CreateBoardTagDto,
+  ) {
+    return this.boardsService.createTag(boardId, dto);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')

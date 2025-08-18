@@ -902,6 +902,7 @@ model Board {
 
   columns     Column[]
   tasks       KanbanTask[]
+  tags        KanbanTaskTags[]
 
   // участники доски (многие-ко-многим)
   users       User[]       @relation("BoardUsers")
@@ -940,7 +941,8 @@ model KanbanTask {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   deletedAt    DateTime?
-  deadLine     DateTime?
+  cover        String?
+  chatLink     String?
 
   // участники и создатель
   members      User[]     @relation("TaskMembers")
@@ -951,7 +953,7 @@ model KanbanTask {
   attachments  KanbanTaskAttachment[]
 
   comments     KanbanTaskComments[]
-  tags         KanbanTaskTags[]
+  tags         KanbanTaskTags[] @relation("TaskTags")
   audits       KanbanTaskAudit[]
 
   boardId      Int
@@ -991,12 +993,14 @@ model KanbanTaskTags {
   color     String      @default("")
   createdAt DateTime    @default(now())
 
-  taskId    Int
-  task      KanbanTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+ // Связь многие-ко-многим с задачами
+  tasks     KanbanTask[] @relation("TaskTags")
 
-  // запрет дубликата одинакового тега в пределах одной задачи
-  @@unique([taskId, name])
-  @@index([taskId])
+  boardId    Int
+  board      Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  // запрет дубликата одинакового тега в пределах одной доски
+  @@unique([boardId, name]) 
 }
 
 //// ========= AUDIT =========

@@ -7,6 +7,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBoardDto } from './dto/create-board.dto';
 import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 import axios from 'axios';
+import { UserDto } from '../users/dto/user.dto';
+import { CreateBoardTagDto } from './dto/create-board-tag.dto';
 
 @Injectable()
 export class BoardsService {
@@ -85,14 +87,14 @@ export class BoardsService {
                         },
                       },
                     );
-                    console.log(md.data);
-                    console.log(previewAtt.file.path);
+                    // console.log(md.data);
+                    // console.log(previewAtt.file.path);
                     size = md.data.sizes[0].url || '';
                   } catch (e) {
                     console.log(e.response.data);
                   }
 
-                  // console.log(md.data);
+                  // console.log(t.tags);
 
                   return {
                     id: t.id,
@@ -100,6 +102,7 @@ export class BoardsService {
                     preview: size,
                     path: previewAtt.file.path, // если хотите потом брать свежую ссылку
                     attachmentsLength: t.attachments.length,
+                    tags: t.tags.map((t) => t.name),
                   };
                 }
 
@@ -109,6 +112,7 @@ export class BoardsService {
                   preview: '',
                   path: '',
                   attachmentsLength: t.attachments.length,
+                  tags: t.tags.map((t) => t.name),
                 };
               }),
             ),
@@ -142,6 +146,48 @@ export class BoardsService {
     });
     await this.files.ensureBoardFolder(newBoard.id);
     return newBoard;
+  }
+
+  async getTags(boardId: number, user: UserDto) {
+    const tags = await this.prisma.kanbanTaskTags.findMany({
+      where: {
+        boardId,
+      },
+    });
+    return tags;
+  }
+
+  /** Создать новый тег в справочнике доски */
+  async createTag(boardId: number, dto: CreateBoardTagDto) {
+    const name = dto.name?.trim();
+    if (!name) throw new BadRequestException('Tag name is required');
+
+    // проверим, что доска существует
+    const board = await this.prisma.board.findFirst({
+      where: { id: boardId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!board) throw new NotFoundException('Board not found');
+
+    // запрет дубликатов (без учёта регистра)
+    const exists = await this.prisma.kanbanTaskTags.findFirst({
+      where: { boardId, name: { equals: name, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (exists)
+      throw new BadRequestException('Метка с таким названием уже существует');
+
+    const created = await this.prisma.kanbanTaskTags.create({
+      data: { boardId, name, color: dto.color ?? '' },
+    });
+
+    // Возвращаем в формате, удобном фронту
+    return {
+      id: created.id,
+      value: created.name,
+      label: created.name,
+      color: created.color,
+    };
   }
 
   async listForUser(userId: number) {

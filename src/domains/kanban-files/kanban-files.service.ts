@@ -36,6 +36,69 @@ export class KanbanFilesService {
     private readonly filesService: FilesService,
   ) {}
 
+  /** Получить метаданные ресурса с Я.Диска (свежие) */
+  async getFileOriginal(mimeType: string, path: string) {
+    if (mimeType === 'image/jpeg' || mimeType === 'image/png') {
+      const md = await axios.get(
+        'https://cloud-api.yandex.net/v1/disk/resources',
+        {
+          params: { path },
+          headers: {
+            Authorization: `OAuth ${process.env.YA_TOKEN}`,
+          },
+        },
+      );
+      return md.data.sizes[0].url || '';
+    }
+    return '';
+  }
+
+  /**
+   * Получает вложения по идентификатору задачи.
+   * @param taskId - Идентификатор задачи
+   * @returns Список вложений с файлами и данными создателя
+   */
+  async getAttachmentsByTaskId(taskId: number) {
+    const exists = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { id: true, boardId: true },
+    });
+    if (!exists) throw new NotFoundException('Task not found');
+    const attachments = await this.prisma.kanbanFile.findMany({
+      where: {
+        deletedAt: null,
+        taskLinks: {
+          some: {
+            taskId,
+          },
+        },
+      },
+      include: {
+        uploadedBy: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return await Promise.all(
+      attachments.map(async (file) => {
+        return {
+          id: file.id,
+          name: file.name,
+          path: file.path,
+          preview: await this.getFileOriginal(file.mimeType || '', file.path),
+          mimeType: file.mimeType,
+          size: file.size,
+          ya_name: file.ya_name,
+          directory: file.directory,
+          createdAt: file.createdAt,
+          uploadedBy: {
+            id: file.uploadedBy.id,
+            fullName: file.uploadedBy.fullName,
+          },
+        };
+      }),
+    );
+  }
+
   /** Проверяем доступ пользователя к доске */
   private async assertBoardAccess(userId: number, boardId: number) {
     const ok = await this.prisma.board.findFirst({
@@ -503,25 +566,5 @@ export class KanbanFilesService {
       console.error('Ошибка при создании отзыва:', error);
       throw error;
     }
-  }
-
-  /** Получить метаданные ресурса с Я.Диска (свежие) */
-  async getFileOriginal(mimeType: string, path: string ) {
-    if (
-      mimeType === 'image/jpeg' ||
-      mimeType === 'image/png'
-    ) {
-      const md = await axios.get(
-        'https://cloud-api.yandex.net/v1/disk/resources',
-        {
-          params: { path },
-          headers: {
-            Authorization: `OAuth ${process.env.YA_TOKEN}`,
-          },
-        },
-      );
-      return md.data.sizes[0].url || '';
-    }
-    return '';
   }
 }

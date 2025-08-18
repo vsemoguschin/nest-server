@@ -7,8 +7,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { MoveTaskDto } from './dto/move-task.dto';
-import axios from 'axios';
 import { KanbanFilesService } from '../kanban-files/kanban-files.service';
+import { UpdateTaskTagsDto } from './dto/update-task-tags.dto';
 
 @Injectable()
 export class TasksService {
@@ -45,7 +45,6 @@ export class TasksService {
   }
 
   async create(userId: number, dto: CreateTaskDto) {
-    console.log(dto);
     // убеждаемся, что колонка принадлежит этой доске и не удалена
     const column = await this.prisma.column.findFirst({
       where: { id: dto.columnId, deletedAt: null },
@@ -62,10 +61,6 @@ export class TasksService {
       ? dto.memberIds.map((id) => ({ id }))
       : [];
 
-    const createTags = dto.tags?.length
-      ? dto.tags.map((name) => ({ name }))
-      : [];
-
     const task = await this.prisma.kanbanTask.create({
       data: {
         title: dto.title,
@@ -77,7 +72,6 @@ export class TasksService {
         ...(connectMembers.length
           ? { members: { connect: connectMembers } }
           : {}),
-        ...(createTags.length ? { tags: { create: createTags } } : {}),
       },
       include: {
         tags: true,
@@ -99,29 +93,7 @@ export class TasksService {
         tags: { select: { id: true, name: true } },
         members: { select: { id: true, email: true, fullName: true } },
 
-        attachments: {
-          include: {
-            file: {
-              select: {
-                id: true,
-                name: true,
-                path: true,
-                preview: true,
-                mimeType: true,
-                size: true,
-                ya_name: true,
-                directory: true,
-                createdAt: true,
-                uploadedBy: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
+        attachments: true,
         comments: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'desc' },
@@ -156,81 +128,23 @@ export class TasksService {
       id: task.id,
       title: task.title,
       description: task.description,
+      chatLink: task.chatLink,
       position: task.position,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
       deletedAt: task.deletedAt,
-      deadLine: task.deadLine,
       creatorId: task.creatorId,
       boardId: task.boardId,
       columnId: task.columnId,
       tags: task.tags,
       members: task.members,
-      attachments: await Promise.all(
-        task.attachments.map(async (att) => {
-          return {
-            id: att.id,
-            taskId: att.taskId,
-            fileId: att.fileId,
-            createdAt: att.createdAt,
-            file: {
-              id: att.file.id,
-              name: att.file.name,
-              path: att.file.path,
-              preview: await this.files.getFileOriginal(
-                att.file.mimeType || '',
-                att.file.path,
-              ),
-              mimeType: att.file.mimeType,
-              size: att.file.size,
-              ya_name: att.file.ya_name,
-              directory: att.file.directory,
-              createdAt: att.file.createdAt,
-              uploadedBy: {
-                id: att.file.uploadedBy.id,
-                fullName: att.file.uploadedBy.fullName,
-              },
-            },
-          };
-        }),
-      ),
+      attachmentsLength: task.attachments.length,
 
       comments: [],
       audits: [],
-      board: {
-        id: 2,
-        title: 'Производство',
-        description: null,
-        createdAt: '2025-08-10T15:21:12.273Z',
-        updatedAt: '2025-08-10T15:21:12.273Z',
-        deletedAt: null,
-      },
-      column: {
-        id: 7,
-        title: 'Выгрузка заказов',
-        position: '1',
-        createdAt: '2025-08-10T15:21:16.947Z',
-        updatedAt: '2025-08-10T16:59:46.394Z',
-        deletedAt: null,
-        boardId: 2,
-      },
-      creator: {
-        id: 2,
-        fullName: 'ADMIN',
-        email: 'ex@ru',
-        password:
-          '$2b$04$4uZsXXN0vSFqgbDDeevODe2BeMRagl8jdLXaO7wG.iOGiqPH5LnXW',
-        info: '',
-        tg: '',
-        tg_id: 0,
-        status: '',
-        deletedAt: null,
-        createdAt: '2025-03-12T09:37:09.293Z',
-        roleId: 1,
-        isIntern: false,
-        workSpaceId: 1,
-        groupId: 1,
-      },
+      board: task.board,
+      column: task.column,
+      creator: task.creator,
     };
   }
 
@@ -249,6 +163,7 @@ export class TasksService {
         ...(dto.description !== undefined
           ? { description: dto.description }
           : {}),
+        chatLink: dto.chatLink ?? '',
       },
       select: { id: true, title: true, description: true, updatedAt: true },
     });
@@ -369,5 +284,91 @@ export class TasksService {
 
       return updated;
     });
+  }
+
+  /**
+   * Полностью заменить теги у задачи на переданный список имён.
+   * Отсутствие / пустой массив -> очистить все теги.
+   * Новые имена будут созданы в справочнике kanbanTaskTags внутри boardId задачи.
+   */
+  async replaceTaskTags(taskId: number, dto: UpdateTaskTagsDto) {
+    // 1) Найдём задачу и её boardId
+    const task = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { id: true, boardId: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    // Нормализуем вход
+    const names = Array.from(
+      new Set(
+        (dto.tags ?? [])
+          .map((s) => (s ?? '').trim())
+          .filter((s) => s.length > 0),
+      ),
+    );
+
+    // 2) Если список пуст — просто снять все теги
+    if (names.length === 0) {
+      await this.prisma.kanbanTask.update({
+        where: { id: taskId },
+        data: { tags: { set: [] } },
+      });
+      return { taskId, tags: [] };
+    }
+
+    // 3) Найти существующие теги по имени (без учёта регистра) в рамках доски
+    const existing = await this.prisma.kanbanTaskTags.findMany({
+      where: {
+        boardId: task.boardId,
+        OR: names.map((n) => ({ name: { equals: n, mode: 'insensitive' } })),
+      },
+      select: { id: true, name: true, color: true },
+    });
+
+    const existingLower = new Map(
+      existing.map((t) => [t.name.toLowerCase(), t]),
+    );
+
+    // 4) Какие нужно создать
+    const toCreate = names.filter((n) => !existingLower.has(n.toLowerCase()));
+
+    // 5) Транзакция: создать недостающие и выставить набор тегов у задачи
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (toCreate.length) {
+        await tx.kanbanTaskTags.createMany({
+          data: toCreate.map((name) => ({
+            boardId: task.boardId,
+            name,
+            color: '', // при необходимости принимайте цвет из DTO
+          })),
+          skipDuplicates: true, // на случай гонки
+        });
+      }
+
+      // перечитать все нужные теги (чтобы получить id только что созданных)
+      const all = await tx.kanbanTaskTags.findMany({
+        where: {
+          boardId: task.boardId,
+          OR: names.map((n) => ({ name: { equals: n, mode: 'insensitive' } })),
+        },
+        select: { id: true, name: true, color: true },
+      });
+
+      // заменить связи "как есть"
+      await tx.kanbanTask.update({
+        where: { id: taskId },
+        data: { tags: { set: all.map((t) => ({ id: t.id })) } },
+      });
+
+      // вернуть в удобном формате
+      // (отсортируем по имени для стабильности)
+      return all.sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    return {
+      taskId,
+      tags: result.map((t) => ({ id: t.id, name: t.name, color: t.color })),
+    };
   }
 }
