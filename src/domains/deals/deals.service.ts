@@ -555,21 +555,24 @@ export class DealsService {
     if (reviews.length > 0) {
       await Promise.all(
         reviews.map(async (review, i) => {
-          const filePath = review.file[0].path;
-          const md = await axios.get(
-            'https://cloud-api.yandex.net/v1/disk/resources',
-            {
-              params: {
-                path: filePath,
+          console.log(review.file);
+          if (review.file[0]?.path) {
+            const filePath = review.file[0].path;
+            const md = await axios.get(
+              'https://cloud-api.yandex.net/v1/disk/resources',
+              {
+                params: {
+                  path: filePath,
+                },
+                headers: { Authorization: `OAuth ${process.env.YA_TOKEN}` },
               },
-              headers: { Authorization: `OAuth ${process.env.YA_TOKEN}` },
-            },
-          );
-          console.log(md.data);
-          console.log(filePath);
-          // console.log(reviews[i].file[0].path);
+            );
+            console.log(md.data);
+            console.log(filePath);
+            // console.log(reviews[i].file[0].path);
 
-          reviews[i].file[0].preview = md.data.sizes[0].url || '';
+            reviews[i].file[0].preview = md.data.sizes[0].url || '';
+          }
         }),
       );
     }

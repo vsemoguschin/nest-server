@@ -26,12 +26,13 @@ export class ReviewsService {
       const ya_name =
         `${Date.now()}-userId${userId}-dealId${dealId}.` +
         file.originalname.split('.')[file.originalname.split('.').length - 1];
-      const newFile = await this.filesService.uploadToYandexDisk(
-        'boards/2/images',
-        file.buffer,
-        ya_name,
-        file.originalname,
-      );
+      const { mimeType, ...newFile } =
+        await this.filesService.uploadToYandexDisk(
+          'reviews',
+          file.buffer,
+          ya_name,
+          file.originalname,
+        );
 
       // Шаг 2: Сохраняем отзыв в базу данных
       const review = await this.prisma.review.create({
