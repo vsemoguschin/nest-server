@@ -982,6 +982,8 @@ model KanbanTaskComments {
   taskId    Int
   task      KanbanTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
+  files     KanbanFile[]
+
   @@index([taskId, createdAt])
   @@index([deletedAt])
 }
@@ -1030,6 +1032,7 @@ model KanbanFile {
   path         String      @default("") // полный URL/путь
   directory    String      @default("")
   mimeType     String?
+  file         String?
 
   createdAt    DateTime    @default(now())
   deletedAt    DateTime?
@@ -1038,6 +1041,9 @@ model KanbanFile {
   uploadedBy   User       @relation("KanbanFileUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
 
   taskLinks    KanbanTaskAttachment[]
+
+  commentId    Int?                       // ← делает связь опциональной
+  comment      KanbanTaskComments? @relation(fields: [commentId], references: [id], onDelete: SetNull)
 
   @@index([deletedAt])
   @@index([uploadedById])

@@ -74,7 +74,7 @@ export class BoardsService {
                 );
 
                 let size = '';
-                // console.log(t.attachments);
+                console.log(previewAtt?.file.path);
 
                 if (previewAtt) {
                   try {
@@ -88,6 +88,7 @@ export class BoardsService {
                       },
                     );
                     // console.log(md.data);
+                    // console.log(previewAtt.file.path);
                     // console.log(previewAtt.file.path);
                     size = md.data.sizes[0].url || '';
                   } catch (e) {

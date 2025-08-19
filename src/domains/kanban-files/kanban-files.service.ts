@@ -526,10 +526,10 @@ export class KanbanFilesService {
       if (!task) throw new NotFoundException('Task not found');
 
       const ya_name =
-        `${Date.now()}-boardId${taskId}-taskId${taskId}.` +
+        `${Date.now()}-boardId${task.boardId}-taskId${taskId}.` +
         file.originalname.split('.')[file.originalname.split('.').length - 1];
       const newFile = await this.filesService.uploadToYandexDisk(
-        'boards/2/images',
+        `boards/${task.boardId}/images`, //в зависимости от формата файла вместо images может 'pdf' илт 'cdr' 
         file.buffer,
         ya_name,
         file.originalname,

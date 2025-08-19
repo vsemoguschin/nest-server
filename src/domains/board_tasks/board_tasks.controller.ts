@@ -3,11 +3,14 @@ import {
   Controller,
   Delete,
   Get,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { CreateTaskDto } from './dto/create-task.dto';
 
@@ -20,6 +23,8 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 import { MoveTaskDto } from './dto/move-task.dto';
 import { UpdateTaskTagsDto } from './dto/update-task-tags.dto';
+import { CreateCommentDto } from './dto/create-comment.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @UseGuards(RolesGuard)
 @Controller('tasks')
@@ -100,5 +105,35 @@ export class TasksController {
     @Body() dto: UpdateTaskTagsDto,
   ) {
     return this.tasksService.replaceTaskTags(taskId, dto);
+  }
+
+  /** Список комментариев задачи (с файлами и автором) */
+  @Get(':taskId/comments')
+  listForTask(@Param('taskId', ParseIntPipe) taskId: number) {
+    return this.tasksService.listForTask(taskId);
+  }
+
+  /** Создать комментарий к задаче */
+  @Post(':taskId/comments')
+  async createForTask(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser() user: UserDto,
+  ) {
+    const c = await this.tasksService.createForTask(taskId, user.id, dto.text);
+    // компонент ожидает id, чтобы затем грузить файлы
+    return { id: c.id };
+  }
+
+  /** Прикрепить файл к комментарию (1:N — файл получает commentId) */
+  @Post('comments/:commentId/files')
+  @UseInterceptors(FileInterceptor('file'))
+  async attachFileToComment(
+    @Param('commentId', ParseIntPipe) commentId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: UserDto,
+  ) {
+    if (!file) throw new NotFoundException('No file provided');
+    return this.tasksService.attachFileToComment(commentId, file, user.id);
   }
 }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -9,6 +10,8 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { MoveTaskDto } from './dto/move-task.dto';
 import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 import { UpdateTaskTagsDto } from './dto/update-task-tags.dto';
+import { v4 as uuidv4 } from 'uuid';
+import * as path from 'node:path';
 
 @Injectable()
 export class TasksService {
@@ -369,6 +372,178 @@ export class TasksService {
     return {
       taskId,
       tags: result.map((t) => ({ id: t.id, name: t.name, color: t.color })),
+    };
+  }
+
+  /** Вывести комментарии задачи с файлами и автором */
+  async listForTask(taskId: number) {
+    // убеждаемся, что задача существует
+    const task = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    const items = await this.prisma.kanbanTaskComments.findMany({
+      where: { taskId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        author: { select: { id: true, fullName: true } },
+        files: {
+          where: { deletedAt: null },
+          select: {
+            id: true,
+            name: true,
+            preview: true,
+            path: true,
+            size: true,
+            mimeType: true,
+            file: true,
+          },
+        },
+      },
+    });
+
+    // фронт принимает как есть
+    return items;
+  }
+
+  /** Создать комментарий */
+  async createForTask(taskId: number, authorId: number, text: string) {
+    const task = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    const t = (text ?? '').trim();
+    return this.prisma.kanbanTaskComments.create({
+      data: { taskId, authorId, text: t },
+      select: { id: true },
+    });
+  }
+
+  /** Определить категорию и расширение по mime/расширению */
+  private resolveCategory(file: Express.Multer.File): {
+    category: 'images' | 'pdf' | 'cdr';
+    ext: string;
+  } {
+    const mime = (file.mimetype || '').toLowerCase();
+    const ext = (path.extname(file.originalname) || '').toLowerCase();
+
+    if (mime.startsWith('image/'))
+      return { category: 'images', ext: ext || '.bin' };
+    if (mime === 'application/pdf' || ext === '.pdf')
+      return { category: 'pdf', ext: '.pdf' };
+    if (
+      ext === '.cdr' ||
+      mime === 'application/vnd.corel-draw' ||
+      mime === 'image/x-cdr' ||
+      mime === 'application/x-coreldraw'
+    )
+      return { category: 'cdr', ext: '.cdr' };
+
+    throw new BadRequestException(
+      'Unsupported file type. Allowed: images, pdf, cdr',
+    );
+  }
+
+  /**
+   * Загрузить файл на Я.Диск и привязать к комментарию (1:N: KanbanFile.commentId)
+   * Возвращает объект в формате, удобном фронту.
+   */
+  async attachFileToComment(
+    commentId: number,
+    file: Express.Multer.File,
+    userId: number,
+  ) {
+    const comment = await this.prisma.kanbanTaskComments.findFirst({
+      where: { id: commentId, deletedAt: null },
+      select: {
+        id: true,
+        task: { select: { id: true, boardId: true } },
+      },
+    });
+    if (!comment) throw new NotFoundException('Comment not found');
+
+    const { category, ext } = this.resolveCategory(file);
+    const yaName = `${uuidv4()}${ext}`;
+    const directory = `boards/${comment.task.boardId}/${category}`;
+    const absPath = `EasyCRM/${directory}/${yaName}`;
+
+    // Загрузка на Я.Диск — используем те же эндпоинты, что и в вашем файловом сервисе
+    // 1) получить href для загрузки
+    const axios = (await import('axios')).default;
+    const TOKEN = process.env.YA_TOKEN as string;
+    const YD_UPLOAD = 'https://cloud-api.yandex.net/v1/disk/resources/upload';
+    const YD_RES = 'https://cloud-api.yandex.net/v1/disk/resources';
+
+    const up = await axios.get(YD_UPLOAD, {
+      params: { path: absPath, overwrite: true },
+      headers: { Authorization: `OAuth ${TOKEN}` },
+    });
+    await axios.put(up.data.href, file.buffer, {
+      headers: { 'Content-Type': 'application/octet-stream' },
+    });
+
+    // 2) свежие метаданные (несколько попыток, чтобы появились sizes/preview)
+    let md: any;
+    for (let i = 0; i < 3; i++) {
+      md = await axios.get(YD_RES, {
+        params: {
+          path: absPath,
+          fields: 'name,path,size,mime_type,preview,sizes,file',
+        },
+        headers: { Authorization: `OAuth ${TOKEN}` },
+      });
+      if (md.data?.sizes || md.data?.preview) break;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    // 3) запись файла в БД с привязкой к комменту
+    const dbFile = await this.prisma.kanbanFile.create({
+      data: {
+        name: file.originalname || md.data?.name || yaName,
+        ya_name: yaName,
+        size: md.data?.size ?? file.size ?? 0,
+        preview: md.data?.sizes?.[0]?.url || '',
+        directory,
+        path: absPath,
+        mimeType: md.data?.mime_type || file.mimetype || null,
+        uploadedById: userId,
+        commentId: commentId, // ← ключ к комментарию (1:N)
+        file: md.data.file ?? '',
+      },
+      select: {
+        id: true,
+        name: true,
+        preview: true,
+        path: true,
+        size: true,
+        mimeType: true,
+        directory: true,
+        createdAt: true,
+        file: true,
+      },
+    });
+
+    const taskAtt = await this.prisma.kanbanTaskAttachment.create({
+      data: {
+        taskId: comment.task.id,
+        fileId: dbFile.id,
+      },
+    });
+
+    // Формат как ожидает фронт
+    return {
+      id: dbFile.id,
+      name: dbFile.name,
+      preview: dbFile.preview,
+      path: dbFile.path,
+      size: dbFile.size,
+      mimeType: dbFile.mimeType,
+      createdAt: dbFile.createdAt,
+      file: dbFile.file,
     };
   }
 }
