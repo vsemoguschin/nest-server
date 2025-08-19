@@ -141,7 +141,7 @@ export class DashboardsService {
                 role: true,
                 tg: true,
                 id: true,
-                email: true
+                email: true,
               },
             },
           },
@@ -158,7 +158,11 @@ export class DashboardsService {
       id: { gt: 0 } as { gt: number } | number,
     };
 
-    if (!['ADMIN', 'G', 'KD', 'ROV', 'MOV', 'MARKETER'].includes(user.role.shortName)) {
+    if (
+      !['ADMIN', 'G', 'KD', 'ROV', 'MOV', 'MARKETER'].includes(
+        user.role.shortName,
+      )
+    ) {
       workSpacesSearch = {
         id: user.workSpaceId,
         deletedAt: null,
@@ -1130,7 +1134,13 @@ export class DashboardsService {
             conversion,
           };
         })
-        .filter((u) => u.totalSales || !u.fired);
+        .filter(
+          (u) =>
+            u.totalSales ||
+            !u.fired ||
+            u.prevPeriodsDealsPays ||
+            u.prevPeriodsDopsPays,
+        );
       // console.log('dealspays', dealsPayments);
       // console.log(
       //   'ws: ' + w.title,
