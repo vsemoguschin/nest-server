@@ -254,4 +254,99 @@ export class BoardsService {
     if (!board) throw new NotFoundException('Board not found or access denied');
     return board;
   }
+
+  /** Проверка существования доски */
+  private async ensureBoard(boardId: number) {
+    const board = await this.prisma.board.findFirst({
+      where: { id: boardId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!board) throw new NotFoundException('Board not found');
+    return board;
+  }
+
+  /** Проверка существования пользователя */
+  private async ensureUser(userId: number) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  /** GET /boards/:boardId/members */
+  async listMembers(boardId: number) {
+    await this.ensureBoard(boardId);
+
+    const board = await this.prisma.board.findUnique({
+      where: { id: boardId },
+      select: {
+        users: {
+          // where: { deletedAt: null },
+          select: {
+            id: true,
+            fullName: true,
+            role: { select: { fullName: true } },
+          },
+          orderBy: { fullName: 'asc' },
+        },
+      },
+    });
+
+    // Отдаём именно те поля, что ждёт фронт
+    return (board?.users ?? []).map((u) => ({
+      id: u.id,
+      fullName: u.fullName,
+      role: u.role?.fullName ?? '',
+    }));
+  }
+
+  /** GET /boards/users */
+  async listAllUsers() {
+    const users = await this.prisma.user.findMany({
+      where: { deletedAt: null },
+      select: { id: true, fullName: true },
+      orderBy: { fullName: 'asc' },
+    });
+    return users;
+  }
+
+  /** POST /boards/users/:userId  { boardId } */
+  async addUserToBoard(boardId: number, userId: number) {
+    await this.ensureBoard(boardId);
+    await this.ensureUser(userId);
+
+    // уже участник?
+    const exists = await this.prisma.board.findFirst({
+      where: { id: boardId, users: { some: { id: userId } } },
+      select: { id: true },
+    });
+    if (exists) throw new BadRequestException('User already in board');
+
+    await this.prisma.board.update({
+      where: { id: boardId },
+      data: { users: { connect: { id: userId } } },
+    });
+    return { success: true };
+  }
+
+  /** DELETE /boards/users/:userId  { boardId } */
+  async removeUserFromBoard(boardId: number, userId: number) {
+    await this.ensureBoard(boardId);
+    await this.ensureUser(userId);
+
+    // не участник?
+    const exists = await this.prisma.board.findFirst({
+      where: { id: boardId, users: { some: { id: userId } } },
+      select: { id: true },
+    });
+    if (!exists) throw new BadRequestException('User is not a board member');
+
+    await this.prisma.board.update({
+      where: { id: boardId },
+      data: { users: { disconnect: { id: userId } } },
+    });
+    return { success: true };
+  }
 }

@@ -5,34 +5,33 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-
-    await prisma.adSource.updateMany({
+    const braga = await prisma.user.findUnique({
       where: {
-        id: {
-          in: [6, 7],
-        },
-      },
-      data: {
-        workSpaceId: 3,
-        groupId: 18,
+        id: 114,
       },
     });
-
-    const adExpense = await prisma.adExpense.updateMany({
+    const roles = await prisma.role.findMany();
+    console.log(
+      roles.map((r) => ({ name: r.fullName, id: r.id, sn: r.shortName })),
+    );
+    console.log(braga);
+    await prisma.user.update({
       where: {
-        date: {
-          startsWith: '2025-08',
-        },
-        workSpaceId: 2,
-        groupId: 2
+        id: 114,
       },
       data: {
-        workSpaceId: 3,
-        groupId: 18,
+        roleId: 12,
       },
     });
-
-    console.log(adExpense);
+    await prisma.user.update({
+      where: {
+        id: 48,
+      },
+      data: {
+        workSpaceId: 8,
+        groupId: 15,
+      },
+    });
   } catch (e) {
     console.log(e);
   }

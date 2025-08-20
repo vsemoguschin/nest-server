@@ -35,7 +35,7 @@ export class ProductionService {
   constructor(private prisma: PrismaService) {}
 
   async getPredata(user: UserDto) {
-    if (['ADMIN', 'G', 'DP'].includes(user.role.shortName)) {
+    if (['ADMIN', 'G', 'DP', 'RP'].includes(user.role.shortName)) {
       return {
         tabs: [
           { value: 'orders', label: 'Заказы' },
@@ -46,7 +46,7 @@ export class ProductionService {
           { value: 'frezer', label: 'Фрезеровка' },
           { value: 'logist', label: 'Логист' },
           { value: 'supplie', label: 'Закупки' },
-          { value: 'salaries', label: 'Зарплаты' },
+          // { value: 'salaries', label: 'Зарплаты' },
         ],
       };
     }
@@ -249,7 +249,7 @@ export class ProductionService {
         0,
       ),
       frezerOtherReport: frezerOtherReport.length,
-      frezerOtherReportCost: frezerOtherReport.reduce((a, b)=> a + b.cost, 0),
+      frezerOtherReportCost: frezerOtherReport.reduce((a, b) => a + b.cost, 0),
       frezerSalary: frezerReport.reduce(
         (a, b) => a + b.cost - b.penaltyCost,
         0,
@@ -446,8 +446,13 @@ export class ProductionService {
 
     const users = await this.prisma.user.findMany({
       where: {
-        role: { shortName: 'MASTER' },
+        // role: { shortName: 'MASTER' },
         id: userSearch,
+        OR: [
+          { masterReports: { some: {} } },
+          { masterRepairReports: { some: {} } },
+          { masterShifts: { some: {} } },
+        ],
       },
       select: {
         id: true,
@@ -1022,7 +1027,7 @@ export class ProductionService {
     const masters = await this.prisma.user.findMany({
       where: {
         role: {
-          shortName: 'MASTER',
+          shortName: { in: ['MASTER', 'RP'] },
         },
       },
       select: {

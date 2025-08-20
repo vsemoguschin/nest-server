@@ -21,14 +21,26 @@ export class DashboardsController {
 
   @Get('/workspaces')
   @ApiResponse({ status: 200, type: [WorkSpaceDto] })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'RP', 'ROV')
   async getWorkspaces(@CurrentUser() user: UserDto) {
     return this.dashboardsService.getWorkspaces(user);
   }
 
   @Get('/deals')
   @ApiResponse({ status: 200, type: [WorkSpaceDto] })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP', 'MOP', 'ROV', 'MOV', 'MTZ', 'LOGIST', 'MARKETER' )
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROP',
+    'MOP',
+    'ROV',
+    'MOV',
+    'MTZ',
+    'LOGIST',
+    'MARKETER',
+  )
   async getDeals(@CurrentUser() user: UserDto) {
     return this.dashboardsService.getDeals(user);
   }
@@ -123,7 +135,7 @@ export class DashboardsController {
   //Получить данные по выплатам за указанный период
   @Get('/pays')
   @ApiOperation({ summary: 'Получить данные по выплатам за указанный период' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'BUKH', 'DP', 'ROD', 'ROV') 
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'BUKH', 'DP', 'ROD', 'ROV')
   @ApiResponse({
     status: 200,
     description: 'Данные по выплатам успешно получены.',

@@ -496,7 +496,7 @@ export class TasksService {
         },
         headers: { Authorization: `OAuth ${TOKEN}` },
       });
-      if (md.data?.sizes || md.data?.preview) break;
+      if (md.data?.sizes) break;
       await new Promise((r) => setTimeout(r, 1000));
     }
 
@@ -506,7 +506,7 @@ export class TasksService {
         name: file.originalname || md.data?.name || yaName,
         ya_name: yaName,
         size: md.data?.size ?? file.size ?? 0,
-        preview: md.data?.sizes?.[0]?.url || '',
+        preview: md.data?.sizes?.[0]?.url || md.data.preview || '',
         directory,
         path: absPath,
         mimeType: md.data?.mime_type || file.mimetype || null,

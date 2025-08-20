@@ -22,13 +22,13 @@ export class SuppliesController {
   constructor(private readonly supplieService: SuppliesService) {}
 
   @Post()
-  @Roles('ADMIN', 'G', 'LOGIST', 'DP')
+  @Roles('ADMIN', 'G', 'LOGIST', 'DP' , 'RP')
   async create(@Body() supplieCreateDto: SupplieCreateDto) {
     return this.supplieService.create(supplieCreateDto);
   }
 
   @Get()
-  @Roles('ADMIN', 'G', 'LOGIST', 'DP', 'FINANCIER')
+  @Roles('ADMIN', 'G', 'LOGIST', 'DP' , 'RP', 'FINANCIER')
   async getSupplies(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -48,13 +48,13 @@ export class SuppliesController {
 
   // Delete
   @Delete(':id')
-  @Roles('ADMIN', 'G', 'LOGIST', 'DP')
+  @Roles('ADMIN', 'G', 'LOGIST', 'DP' , 'RP')
   async delete(@Param('id', ParseIntPipe) id: number) {
     return this.supplieService.delete(id);
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'G', 'LOGIST', 'DP')
+  @Roles('ADMIN', 'G', 'LOGIST', 'DP' , 'RP')
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() supplieCreateDto: SupplieCreateDto,

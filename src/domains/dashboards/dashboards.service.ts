@@ -203,7 +203,9 @@ export class DashboardsService {
   // comercial
   async getComercialData(user: UserDto, period: string) {
     const workspacesSearch =
-      user.role.department === 'administration' || user.role.shortName === 'KD'
+      user.role.department === 'administration' ||
+      user.role.shortName === 'KD' ||
+      user.id === 21
         ? { gt: 0 }
         : user.workSpaceId;
 
@@ -1159,7 +1161,7 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0) {
+          if (user.totalSales !== 0 && user.shift > 12) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
 
@@ -1176,7 +1178,7 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0) {
+          if (user.totalSales !== 0 && user.shift > 12) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
             vkTop.topDopSales.push({
@@ -1191,7 +1193,7 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0) {
+          if (user.totalSales !== 0 && user.shift > 12) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
             vkTop.topDimmerSales.push({
@@ -1208,7 +1210,7 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0) {
+          if (user.totalSales !== 0 && user.shift > 12) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
             vkTop.topSalesWithoutDesigners.push({
@@ -1223,7 +1225,7 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0) {
+          if (user.totalSales !== 0 && user.shift > 12) {
             user.topBonus += (-i + 3) * 1000;
             user.totalSalary += (-i + 3) * 1000;
             vkTop.topConversionDayToDay.push({
@@ -1320,7 +1322,7 @@ export class DashboardsService {
     return {
       users: wdata.flatMap((wd) => wd.userData),
       vkTop,
-      b2bTop,
+      b2bTop: user.id === 21 ? [] : b2bTop,
       ropData: wdata.flatMap((d) => d.ropData),
     };
   }

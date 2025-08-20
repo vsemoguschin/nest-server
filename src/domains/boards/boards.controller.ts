@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -16,6 +17,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateBoardTagDto } from './dto/create-board-tag.dto';
+import { BoardIdDto } from './dto/board-id.dto';
 
 @ApiTags('Boards')
 @ApiBearerAuth()
@@ -23,6 +25,12 @@ import { CreateBoardTagDto } from './dto/create-board-tag.dto';
 @Controller('boards')
 export class BoardsController {
   constructor(private readonly boardsService: BoardsService) {}
+
+  /** Список всех активных пользователей (для добавления) */
+  @Get('users')
+  listAllUsers() {
+    return this.boardsService.listAllUsers();
+  }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
   @Get(':id/kanban')
@@ -69,5 +77,29 @@ export class BoardsController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.boardsService.getById(user.id, id);
+  }
+
+  /** Список участников доски (id, fullName, role) */
+  @Get(':boardId/members')
+  listMembers(@Param('boardId', ParseIntPipe) boardId: number) {
+    return this.boardsService.listMembers(boardId);
+  }
+
+  /** Добавить пользователя на доску */
+  @Post('users/:userId')
+  addUser(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body() body: BoardIdDto,
+  ) {
+    return this.boardsService.addUserToBoard(body.boardId, userId);
+  }
+
+  /** Удалить пользователя с доски */
+  @Delete('users/:userId')
+  removeUser(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body() body: BoardIdDto, // axios.delete(..., { data: { boardId } })
+  ) {
+    return this.boardsService.removeUserFromBoard(body.boardId, userId);
   }
 }

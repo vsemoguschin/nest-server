@@ -41,13 +41,13 @@ export class ProductionController {
   constructor(private readonly productionService: ProductionService) {}
 
   @Get('predata')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER', 'LOGIST', 'PACKER', 'FINANCIER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER', 'LOGIST', 'PACKER', 'FINANCIER')
   async getPredata(@CurrentUser() user: UserDto) {
     return this.productionService.getPredata(user);
   }
 
   @Get('orders')
-  @Roles('ADMIN', 'G', 'DP')
+  @Roles('ADMIN', 'G', 'DP' , 'RP')
   async getOrders(@Query('from') from: string, @Query('to') to: string) {
     if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
@@ -63,7 +63,7 @@ export class ProductionController {
   }
 
   @Get('reports/search')
-  @Roles('ADMIN', 'G', 'DP')
+  @Roles('ADMIN', 'G', 'DP' , 'RP')
   async findOrders(@Query('name') name: string) {
     if (!name || name.trim() === '') {
       throw new BadRequestException('Параметр name обязателен.');
@@ -72,19 +72,19 @@ export class ProductionController {
   }
 
   @Get('masters')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER')
   async getMasters(@CurrentUser() user: UserDto) {
     return this.productionService.getMasters(user);
   }
 
   @Get('frezers')
-  @Roles('ADMIN', 'G', 'DP', 'FRZ')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'FRZ')
   async getFrezers(@CurrentUser() user: UserDto) {
     return this.productionService.getFrezers(user);
   }
 
   @Post('master-report')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER')
   async create(
     @Body() createMasterReportDto: CreateMasterReportDto,
     // @CurrentUser() user: UserDto,
@@ -96,7 +96,7 @@ export class ProductionController {
   }
 
   @Get('master/:id/reports')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER')
   async findAll(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -116,7 +116,7 @@ export class ProductionController {
   }
 
   @Get('frezer/:id/reports')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER')
   async getFrezerReports(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -136,7 +136,7 @@ export class ProductionController {
   }
 
   @Patch('frezer-report/:id')
-  @Roles('ADMIN', 'G', 'DP', 'FRZ')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'FRZ')
   async updateFrezerReport(
     @Param('id') id: string,
     @Body() updateFrezerReport: UpdateFrezerReportDto,
@@ -150,7 +150,7 @@ export class ProductionController {
   }
 
   @Patch('master-report/:id')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER')
   async update(
     @Param('id') id: string,
     @Body() updateMasterReportDto: UpdateMasterReportDto,
@@ -164,13 +164,13 @@ export class ProductionController {
   }
 
   @Delete('master-report/:id')
-  @Roles('ADMIN', 'G', 'DP')
+  @Roles('ADMIN', 'G', 'DP' , 'RP')
   async remove(@Param('id') id: string) {
     return this.productionService.deleteMasterReport(+id);
   }
 
   @Delete('frezer-report/:id')
-  @Roles('ADMIN', 'G', 'DP')
+  @Roles('ADMIN', 'G', 'DP' , 'RP')
   async deleteFrezerReport(@Param('id') id: string) {
     return this.productionService.deleteFrezerReport(+id);
   }
@@ -198,7 +198,7 @@ export class ProductionController {
   }
 
   @Post('master-repair')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER')
   async createRepairReport(
     @Body() createMasterRepairReportDto: CreateMasterRepairReportDto,
   ) {
@@ -208,7 +208,7 @@ export class ProductionController {
   }
 
   @Patch('master-repair/:id')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER')
   async updateRepairReport(
     @Param('id') id: string,
     @Body() updateMasterRepairReportDto: UpdateMasterRepairReportDto,
@@ -220,13 +220,13 @@ export class ProductionController {
   }
 
   @Delete('master-repair/:id')
-  @Roles('ADMIN', 'G', 'DP')
+  @Roles('ADMIN', 'G', 'DP' , 'RP')
   async removeRepairReport(@Param('id') id: string) {
     return this.productionService.deleteMasterRepairReport(+id);
   }
 
   @Get('stat')
-  @Roles('ADMIN', 'G', 'DP')
+  @Roles('ADMIN', 'G', 'DP' , 'RP')
   async getStat(@Query('period') period: string) {
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
       throw new BadRequestException(
@@ -237,7 +237,7 @@ export class ProductionController {
   }
 
   @Post('packer-report')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'PACKER', 'LOGIST')
   async createPackerReport(
     @Body() createPackerReportDto: CreatePackerReportDto,
   ) {
@@ -245,7 +245,7 @@ export class ProductionController {
   }
 
   @Get('packer/:id/reports')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'PACKER', 'LOGIST')
   async getPackerReports(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -265,7 +265,7 @@ export class ProductionController {
   }
 
   @Patch('packer-report/:id')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'PACKER', 'LOGIST')
   async updatePackerReport(
     @Param('id') id: string,
     @Body() updatePackerReportDto: UpdatePackerReportDto,
@@ -279,13 +279,13 @@ export class ProductionController {
   }
 
   @Delete('packer-report/:id')
-  @Roles('ADMIN', 'G', 'DP')
+  @Roles('ADMIN', 'G', 'DP' , 'RP')
   async removePackerReport(@Param('id') id: string) {
     return this.productionService.deletePackerReport(+id);
   }
 
   @Post('packer/:packerId/shifts')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'PACKER', 'LOGIST')
   async createPackerShifts(
     @Param('packerId', ParseIntPipe) packerId: number,
     @Body() dto: CreatePackerShiftsDto,
@@ -294,7 +294,7 @@ export class ProductionController {
   }
 
   @Get('packer/:packerId/shifts')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'PACKER', 'LOGIST')
   async getPackerShifts(
     @Param('packerId', ParseIntPipe) packerId: number,
     @Query('period') period: string,
@@ -308,13 +308,13 @@ export class ProductionController {
   }
 
   @Get('packers')
-  @Roles('ADMIN', 'G', 'DP', 'PACKER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'PACKER')
   async getPackers(@CurrentUser() user: UserDto) {
     return this.productionService.getPackers(user);
   }
 
   @Get('packer-stat')
-  @Roles('ADMIN', 'G', 'DP')
+  @Roles('ADMIN', 'G', 'DP' , 'RP')
   async getPackerStat(@Query('period') period: string) {
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
       throw new BadRequestException(
@@ -325,13 +325,13 @@ export class ProductionController {
   }
 
   @Post('other-report')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER', 'PACKER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER', 'PACKER')
   async createOtherReport(@Body() createOtherReportDto: CreateOtherReportDto) {
     return this.productionService.createOtherReport(createOtherReportDto);
   }
 
   @Patch('other-report/:id')
-  @Roles('ADMIN', 'G', 'DP', 'MASTER', 'PACKER')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'MASTER', 'PACKER')
   async updateOtherReport(
     @Param('id') id: string,
     @Body() updateOtherReportDto: UpdateOtherReportDto,
@@ -340,7 +340,7 @@ export class ProductionController {
   }
 
   @Delete('other-report/:id')
-  @Roles('ADMIN', 'G', 'DP')
+  @Roles('ADMIN', 'G', 'DP' , 'RP')
   async removeOtherReport(@Param('id') id: string) {
     return this.productionService.deleteOtherReport(+id);
   }
@@ -348,13 +348,13 @@ export class ProductionController {
   // LOGIST
 
   @Get('logists')
-  @Roles('ADMIN', 'G', 'DP', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'LOGIST')
   async getLogists(@CurrentUser() user: UserDto) {
     return this.productionService.getLogists(user);
   }
 
   @Get('logist/:logistId/shifts')
-  @Roles('ADMIN', 'G', 'DP', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'LOGIST')
   async getlogistShifts(
     @Param('logistId', ParseIntPipe) logistId: number,
     @Query('from') from: string,
@@ -374,7 +374,7 @@ export class ProductionController {
   }
 
   @Post('logists/:logistId/shifts')
-  @Roles('ADMIN', 'G', 'DP', 'LOGIST')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'LOGIST')
   async createLogistShifts(
     @Param('logistId', ParseIntPipe) logistId: number,
     @Body() dto: CreatePackerShiftsDto,
@@ -385,7 +385,7 @@ export class ProductionController {
   // FRZ ---------------------
 
   @Post('frezer-report')
-  @Roles('ADMIN', 'G', 'DP', 'FRZ')
+  @Roles('ADMIN', 'G', 'DP' , 'RP', 'FRZ')
   async createFrezerReport(
     @Body() createFrezerReportDto: CreateFrezerReportDto,
     // @CurrentUser() user: UserDto,
