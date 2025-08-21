@@ -304,7 +304,8 @@ model Deal {
 
   reviews            Review[]
 
-  orders            Order[]
+  // orders            Order[]
+  orders            TaskOrder[]
 
   statusHistory     DealStatusHistory[]
   audit             DealAudit[]
@@ -562,8 +563,8 @@ model Order {
   deletedAt      DateTime?                              // Для мягкого удаления
 
   // Связи:
-  dealId         Int
-  deal           Deal            @relation(fields: [dealId], references: [id])
+  // dealId         Int
+  // deal           Deal            @relation(fields: [dealId], references: [id])
   
   stageId        Int
   stage          Stage           @relation(fields: [stageId], references: [id])
@@ -593,19 +594,7 @@ enum AdapterEnum {
 //   Нет
 // }
 
-// НЕОН
-model Neon {
-  id        Int         @id @default(autoincrement()) 
-  width     String   @default("6мм")
-  length    Int         // Длина неона
-  color     String   // Цвет неона
-  type      String    @default("Стандарт")
-  elements  Int         @default(0) // Количество элементов
 
-  // Связь с заказом (Order)
-  orderId   Int
-  order     Order       @relation(fields: [orderId], references: [id])
-}
 // enum NeonWidth {
 //   мм6    @map("6мм")
 //   мм8    @map("8мм")
@@ -1063,4 +1052,58 @@ model KanbanTaskAttachment {
   @@unique([taskId, fileId]) // не даём прикрепить один и тот же файл к задаче повторно
   @@index([taskId])
   @@index([fileId])
+}
+
+
+model TaskOrder {
+  id             Int             @id @default(autoincrement()) 
+  title          String          @default("")    // Название заказа
+  deadline       String          @default("")    // Дедлайн формат 2025-08-24
+  material       String          @default("")    // Материал подложки
+  boardWidth     Int             @default(0)     // Ширина подложки
+  boardHeight    Int             @default(0)     // Высота подложки
+  holeType       String          @default("")    // Диаметр отверстий
+  stand          Boolean         @default(false) // Подставка
+  laminate       String          @default("")    // Пленка
+  print          Boolean         @default(false) // Печать
+  printQuality   Boolean         @default(false) // Качество печати
+  acrylic        String          @default("")    // Акрил
+  type           String          @default("")    // Тип (Помещение/Улица)
+  wireLength     String          @default("")    // Длина акустического провода
+  elements       Int             @default(0)     // Количество элементов
+  gift           Boolean         @default(false) // Подарок
+  gift_elements  Int             @default(0)     // Количество элементов подарка
+  gift_metrs     Int             @default(0)     // Метраж подарка
+  adapter        String          @default("")    // Блок (например, Помещение, Уличный, Нет)
+  plug           String          @default("")    // Вилка
+  fitting        String          @default("")    // Крепления
+  dimmer         Boolean         @default(false) // Диммер
+  giftPack       Boolean         @default(false) // Подарочная упаковка
+  description    String          @default("")    // Описание
+  period         String          @default("")    // Период, например "2025-02"
+  deletedAt      DateTime?                       // Для мягкого удаления
+
+  neons          Neon[]
+
+  dealId     Int
+  deal       Deal        @relation(fields: [dealId], references: [id])
+
+}
+
+// НЕОН
+model Neon {
+  id        Int         @id @default(autoincrement()) 
+  width     String      @default("6мм")
+  length    Int         // Длина неона
+  color     String   // Цвет неона
+  type      String    @default("Стандарт")
+  elements  Int         @default(0) // Количество элементов
+
+  // Связь с заказом (Order)
+  orderId   Int
+  order     Order       @relation(fields: [orderId], references: [id])
+
+  // Связь с заказом (TaskOrder)
+  orderTaskId   Int
+  orderTask     TaskOrder       @relation(fields: [orderTaskId], references: [id])
 }

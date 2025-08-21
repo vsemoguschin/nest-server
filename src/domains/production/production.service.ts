@@ -446,9 +446,9 @@ export class ProductionService {
 
     const users = await this.prisma.user.findMany({
       where: {
-        // role: { shortName: 'MASTER' },
         id: userSearch,
         OR: [
+          { role: { shortName: 'MASTER' } },
           { masterReports: { some: {} } },
           { masterRepairReports: { some: {} } },
           { masterShifts: { some: {} } },
