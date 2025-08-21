@@ -1161,10 +1161,11 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0 && user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-            user.totalSalary += (-i + 3) * 1000;
-
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+              user.totalSalary += (-i + 3) * 1000;
+            }
             vkTop.topTotalSales.push({
               user: u.fullName,
               sales: u.totalSales,
@@ -1178,9 +1179,11 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0 && user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-            user.totalSalary += (-i + 3) * 1000;
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+              user.totalSalary += (-i + 3) * 1000;
+            }
             vkTop.topDopSales.push({
               user: u.fullName,
               sales: u.dopSales,
@@ -1193,9 +1196,11 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0 && user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-            user.totalSalary += (-i + 3) * 1000;
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+              user.totalSalary += (-i + 3) * 1000;
+            }
             vkTop.topDimmerSales.push({
               user: u.fullName,
               sales: u.dimmerSales,
@@ -1210,9 +1215,11 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0 && user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-            user.totalSalary += (-i + 3) * 1000;
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+              user.totalSalary += (-i + 3) * 1000;
+            }
             vkTop.topSalesWithoutDesigners.push({
               user: u.fullName,
               sales: u.dealsSalesWithoutDesigners,
@@ -1225,9 +1232,11 @@ export class DashboardsService {
         .slice(0, 3)
         .map((u, i) => {
           const user = userData.find((us) => us.id === u.id)!;
-          if (user.totalSales !== 0 && user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-            user.totalSalary += (-i + 3) * 1000;
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+              user.totalSalary += (-i + 3) * 1000;
+            }
             vkTop.topConversionDayToDay.push({
               user: u.fullName,
               sales: u.conversionDayToDay,

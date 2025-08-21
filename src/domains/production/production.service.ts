@@ -50,11 +50,20 @@ export class ProductionService {
         ],
       };
     }
+    if (user.id === 153) {
+      return {
+        tabs: [
+          { value: 'masters', label: 'Сборщики' },
+          { value: 'package', label: 'Упаковщики' },
+        ],
+      };
+    }
     if (['LOGIST'].includes(user.role.shortName)) {
       return {
         tabs: [
           { value: 'supplie', label: 'Закупки' },
           { value: 'logist', label: 'Логист' },
+          { value: 'package', label: 'Упаковщики' },
         ],
       };
     }
@@ -442,13 +451,19 @@ export class ProductionService {
   }
 
   async getMasters(user: UserDto) {
-    const userSearch = user.role.shortName === 'MASTER' ? user.id : { gt: 0 };
+    const userSearch =
+      user.role.shortName === 'MASTER' || user.id === 153 ? user.id : { gt: 0 };
 
     const users = await this.prisma.user.findMany({
       where: {
         id: userSearch,
         OR: [
-          { role: { shortName: 'MASTER' } },
+          {
+            role:
+              user.id === 153
+                ? { shortName: 'PACKER' }
+                : { shortName: 'MASTER' },
+          },
           { masterReports: { some: {} } },
           { masterRepairReports: { some: {} } },
           { masterShifts: { some: {} } },
@@ -623,16 +638,19 @@ export class ProductionService {
       orderBy: { date: 'desc' },
     });
 
-    const masterOtherReports = await this.prisma.otherReport.findMany({
-      where: {
-        userId,
-        date: {
-          gte: from,
-          lte: to,
-        },
-      },
-      orderBy: { date: 'desc' },
-    });
+    const masterOtherReports =
+      userId === 153
+        ? []
+        : await this.prisma.otherReport.findMany({
+            where: {
+              userId,
+              date: {
+                gte: from,
+                lte: to,
+              },
+            },
+            orderBy: { date: 'desc' },
+          });
 
     return [
       ...masterReports.map((report) => ({
@@ -1151,14 +1169,14 @@ export class ProductionService {
   }
 
   async getPackers(user: UserDto) {
-    const userSearch = ['PACKER'].includes(user.role.shortName)
+    const userSearch = ['PACKER', 'LOGIST'].includes(user.role.shortName)
       ? user.id
       : { gt: 0 };
 
     const users = await this.prisma.user.findMany({
       where: {
         role: {
-          shortName: { in: ['PACKER'] },
+          shortName: { in: ['PACKER', 'LOGIST'] },
         },
         id: userSearch,
       },
