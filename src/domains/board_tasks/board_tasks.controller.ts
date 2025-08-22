@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -25,6 +26,8 @@ import { MoveTaskDto } from './dto/move-task.dto';
 import { UpdateTaskTagsDto } from './dto/update-task-tags.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { CreateTaskOrderDto } from './dto/order.dto';
+import { UpdateTaskOrderDto } from './dto/update-order.dto';
 
 @UseGuards(RolesGuard)
 @Controller('tasks')
@@ -135,5 +138,41 @@ export class TasksController {
   ) {
     if (!file) throw new NotFoundException('No file provided');
     return this.tasksService.attachFileToComment(commentId, file, user.id);
+  }
+
+  /** Список заказов задачи */
+  @Get(':taskId/orders')
+  ordersListForTask(@Param('taskId', ParseIntPipe) taskId: number) {
+    return this.tasksService.ordersListForTask(taskId);
+  }
+
+  /** Создать заказ для задачи */
+  @Post(':taskId/orders')
+  createOrderForTask(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Body() dto: CreateTaskOrderDto,
+  ) {
+    return this.tasksService.createOrderForTask(taskId, dto);
+  }
+
+  /** Получить один заказ */
+  @Get('orders/:orderId')
+  getOneOrder(@Param('orderId', ParseIntPipe) orderId: number) {
+    return this.tasksService.getOneOrder(orderId);
+  }
+
+  /** Обновить заказ (полная замена массивов неонов/подсветок) */
+  @Patch('orders/:orderId')
+  updateOrder(
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @Body() dto: UpdateTaskOrderDto,
+  ) {
+    return this.tasksService.updateOrder(orderId, dto);
+  }
+
+  /** Мягкое удаление заказа */
+  @Delete('orders/:orderId')
+  removeOrder(@Param('orderId', ParseIntPipe) orderId: number) {
+    return this.tasksService.removeOrder(orderId);
   }
 }

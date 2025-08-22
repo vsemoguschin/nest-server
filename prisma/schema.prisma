@@ -521,114 +521,8 @@ model File {
   review    Review  @relation(fields: [reviewId], references: [id])
 }
 
-// СТАДИИ ЗАКАЗОВ
-model Stage {
-  id        Int      @id @default(autoincrement()) 
-  title     String   @unique
-  index     Int?
-  deletedAt DateTime?
-
-  orders    Order[]
-}
-
-// ЗАКАЗЫ
-model Order {
-  id             Int             @id @default(autoincrement()) 
-  deadline       String       // Дедлайн
-  loadDate       String          // Дата выгрузки на производство (обязательное поле)
-  endDate        String          // Дата готовности
-  title          String          // Название заказа
-  material       MaterialEnum    @default(Поликарбонат) // Материал подложки
-  boardWidth     Int             // Ширина подложки
-  boardHeight    Int             // Высота подложки
-  holeType       String          @default("6мм")          // Тип отверстий
-  stand          Boolean         @default(false)       // Подставка
-  laminate       String          @default("")          // Пленка
-  print          Boolean         @default(false)       // Печать
-  printQuality   Boolean         @default(false)       // Качество печати
-  acrylic        String          @default("")          // Акрил
-  type           OrderTypeEnum   @default(Помещение)     // Тип (Помещение/Улица)
-  wireLength     String          // Длина акустического провода
-  elements       Int             // Количество элементов
-  gift           Boolean         @default(false)       // Подарок
-  gift_elements  Int             @default(0)           // Количество элементов подарка
-  gift_metrs     Int             @default(0)           // Метраж подарка
-  adapter        AdapterEnum     // Блок (например, Помещение, Уличный, Нет)
-  plug           String          @default("Нет")       // Вилка
-  fitting        String          @default("Нет")         // Крепления
-  dimmer         Boolean         @default(false)       // Диммер
-  giftPack       Boolean         @default(false)       // Подарочная упаковка
-  description    String          @default("")          // Описание
-  period         String          @default("")          // Период, например "2025-02"
-  deletedAt      DateTime?                              // Для мягкого удаления
-
-  // Связи:
-  // dealId         Int
-  // deal           Deal            @relation(fields: [dealId], references: [id])
-  
-  stageId        Int
-  stage          Stage           @relation(fields: [stageId], references: [id])
-
-  neons          Neon[]
-}
-enum MaterialEnum {
-  Поликарбонат
-  ПВХ
-}
-enum OrderTypeEnum {
-  Помещение
-  Улица
-}
-enum AdapterEnum {
-  INSIDE  @map("Помещение")
-  OUTSIDE @map("Уличный")
-  NONE    @map("Нет")
-}
-// enum FittingEnum {
-//   Держатели_хромированые
-//   Держатели_золотые
-//   Держатели_черные
-//   Крепления_для_окна
-//   Дюбеля
-//   Присоски
-//   Нет
-// }
 
 
-// enum NeonWidth {
-//   мм6    @map("6мм")
-//   мм8    @map("8мм")
-//   Подсветка
-// }
-// enum NeonColor {
-//   красный
-//   синий
-//   голубой
-//   оранжевый
-//   фиолетовый
-//   розовый
-//   бирюзовый
-//   желтый
-//   зеленый
-//   холодный_белый @map("холодный белый")
-//   теплый_белый   @map("теплый белый")
-//   смарт
-//   rgb
-// }
-// enum NeonType {
-//   Стандарт
-//   Улица
-//   РГБ
-//   Подсветка
-//   РГБ_подсветка @map("РГБ подсветка")
-//   Смарт
-// }
-
-// model Webhook {
-//   id        Int      @id @default(autoincrement())
-//   uuid      String   @unique
-//   createdAt DateTime @default(now())
-// }
 
 model Supplie {
   id              Int      @id @default(autoincrement())
@@ -940,6 +834,7 @@ model KanbanTask {
 
   // вложения канбана (через связующую таблицу)
   attachments  KanbanTaskAttachment[]
+  orders       TaskOrder[]
 
   comments     KanbanTaskComments[]
   tags         KanbanTaskTags[] @relation("TaskTags")
@@ -1072,36 +967,42 @@ model TaskOrder {
   wireLength     String          @default("")    // Длина акустического провода
   elements       Int             @default(0)     // Количество элементов
   gift           Boolean         @default(false) // Подарок
-  gift_elements  Int             @default(0)     // Количество элементов подарка
-  gift_metrs     Int             @default(0)     // Метраж подарка
   adapter        String          @default("")    // Блок (например, Помещение, Уличный, Нет)
   plug           String          @default("")    // Вилка
   fitting        String          @default("")    // Крепления
   dimmer         Boolean         @default(false) // Диммер
   giftPack       Boolean         @default(false) // Подарочная упаковка
   description    String          @default("")    // Описание
-  period         String          @default("")    // Период, например "2025-02"
   deletedAt      DateTime?                       // Для мягкого удаления
 
   neons          Neon[]
+  lightings      Lighting[]
 
-  dealId     Int
-  deal       Deal        @relation(fields: [dealId], references: [id])
+  dealId     Int?
+  deal       Deal?        @relation(fields: [dealId], references: [id])
+
+  taskId     Int
+  task       KanbanTask        @relation(fields: [taskId], references: [id])
 
 }
 
 // НЕОН
 model Neon {
   id        Int         @id @default(autoincrement()) 
-  width     String      @default("6мм")
-  length    Int         // Длина неона
-  color     String   // Цвет неона
-  type      String    @default("Стандарт")
-  elements  Int         @default(0) // Количество элементов
+  width     String      @default("")
+  length    Int         @default(0)// Длина неона
+  color     String      @default("")// Цвет неона
 
-  // Связь с заказом (Order)
-  orderId   Int
-  order     Order       @relation(fields: [orderId], references: [id])
+  // Связь с заказом (TaskOrder)
+  orderTaskId   Int
+  orderTask     TaskOrder       @relation(fields: [orderTaskId], references: [id])
+}
+// НЕОН
+model Lighting {
+  id        Int         @id @default(autoincrement()) 
+  length    Int         @default(0)// Длина неона
+  color     String      @default("")// Цвет неона
+  elements  Int         @default(0) // Количество элементов
 
   // Связь с заказом (TaskOrder)
   orderTaskId   Int

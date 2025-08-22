@@ -12,6 +12,8 @@ import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 import { UpdateTaskTagsDto } from './dto/update-task-tags.dto';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'node:path';
+import { UpdateTaskOrderDto } from './dto/update-order.dto';
+import { CreateTaskOrderDto } from './dto/order.dto';
 
 @Injectable()
 export class TasksService {
@@ -19,6 +21,16 @@ export class TasksService {
     private readonly prisma: PrismaService,
     private readonly files: KanbanFilesService,
   ) {}
+
+  /** Проверка задачи (если нужна) */
+  private async ensureTask(taskId: number) {
+    const task = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+    return task;
+  }
 
   /** Проверяем доступ к доске — пользователь должен быть участником */
   private async assertBoardAccess(userId: number, boardId: number) {
@@ -545,5 +557,160 @@ export class TasksService {
       createdAt: dbFile.createdAt,
       file: dbFile.file,
     };
+  }
+
+  /** Список заказов задачи */
+  async ordersListForTask(taskId: number) {
+    await this.ensureTask(taskId);
+    const items = await this.prisma.taskOrder.findMany({
+      where: { taskId, deletedAt: null },
+      orderBy: { id: 'desc' },
+      include: {
+        neons: true,
+        lightings: true,
+      },
+    });
+    return items;
+  }
+
+  /** Один заказ */
+  async getOneOrder(orderId: number) {
+    const item = await this.prisma.taskOrder.findFirst({
+      where: { id: orderId, deletedAt: null },
+      include: {
+        neons: true,
+        lightings: true,
+      },
+    });
+    if (!item) throw new NotFoundException('Order not found');
+    return item;
+  }
+
+  /** Создать для задачи */
+  async createOrderForTask(taskId: number, dto: CreateTaskOrderDto) {
+    await this.ensureTask(taskId);
+    console.log(dto);
+
+    // дефолты / нормализация
+    const {
+      neons = [],
+      lightings = [],
+      dealId, // опционально
+      ...rest
+    } = dto;
+
+    const created = await this.prisma.taskOrder.create({
+      data: {
+        taskId,
+        ...(dealId !== undefined ? { dealId: dealId as any } : {}), // если dealId опционален в схеме — можно передать null
+        ...rest,
+        neons: neons.length
+          ? {
+              createMany: {
+                data: neons.map((n) => ({
+                  width: n.width ?? '',
+                  length: n.length ?? 0,
+                  color: n.color ?? '',
+                  
+                })),
+              },
+            }
+          : undefined,
+        lightings: lightings.length
+          ? {
+              createMany: {
+                data: lightings.map((l) => ({
+                  length: l.length ?? 0,
+                  color: l.color ?? '',
+                  elements: l.elements ?? 0,
+                })),
+              },
+            }
+          : undefined,
+      },
+      include: { neons: true, lightings: true },
+    });
+
+    return created;
+  }
+
+  /** Обновить (полная замена массивов неонов/подсветок) */
+  async updateOrder(orderId: number, dto: UpdateTaskOrderDto) {
+    console.log(dto);
+    const ex = await this.prisma.taskOrder.findFirst({
+      where: { id: orderId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!ex) throw new NotFoundException('Order not found');
+
+    const { neons, lightings, dealId, ...rest } = dto;
+
+    return await this.prisma.$transaction(async (tx) => {
+      // 1) обновим плоские поля
+      const updated = await tx.taskOrder.update({
+        where: { id: orderId },
+        data: {
+          ...(dealId !== undefined ? { dealId: dealId as any } : {}),
+          ...rest,
+        },
+        include: { neons: true, lightings: true },
+      });
+
+      // 2) если прислали массивы — заменим их содержимое
+      if (neons) {
+        await tx.neon.deleteMany({ where: { orderTaskId: orderId } });
+        if (neons.length) {
+          await tx.neon.createMany({
+            data: neons.map((n) => ({
+              orderTaskId: orderId,
+              width: n.width ?? '',
+              length: n.length ?? 0,
+              color: n.color ?? '',
+            })),
+          });
+        }
+      }
+
+      if (lightings) {
+        await tx.lighting.deleteMany({ where: { orderTaskId: orderId } });
+        if (lightings.length) {
+          await tx.lighting.createMany({
+            data: lightings.map((l) => ({
+              orderTaskId: orderId,
+              length: l.length ?? 0,
+              color: l.color ?? '',
+              elements: l.elements ?? 0,
+            })),
+          });
+        }
+      }
+
+      // перечитать с вложениями
+      const fresh = await tx.taskOrder.findUnique({
+        where: { id: orderId },
+        include: { neons: true, lightings: true },
+      });
+      return fresh;
+    });
+  }
+
+  /** Мягкое удаление (+ подчистка дочерних записей) */
+  async removeOrder(orderId: number) {
+    const exists = await this.prisma.taskOrder.findFirst({
+      where: { id: orderId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!exists) throw new NotFoundException('Order not found');
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.neon.deleteMany({ where: { orderTaskId: orderId } });
+      await tx.lighting.deleteMany({ where: { orderTaskId: orderId } });
+      await tx.taskOrder.update({
+        where: { id: orderId },
+        data: { deletedAt: new Date() },
+      });
+    });
+
+    return { success: true };
   }
 }
