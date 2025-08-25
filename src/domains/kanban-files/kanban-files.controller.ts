@@ -10,6 +10,9 @@ import {
   Delete,
   Get,
   NotFoundException,
+  Query,
+  Res,
+  Redirect,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -78,5 +81,23 @@ export class KanbanFilesController {
       userId: user.id,
       attachmentId,
     });
+  }
+
+  @Get('preview')
+  // @Redirect(undefined, 302)
+  async preview(@Query('path') path: string) {
+    // console.log(path);
+    // return
+    const url = await this.filesService.getPreviewOnly(path);
+    if (!url) throw new NotFoundException('No preview');
+    return { url, statusCode: 302 }; // динамический редирект
+  }
+
+  @Get('download')
+  // @Redirect(undefined, 302)
+  async download(@Query('path') path: string) {
+    const href = await this.filesService.getDownloadHref(path);
+    if (!href) throw new NotFoundException('No download link');
+    return { url: href, statusCode: 302 };
   }
 }

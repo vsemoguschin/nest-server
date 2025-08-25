@@ -30,6 +30,8 @@ export class KanbanFilesService {
     'https://cloud-api.yandex.net/v1/disk/resources/upload';
   private readonly YD_RES = 'https://cloud-api.yandex.net/v1/disk/resources';
   private readonly TOKEN = process.env.YA_TOKEN as string; // обязателен
+  private readonly API = 'https://cloud-api.yandex.net/v1/disk';
+  private readonly headers = { Authorization: `OAuth ${process.env.YA_TOKEN}` };
 
   constructor(
     private readonly prisma: PrismaService,
@@ -529,7 +531,7 @@ export class KanbanFilesService {
         `${Date.now()}-boardId${task.boardId}-taskId${taskId}.` +
         file.originalname.split('.')[file.originalname.split('.').length - 1];
       const newFile = await this.filesService.uploadToYandexDisk(
-        `boards/${task.boardId}/images`, //в зависимости от формата файла вместо images может 'pdf' илт 'cdr' 
+        `boards/${task.boardId}/images`, //в зависимости от формата файла вместо images может 'pdf' илт 'cdr'
         file.buffer,
         ya_name,
         file.originalname,
@@ -566,5 +568,25 @@ export class KanbanFilesService {
       console.error('Ошибка при создании отзыва:', error);
       throw error;
     }
+  }
+
+  /** Вернёт только preview (без sizes) или null */
+  async getPreviewOnly(path: string): Promise<string | null> {
+    const { data } = await axios.get(`${this.API}/resources`, {
+      params: { path, fields: 'sizes' }, 
+      headers: this.headers,
+    });
+    return data?.sizes[0].url ?? null;
+  }
+
+  /** Одноразовый href для скачивания или null */
+  async getDownloadHref(path: string): Promise<string | null> {
+    const { data } = await axios.get(`${this.API}/resources/download`, {
+      params: { path},
+      headers: this.headers,
+    });
+    console.log(data);
+
+    return data?.href ?? null;
   }
 }
