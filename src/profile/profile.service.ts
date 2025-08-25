@@ -10,13 +10,13 @@ export class ProfileService {
   async getProfile(userId: number): Promise<UserProfileDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { role: true }, // Включаем связанную модель Role
+      include: { role: true, boards: true }, // Включаем связанную модель Role
     });
 
     if (!user) {
       throw new NotFoundException('Пользователь не найден');
     }
-    const { password, ...userData } = user; 
+    const { password, ...userData } = user;
     return userData;
   }
 }

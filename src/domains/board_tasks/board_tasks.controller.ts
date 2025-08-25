@@ -37,14 +37,14 @@ export class TasksController {
     private readonly filesService: KanbanFilesService, // ← внедрили
   ) {}
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
   @Post()
   async createTask(@CurrentUser() user: UserDto, @Body() dto: CreateTaskDto) {
     return this.tasksService.create(user.id, dto);
   }
 
   // Полная информация по карточке
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
   @Get(':taskId')
   async getOne(
     @CurrentUser() user: UserDto,
@@ -53,7 +53,7 @@ export class TasksController {
     return this.tasksService.getOne(user.id, taskId);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
   @Patch(':taskId')
   async updateTask(
     @CurrentUser() user: UserDto,
@@ -63,7 +63,7 @@ export class TasksController {
     return this.tasksService.update(user.id, taskId, dto);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
   @Delete(':taskId')
   async deleteTask(
     @CurrentUser() user: UserDto,
@@ -72,7 +72,7 @@ export class TasksController {
     return this.tasksService.remove(user.id, taskId);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
   @Get(':taskId/attachments/refresh')
   async refreshAttachments(
     @CurrentUser() user: UserDto,
@@ -89,7 +89,7 @@ export class TasksController {
   }
 
   @Patch(':taskId/move')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
   async moveTask(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,

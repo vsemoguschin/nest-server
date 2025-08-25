@@ -191,11 +191,11 @@ export class BoardsService {
     };
   }
 
-  async listForUser(userId: number) {
+  async listForUser(user: UserDto) {
     const list = await this.prisma.board.findMany({
       where: {
         deletedAt: null,
-        // users: { some: { id: userId } },
+        users: user.role.shortName === 'ADMIN' ? {} : { some: { id: user.id } },
       },
 
       orderBy: { createdAt: 'desc' },
