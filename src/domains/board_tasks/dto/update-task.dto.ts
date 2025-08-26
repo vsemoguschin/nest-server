@@ -8,7 +8,7 @@ export class UpdateTaskDto {
 
   @IsOptional()
   @IsNumber()
-  columnId: number;
+  columnId?: number;
 
   @IsOptional()
   @IsString()

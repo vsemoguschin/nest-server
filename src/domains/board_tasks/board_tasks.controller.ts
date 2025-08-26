@@ -40,7 +40,7 @@ export class TasksController {
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
   @Post()
   async createTask(@CurrentUser() user: UserDto, @Body() dto: CreateTaskDto) {
-    return this.tasksService.create(user.id, dto);
+    return this.tasksService.create(user, dto);
   }
 
   // Полная информация по карточке
@@ -95,7 +95,7 @@ export class TasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: MoveTaskDto,
   ) {
-    return this.tasksService.move(user.id, taskId, dto);
+    return this.tasksService.move(user, taskId, dto);
   }
 
   /**
@@ -104,10 +104,11 @@ export class TasksController {
    */
   @Post(':taskId/tags')
   async replace(
+    @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: UpdateTaskTagsDto,
   ) {
-    return this.tasksService.replaceTaskTags(taskId, dto);
+    return this.tasksService.replaceTaskTags(user.id, taskId, dto);
   }
 
   /** Список комментариев задачи (с файлами и автором) */
@@ -174,5 +175,18 @@ export class TasksController {
   @Delete('orders/:orderId')
   removeOrder(@Param('orderId', ParseIntPipe) orderId: number) {
     return this.tasksService.removeOrder(orderId);
+  }
+
+  @Get(':taskId/members')
+  async getTaskMembers(
+    @CurrentUser() user: UserDto,
+    @Param('taskId', ParseIntPipe) taskId: number,
+  ) {
+    return this.tasksService.getMembers(user.id, taskId);
+  }
+
+  @Get(':taskId/audit')
+  async getTaskAudit(@Param('taskId', ParseIntPipe) taskId: number) {
+    return this.tasksService.getTaskAudit(taskId);
   }
 }

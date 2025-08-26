@@ -14,6 +14,19 @@ import { v4 as uuidv4 } from 'uuid';
 import * as path from 'node:path';
 import { UpdateTaskOrderDto } from './dto/update-order.dto';
 import { CreateTaskOrderDto } from './dto/order.dto';
+import { Prisma } from '@prisma/client';
+import { UserDto } from '../users/dto/user.dto';
+
+type JsonInput = Prisma.InputJsonValue;
+
+export type AuditLogParams = {
+  userId: number;
+  taskId: number;
+  action: string; // например: 'CREATE', 'UPDATE_TITLE', 'MOVE', 'ADD_MEMBER'
+  payload?: JsonInput; // любые сериализуемые JSON-данные
+  description?: string | null;
+  tx?: Prisma.TransactionClient; // опционально — если пишешь в транзакции
+};
 
 @Injectable()
 export class TasksService {
@@ -59,14 +72,14 @@ export class TasksService {
     return last ? Number(last.position) + 1 : 1;
   }
 
-  async create(userId: number, dto: CreateTaskDto) {
+  async create(user: UserDto, dto: CreateTaskDto) {
     // убеждаемся, что колонка принадлежит этой доске и не удалена
     const column = await this.prisma.column.findFirst({
       where: { id: dto.columnId, deletedAt: null },
       select: { id: true, boardId: true },
     });
     if (!column) throw new NotFoundException('Column not found');
-    await this.assertBoardAccess(userId, column.boardId);
+    await this.assertBoardAccess(user.id, column.boardId);
 
     const position =
       dto.position ?? (await this.nextPosition(column.boardId, column.id));
@@ -83,16 +96,31 @@ export class TasksService {
         position,
         boardId: column.boardId,
         columnId: column.id,
-        creatorId: userId,
-        ...(connectMembers.length
-          ? { members: { connect: connectMembers } }
-          : {}),
+        creatorId: user.id,
+        members: { connect: [{ id: user.id }] },
+        // ...(connectMembers.length
+        //   ? { members: { connect: connectMembers } }
+        //   : {}),
       },
       include: {
         tags: true,
-        members: { select: { id: true, email: true, fullName: true } },
+        members: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            role: { select: { fullName: true } },
+          },
+        },
         _count: { select: { comments: true, attachments: true } },
       },
+    });
+
+    await this.log({
+      userId: user.id,
+      taskId: task.id,
+      action: 'Создана задача',
+      description: `${user.fullName} создал карточку`,
     });
 
     return task;
@@ -106,7 +134,14 @@ export class TasksService {
       },
       include: {
         tags: { select: { id: true, name: true } },
-        members: { select: { id: true, email: true, fullName: true } },
+        members: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            role: { select: { fullName: true } },
+          },
+        },
 
         attachments: true,
         comments: {
@@ -164,23 +199,86 @@ export class TasksService {
   }
 
   async update(userId: number, taskId: number, dto: UpdateTaskDto) {
-    const exists = await this.prisma.kanbanTask.findFirst({
+    const task = await this.prisma.kanbanTask.findFirst({
       where: { id: taskId, deletedAt: null },
       select: { id: true, boardId: true },
     });
-    if (!exists) throw new NotFoundException('Task not found');
-    await this.assertBoardAccess(userId, exists.boardId);
+    if (!task) throw new NotFoundException('Task not found');
 
-    return this.prisma.kanbanTask.update({
-      where: { id: taskId },
-      data: {
-        ...(dto.title !== undefined ? { title: dto.title } : {}),
-        ...(dto.description !== undefined
-          ? { description: dto.description }
-          : {}),
-        chatLink: dto.chatLink ?? '',
-      },
-      select: { id: true, title: true, description: true, updatedAt: true },
+    await this.assertBoardAccess(userId, task.boardId);
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.ensureMember(taskId, userId, tx);
+
+      // выясняем ЕДИНСТВЕННОЕ поле, которое пришло
+      const keys = (
+        ['title', 'description', 'chatLink', 'columnId'] as const
+      ).filter((k) => (dto as any)[k] !== undefined);
+
+      if (keys.length === 0) {
+        // ничего не пришло — просто вернём текущее состояние
+        return tx.kanbanTask.findUnique({
+          where: { id: taskId },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            chatLink: true,
+            columnId: true,
+            updatedAt: true,
+          },
+        });
+      }
+
+      const field = keys[0];
+
+      // снимок "до" (только необходимые поля)
+      const before = await tx.kanbanTask.findUnique({
+        where: { id: taskId },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          chatLink: true,
+          columnId: true,
+        },
+      });
+
+      // формируем апдейт ТОЛЬКО по одному полю
+      const data: Prisma.KanbanTaskUpdateInput = {};
+      if (field === 'title') data.title = dto.title!;
+      if (field === 'description') data.description = dto.description!;
+      if (field === 'chatLink') data.chatLink = dto.chatLink ?? null; // очищаем как null
+      if (field === 'columnId')
+        data.column = { connect: { id: dto.columnId! } };
+
+      const updated = await tx.kanbanTask.update({
+        where: { id: taskId },
+        data,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          chatLink: true,
+          columnId: true,
+          updatedAt: true,
+        },
+      });
+
+      // аудит по одному полю (без общего сравнения)
+      const fromVal = (before as any)?.[field] ?? null;
+      const toVal = (updated as any)?.[field] ?? null;
+
+      await this.log({
+        tx,
+        userId,
+        taskId,
+        action: 'UPDATE_TASK',
+        description: `Изменено поле: ${field}`,
+        payload: { field, from: fromVal, to: toVal },
+      });
+
+      return updated;
     });
   }
 
@@ -200,29 +298,37 @@ export class TasksService {
   }
 
   // src/domains/tasks/tasks.service.ts
-  async move(userId: number, taskId: number, dto: MoveTaskDto) {
+  async move(user: UserDto, taskId: number, dto: MoveTaskDto) {
     return this.prisma.$transaction(async (tx) => {
       const task = await tx.kanbanTask.findFirst({
         where: { id: taskId, deletedAt: null },
         select: { id: true, columnId: true, position: true, boardId: true },
       });
       if (!task) throw new NotFoundException('Task not found');
-      const boardId = task.boardId;
-      await this.assertBoardAccess(userId, boardId);
+
+      await this.assertBoardAccess(user.id, task.boardId);
+      // убедимся, что автор действия — участник
+      await this.ensureMember(taskId, user.id, tx);
+
+      // исходная колонка (название)
+      const fromColumn = await tx.column.findFirst({
+        where: { id: task.columnId, boardId: task.boardId },
+        select: { id: true, title: true },
+      });
 
       const targetColumn = await tx.column.findFirst({
-        where: { id: dto.toColumnId, boardId, deletedAt: null },
-        select: { id: true },
+        where: { id: dto.toColumnId, boardId: task.boardId, deletedAt: null },
+        select: { id: true, title: true },
       });
       if (!targetColumn) throw new NotFoundException('Target column not found');
 
-      // 1) Определяем новую position
+      // --- вычисление новой позиции (как у тебя) ---
       let newPos: any;
       if (dto.afterTaskId) {
         const after = await tx.kanbanTask.findFirst({
           where: {
             id: dto.afterTaskId,
-            boardId,
+            boardId: task.boardId,
             columnId: targetColumn.id,
             deletedAt: null,
           },
@@ -230,19 +336,21 @@ export class TasksService {
         });
         const next = await tx.kanbanTask.findFirst({
           where: {
-            boardId,
+            boardId: task.boardId,
             columnId: targetColumn.id,
             deletedAt: null,
-            // первая позиция строго больше after.position
             position: { gt: after?.position ?? 0 },
           },
           orderBy: { position: 'asc' },
           select: { position: true },
         });
         if (!after) {
-          // если afterTaskId не нашли — в конец
           const last = await tx.kanbanTask.findFirst({
-            where: { boardId, columnId: targetColumn.id, deletedAt: null },
+            where: {
+              boardId: task.boardId,
+              columnId: targetColumn.id,
+              deletedAt: null,
+            },
             orderBy: { position: 'desc' },
             select: { position: true },
           });
@@ -250,18 +358,15 @@ export class TasksService {
         } else if (!next) {
           newPos = (Number(after.position) + 1000).toFixed(4);
         } else {
-          // среднее между after и next
           newPos = (
             (Number(after.position) + Number(next.position)) /
             2
           ).toFixed(4);
         }
       } else if (dto.position) {
-        // простая нумерация 1..N — пересчёт позиций в целых числах
-        // (если оставляешь decimal-гепы — можно тоже вычислять среднее)
         const tasks = await tx.kanbanTask.findMany({
           where: {
-            boardId,
+            boardId: task.boardId,
             columnId: targetColumn.id,
             deletedAt: null,
             NOT: { id: taskId },
@@ -269,11 +374,9 @@ export class TasksService {
           orderBy: { position: 'asc' },
           select: { id: true },
         });
-        // вставим на индекс (position-1)
         const arr = tasks.map((t) => t.id);
         const idx = Math.max(0, Math.min(arr.length, dto.position - 1));
         arr.splice(idx, 0, taskId);
-        // перенумерация 1..N
         await Promise.all(
           arr.map((id, i) =>
             tx.kanbanTask.update({ where: { id }, data: { position: i + 1 } }),
@@ -281,20 +384,44 @@ export class TasksService {
         );
         newPos = idx + 1;
       } else {
-        // по умолчанию — в конец
         const last = await tx.kanbanTask.findFirst({
-          where: { boardId, columnId: targetColumn.id, deletedAt: null },
+          where: {
+            boardId: task.boardId,
+            columnId: targetColumn.id,
+            deletedAt: null,
+          },
           orderBy: { position: 'desc' },
           select: { position: true },
         });
         newPos = (Number(last?.position ?? 0) + 1000).toFixed(4);
       }
 
-      // 2) Обновляем колонку и позицию
+      // --- обновление ---
       const updated = await tx.kanbanTask.update({
         where: { id: taskId },
         data: { columnId: targetColumn.id, position: newPos },
         select: { id: true, columnId: true, position: true, updatedAt: true },
+      });
+
+      // --- аудит ---
+      const movedBetweenColumns = fromColumn?.id !== targetColumn.id;
+      await this.log({
+        tx,
+        userId: user.id,
+        taskId,
+        action: 'MOVE_TASK',
+        description: movedBetweenColumns
+          ? `Перемещение: «${fromColumn?.title ?? '—'}» → «${targetColumn.title}»`
+          : `Изменение позиции в колонке «${targetColumn.title}»`,
+        payload: {
+          fromColumnId: fromColumn?.id ?? null,
+          fromColumnTitle: fromColumn?.title ?? null,
+          toColumnId: targetColumn.id,
+          toColumnTitle: targetColumn.title,
+          positionBefore: task.position,
+          positionAfter: updated.position,
+          afterTaskId: dto.afterTaskId ?? null,
+        },
       });
 
       return updated;
@@ -305,63 +432,99 @@ export class TasksService {
    * Полностью заменить теги у задачи на переданный список имён.
    * Отсутствие / пустой массив -> очистить все теги.
    * Новые имена будут созданы в справочнике kanbanTaskTags внутри boardId задачи.
+   * Аудит пишет отдельно, какие имена добавлены и удалены.
    */
-  async replaceTaskTags(taskId: number, dto: UpdateTaskTagsDto) {
-    // 1) Найдём задачу и её boardId
+  async replaceTaskTags(
+    userId: number,
+    taskId: number,
+    dto: UpdateTaskTagsDto,
+  ) {
+    // найдём задачу и её boardId + доступ
     const task = await this.prisma.kanbanTask.findFirst({
       where: { id: taskId, deletedAt: null },
       select: { id: true, boardId: true },
     });
     if (!task) throw new NotFoundException('Task not found');
+    await this.assertBoardAccess(userId, task.boardId);
 
-    // Нормализуем вход
-    const names = Array.from(
-      new Set(
-        (dto.tags ?? [])
-          .map((s) => (s ?? '').trim())
-          .filter((s) => s.length > 0),
-      ),
-    );
+    // убедимся, что автор — участник
+    // (лог ADD_MEMBER произойдёт внутри при необходимости)
+    return this.prisma.$transaction(async (tx) => {
+      await this.ensureMember(taskId, userId, tx);
 
-    // 2) Если список пуст — просто снять все теги
-    if (names.length === 0) {
-      await this.prisma.kanbanTask.update({
+      const names = Array.from(
+        new Set(
+          (dto.tags ?? [])
+            .map((s) => (s ?? '').trim())
+            .filter((s) => s.length > 0),
+        ),
+      );
+
+      // текущие теги задачи (имена)
+      const current = await tx.kanbanTask.findUnique({
         where: { id: taskId },
-        data: { tags: { set: [] } },
+        select: { tags: { select: { id: true, name: true } } },
       });
-      return { taskId, tags: [] };
-    }
+      const currentNames = new Set(
+        (current?.tags ?? []).map((t) => t.name.toLowerCase()),
+      );
 
-    // 3) Найти существующие теги по имени (без учёта регистра) в рамках доски
-    const existing = await this.prisma.kanbanTaskTags.findMany({
-      where: {
-        boardId: task.boardId,
-        OR: names.map((n) => ({ name: { equals: n, mode: 'insensitive' } })),
-      },
-      select: { id: true, name: true, color: true },
-    });
+      // будущий набор (нижний регистр для сравнения)
+      const futureNamesLower = new Set(names.map((n) => n.toLowerCase()));
 
-    const existingLower = new Map(
-      existing.map((t) => [t.name.toLowerCase(), t]),
-    );
+      const removedNames = [...currentNames].filter(
+        (n) => !futureNamesLower.has(n),
+      );
+      const addedNames = [...futureNamesLower].filter(
+        (n) => !currentNames.has(n),
+      );
 
-    // 4) Какие нужно создать
-    const toCreate = names.filter((n) => !existingLower.has(n.toLowerCase()));
+      // Если список пуст — снять все теги
+      if (names.length === 0) {
+        await tx.kanbanTask.update({
+          where: { id: taskId },
+          data: { tags: { set: [] } },
+        });
 
-    // 5) Транзакция: создать недостающие и выставить набор тегов у задачи
-    const result = await this.prisma.$transaction(async (tx) => {
+        if (removedNames.length) {
+          await this.log({
+            tx,
+            userId,
+            taskId,
+            action: 'UPDATE_TAGS',
+            description: `Убраны метки: ${removedNames.join(', ')}`,
+            payload: { added: [], removed: removedNames },
+          });
+        }
+        return { taskId, tags: [] };
+      }
+
+      // найти существующие теги по имени в рамках доски
+      const existing = await tx.kanbanTaskTags.findMany({
+        where: {
+          boardId: task.boardId,
+          OR: names.map((n) => ({ name: { equals: n, mode: 'insensitive' } })),
+        },
+        select: { id: true, name: true, color: true },
+      });
+      const existingLower = new Map(
+        existing.map((t) => [t.name.toLowerCase(), t]),
+      );
+      const toCreate = names.filter((n) => !existingLower.has(n.toLowerCase()));
+
+      // создать недостающие
       if (toCreate.length) {
         await tx.kanbanTaskTags.createMany({
           data: toCreate.map((name) => ({
             boardId: task.boardId,
             name,
-            color: '', // при необходимости принимайте цвет из DTO
+            color: '',
           })),
-          skipDuplicates: true, // на случай гонки
+          skipDuplicates: true,
         });
       }
 
-      // перечитать все нужные теги (чтобы получить id только что созданных)
+      // перечитать все нужные для получения id
       const all = await tx.kanbanTaskTags.findMany({
         where: {
           boardId: task.boardId,
@@ -370,21 +533,43 @@ export class TasksService {
         select: { id: true, name: true, color: true },
       });
 
-      // заменить связи "как есть"
       await tx.kanbanTask.update({
         where: { id: taskId },
         data: { tags: { set: all.map((t) => ({ id: t.id })) } },
       });
 
-      // вернуть в удобном формате
-      // (отсортируем по имени для стабильности)
-      return all.sort((a, b) => a.name.localeCompare(b.name));
-    });
+      // аудит, если есть изменения
+      if (addedNames.length || removedNames.length) {
+        // восстановим «человеческие» имена как они были в запросе, для added
+        const addedHuman = names.filter((n) =>
+          addedNames.includes(n.toLowerCase()),
+        );
+        await this.log({
+          tx,
+          userId,
+          taskId,
+          action: 'UPDATE_TAGS',
+          description: [
+            addedHuman.length ? `Добавлены метки: ${addedHuman.join(', ')}` : '',
+            removedNames.length ? `Удалены метки: ${removedNames.join(', ')}` : '',
+          ]
+            .filter(Boolean)
+            .join('; '),
+          payload: { added: addedHuman, removed: removedNames },
+        });
+      }
 
-    return {
-      taskId,
-      tags: result.map((t) => ({ id: t.id, name: t.name, color: t.color })),
-    };
+      return {
+        taskId,
+        tags: all
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((t) => ({
+            id: t.id,
+            name: t.name,
+            color: t.color,
+          })),
+      };
+    });
   }
 
   /** Вывести комментарии задачи с файлами и автором */
@@ -611,7 +796,6 @@ export class TasksService {
                   width: n.width ?? '',
                   length: n.length ?? 0,
                   color: n.color ?? '',
-                  
                 })),
               },
             }
@@ -712,5 +896,164 @@ export class TasksService {
     });
 
     return { success: true };
+  }
+
+  /**
+   * Проверить, что userId является участником задачи.
+   * Можно передать транзакционный клиент tx.
+   */
+  async isMember(
+    taskId: number,
+    userId: number,
+    tx?: Prisma.TransactionClient,
+  ): Promise<boolean> {
+    const db = tx ?? this.prisma;
+    const exists = await db.kanbanTask.findFirst({
+      where: { id: taskId, members: { some: { id: userId } } },
+      select: { id: true },
+    });
+    return !!exists;
+  }
+
+  /**
+   * Гарантировать участие: если нет — добавить.
+   * Возвращает true, если добавили, false — если уже был участником.
+   */
+  async ensureMember(
+    taskId: number,
+    userId: number,
+    tx?: Prisma.TransactionClient,
+  ): Promise<boolean> {
+    const db = tx ?? this.prisma;
+
+    const already = await this.isMember(taskId, userId, db);
+    if (already) return false;
+
+    await db.kanbanTask.update({
+      where: { id: taskId },
+      data: { members: { connect: { id: userId } } },
+      select: { id: true },
+    });
+
+    return true;
+  }
+
+  /**
+   * Батч-версия: обеспечить участие для массива userIds.
+   * Возвращает список реально добавленных id.
+   */
+  async ensureMembers(
+    taskId: number,
+    userIds: number[],
+    tx?: Prisma.TransactionClient,
+  ): Promise<number[]> {
+    const db = tx ?? this.prisma;
+
+    const current = await db.kanbanTask.findUnique({
+      where: { id: taskId },
+      select: { members: { select: { id: true } } },
+    });
+    const have = new Set((current?.members ?? []).map((m) => m.id));
+    const toAdd = userIds.filter((id) => !have.has(id));
+
+    if (toAdd.length) {
+      await db.kanbanTask.update({
+        where: { id: taskId },
+        data: { members: { connect: toAdd.map((id) => ({ id })) } },
+        select: { id: true },
+      });
+    }
+    return toAdd;
+  }
+
+  async getMembers(userId: number, taskId: number) {
+    // проверяем существование и доступ к доске
+    const task = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { id: true, boardId: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    await this.assertBoardAccess(userId, task.boardId);
+
+    // подтягиваем участников
+    const res = await this.prisma.kanbanTask.findUnique({
+      where: { id: taskId },
+      select: {
+        members: {
+          where: { deletedAt: null }, // если в User есть deletedAt — фильтруем "мёртвых"
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            role: { select: { id: true, shortName: true, fullName: true } },
+          },
+          orderBy: { fullName: 'asc' },
+        },
+      },
+    });
+
+    // нормализуем ответ в плоский массив
+    return (res?.members ?? []).map((m) => ({
+      id: m.id,
+      fullName: m.fullName,
+      email: m.email,
+      role: {
+        id: m.role?.id,
+        shortName: m.role?.shortName,
+        fullName: m.role?.fullName,
+      },
+    }));
+  }
+
+  /**
+   * Базовая запись события аудита.
+   * Можно передать tx для атомарной записи вместе с основной операцией.
+   */
+  async log(params: AuditLogParams) {
+    const { userId, taskId, action, payload, description, tx } = params;
+    const db = tx ?? this.prisma;
+
+    await this.ensureTask(taskId);
+
+    return db.kanbanTaskAudit.create({
+      data: {
+        userId,
+        taskId,
+        action,
+        payload: payload ?? {},
+        description: description ?? null,
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        action: true,
+        description: true,
+        payload: true,
+        user: { select: { id: true, fullName: true, email: true } },
+      },
+    });
+  }
+
+  async getTaskAudit(taskId: number) {
+    // опционально проверим, что задача существует и не удалена
+    const task = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    return this.prisma.kanbanTaskAudit.findMany({
+      where: { taskId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        action: true,
+        description: true,
+        payload: true,
+        user: { select: { id: true, fullName: true } },
+      },
+    });
   }
 }

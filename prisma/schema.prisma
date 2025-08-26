@@ -902,6 +902,7 @@ model KanbanTaskAudit {
 
   action    String      // примеры: CREATE, UPDATE_TITLE, MOVE, ADD_MEMBER
   payload   Json?       // произвольные данные (fromColumnId, toColumnId, fieldsChanged, ...)
+  description String?    
 
   @@index([taskId, createdAt])
 }
