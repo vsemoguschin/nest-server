@@ -659,6 +659,7 @@ model OtherReport {
   name         String
   cost         Int
   penaltyCost  Int      @default(0)
+  comment      String  @default("")
 
   userId       Int
   user         User    @relation(fields: [userId], references: [id])

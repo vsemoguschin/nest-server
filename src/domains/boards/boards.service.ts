@@ -195,7 +195,10 @@ export class BoardsService {
     const list = await this.prisma.board.findMany({
       where: {
         deletedAt: null,
-        users: user.role.shortName === 'ADMIN' ? {} : { some: { id: user.id } },
+        users:
+          user.role.shortName === 'ADMIN'
+            ? { some: {} }
+            : { some: { id: user.id } },
       },
 
       orderBy: { createdAt: 'desc' },

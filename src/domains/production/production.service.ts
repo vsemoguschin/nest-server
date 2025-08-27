@@ -35,7 +35,7 @@ export class ProductionService {
   constructor(private prisma: PrismaService) {}
 
   async getPredata(user: UserDto) {
-    if (['ADMIN', 'G', 'DP', 'RP'].includes(user.role.shortName)) {
+    if (['ADMIN', 'G', 'KD', 'DP', 'RP'].includes(user.role.shortName)) {
       return {
         tabs: [
           { value: 'orders', label: 'Заказы' },
@@ -81,12 +81,25 @@ export class ProductionService {
     }
   }
 
-  async getOrders(from: string, to: string) {
+  async getWorkSpaces(user: UserDto) {
+    return await this.prisma.workSpace.findMany({
+      where: {
+        id: user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
+        department: 'PRODUCTION',
+      },
+    });
+  }
+
+  async getOrders(from: string, to: string, user: UserDto) {
     const masterReports = await this.prisma.masterReport.findMany({
       where: {
         date: {
           gte: from,
           lte: to,
+        },
+        user: {
+          workSpaceId:
+            user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
         },
       },
       include: {
@@ -105,6 +118,10 @@ export class ProductionService {
         date: {
           gte: from,
           lte: to,
+        },
+        user: {
+          workSpaceId:
+            user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
         },
       },
       include: {
@@ -125,6 +142,8 @@ export class ProductionService {
           lte: to,
         },
         user: {
+          workSpaceId:
+            user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
           role: {
             shortName: {
               not: 'FRZ',
@@ -149,6 +168,10 @@ export class ProductionService {
           gte: from,
           lte: to,
         },
+        user: {
+          workSpaceId:
+            user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
+        },
       },
       include: {
         user: {
@@ -166,6 +189,10 @@ export class ProductionService {
         date: {
           gte: from,
           lte: to,
+        },
+        user: {
+          workSpaceId:
+            user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
         },
       },
       include: {
@@ -185,6 +212,257 @@ export class ProductionService {
           lte: to,
         },
         user: {
+          workSpaceId:
+            user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
+          role: {
+            shortName: 'FRZ',
+          },
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    // Объединяем все отчеты с добавлением уникальных ключей, меток и card_id
+    const allReports = [
+      ...masterReports.map((report) => ({
+        ...report,
+        key: `master-report-${report.id}`,
+        report_type: 'Сборка',
+      })),
+      ...masterRepairReports.map((report) => ({
+        ...report,
+        key: `master-repair-${report.id}`,
+        isRepair: true,
+        report_type: 'Ремонт',
+      })),
+      ...otherReports.map((report) => ({
+        ...report,
+        key: `master-other-${report.id}`,
+        isOther: true,
+        type: 'Другое',
+        report_type: 'Другое',
+      })),
+      ...packersReports.map((report) => ({
+        ...report,
+        key: `packer-report-${report.id}`,
+        report_type: 'Упаковка',
+      })),
+    ]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((r) => {
+        let card_id = '';
+        if (r.name.includes('easyneonwork.kaiten.ru/')) {
+          const linkSplit = r.name.split('/');
+          card_id = linkSplit[linkSplit.length - 1].trim();
+        } else {
+          card_id = r.name.trim();
+        }
+        return { ...r, card_id };
+      });
+
+    // Группировка по card_id
+    const groupedByCardId = allReports.reduce(
+      (acc, report) => {
+        if (!acc[report.card_id]) {
+          acc[report.card_id] = [];
+        }
+        acc[report.card_id].push(report);
+        return acc;
+      },
+      {} as Record<string, any[]>,
+    );
+
+    const totals = {
+      frezerReports: frezerReport.length,
+      frezerReportsCost: frezerReport.reduce(
+        (a, b) => a + b.cost - b.penaltyCost,
+        0,
+      ),
+      frezerOtherReport: frezerOtherReport.length,
+      frezerOtherReportCost: frezerOtherReport.reduce((a, b) => a + b.cost, 0),
+      frezerSalary: frezerReport.reduce(
+        (a, b) => a + b.cost - b.penaltyCost,
+        0,
+      ),
+
+      els: masterReports.reduce((a, b) => a + b.els, 0),
+      metrs: masterReports.reduce((a, b) => a + b.metrs, 0),
+      mastersSalary: masterReports.reduce(
+        (a, b) => a + (b.cost - b.penaltyCost),
+        0,
+      ),
+      mastersReports: masterReports.length,
+      packersReports: packersReports.length,
+      packages: packersReports.reduce((a, b) => a + b.items, 0),
+      packagersSalary: packersReports.reduce(
+        (a, b) => a + (b.cost - b.penaltyCost),
+        0,
+      ),
+      repairs: masterRepairReports.length,
+      repairsCost: masterRepairReports.reduce((a, b) => a + b.cost, 0),
+      ordersCost: allReports.reduce((a, b) => a + b.cost, 0),
+      penalties: allReports.filter((p) => p.penaltyCost > 0).length,
+      penaltiesCost: allReports.reduce((a, b) => a + b.penaltyCost, 0),
+      otherReports: otherReports.length,
+      otherReportsCost: otherReports.reduce((a, b) => a + b.cost, 0),
+      totalCost: allReports.reduce((a, b) => a + (b.cost - b.penaltyCost), 0),
+    };
+
+    // Преобразуем объект в массив сгруппированных отчетов и сортируем по самой свежей дате
+    const orders = Object.entries(groupedByCardId)
+      .map(([card_id, orders]) => ({
+        name: orders[0].name,
+        card_id,
+        orders,
+      }))
+      .sort((a, b) => {
+        const latestDateA = a.orders.reduce(
+          (latest, report) => (latest > report.date ? latest : report.date),
+          a.orders[0].date,
+        );
+        const latestDateB = b.orders.reduce(
+          (latest, report) => (latest > report.date ? latest : report.date),
+          b.orders[0].date,
+        );
+        return latestDateB.localeCompare(latestDateA);
+      });
+    return {
+      orders,
+      totals,
+    };
+  }
+
+  async getWorkSpaceOrders(
+    from: string,
+    to: string,
+    user: UserDto,
+    id: number,
+  ) {
+    const masterReports = await this.prisma.masterReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+        user: {
+          workSpaceId: id,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const masterRepairReports = await this.prisma.masterRepairReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+        user: {
+          workSpaceId: id,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const otherReports = await this.prisma.otherReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+        user: {
+          workSpaceId: id,
+          role: {
+            shortName: {
+              not: 'FRZ',
+            },
+          },
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const packersReports = await this.prisma.packerReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+        user: {
+          workSpaceId: id,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+
+    const frezerReport = await this.prisma.frezerReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+        user: {
+          workSpaceId: id,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    });
+    const frezerOtherReport = await this.prisma.frezerReport.findMany({
+      where: {
+        date: {
+          gte: from,
+          lte: to,
+        },
+        user: {
+          workSpaceId: id,
           role: {
             shortName: 'FRZ',
           },
@@ -468,6 +746,8 @@ export class ProductionService {
           { masterRepairReports: { some: {} } },
           { masterShifts: { some: {} } },
         ],
+        workSpaceId:
+          user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
       },
       select: {
         id: true,
@@ -1025,7 +1305,7 @@ export class ProductionService {
     });
   }
 
-  async getStat(period: string) {
+  async getStat(period: string, user: UserDto) {
     // Проверка формата period (YYYY-MM)
     if (!/^\d{4}-\d{2}$/.test(period)) {
       throw new BadRequestException('Period must be in YYYY-MM format');
@@ -1044,9 +1324,16 @@ export class ProductionService {
     // Получаем мастеров, их отчеты и смены
     const masters = await this.prisma.user.findMany({
       where: {
-        role: {
-          shortName: { in: ['MASTER', 'RP'] },
-        },
+        OR: [
+          { masterReports: { some: {} } },
+          { masterRepairReports: { some: {} } },
+          { masterShifts: { some: {} } },
+        ],
+        workSpaceId:
+          user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
+        // role: {
+        //   shortName: { in: ['MASTER', 'RP', 'PACKER'] },
+        // },
       },
       select: {
         id: true,
@@ -1179,6 +1466,8 @@ export class ProductionService {
           shortName: { in: ['PACKER', 'LOGIST'] },
         },
         id: userSearch,
+        workSpaceId:
+          user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
       },
       select: {
         id: true,
@@ -1435,7 +1724,7 @@ export class ProductionService {
     });
   }
 
-  async getPackerStat(period: string) {
+  async getPackerStat(period: string, user: UserDto) {
     if (!/^\d{4}-\d{2}$/.test(period)) {
       throw new BadRequestException('Period must be in YYYY-MM format');
     }
@@ -1452,6 +1741,8 @@ export class ProductionService {
         role: {
           shortName: { in: ['PACKER'] },
         },
+        workSpaceId:
+          user.role.shortName === 'RP' ? user.workSpaceId : { gt: 0 },
       },
       select: {
         id: true,

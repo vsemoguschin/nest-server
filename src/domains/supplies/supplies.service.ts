@@ -8,6 +8,7 @@ import {
   SupplieCreateDto,
   SuppliePositionCreateDto,
 } from './dto/supplie-create.dto';
+import { UserDto } from '../users/dto/user.dto';
 
 @Injectable()
 export class SuppliesService {
@@ -50,7 +51,7 @@ export class SuppliesService {
     return fullSupplie;
   }
 
-  async getSupplies(from: string, to: string) {
+  async getSupplies(from: string, to: string, user: UserDto) {
     const supplies = await this.prisma.supplie.findMany({
       where: {
         date: {
@@ -66,7 +67,7 @@ export class SuppliesService {
       },
     });
     const positions = supplies.flatMap((s) => s.positions).map((p) => p.name);
-    const suppliers = supplies.map(s => s.supplier);
+    const suppliers = supplies.map((s) => s.supplier);
     const categories = supplies
       .flatMap((s) => s.positions)
       .map((p) => p.category);
@@ -86,7 +87,7 @@ export class SuppliesService {
       filters: {
         uniquePositions,
         uniqueCategories,
-        uniqueSuppliers
+        uniqueSuppliers,
       },
     };
   }
