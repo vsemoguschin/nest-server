@@ -16,6 +16,8 @@ import { UpdateTaskOrderDto } from './dto/update-order.dto';
 import { CreateTaskOrderDto } from './dto/order.dto';
 import { Prisma } from '@prisma/client';
 import { UserDto } from '../users/dto/user.dto';
+import { TelegramService } from 'src/services/telegram.service';
+import { TaskNotifyService } from 'src/services/task-notify.service';
 
 type JsonInput = Prisma.InputJsonValue;
 
@@ -32,7 +34,9 @@ export type AuditLogParams = {
 export class TasksService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly telegram: TelegramService,
     private readonly files: KanbanFilesService,
+    private readonly notify: TaskNotifyService,
   ) {}
 
   /** Проверка задачи (если нужна) */
@@ -278,6 +282,13 @@ export class TasksService {
         payload: { field, from: fromVal, to: toVal },
       });
 
+      await this.notify.notifyParticipants({
+        taskId,
+        actorUserId: userId,
+        message: `Изменено: ${fromVal} на ${toVal}`,
+        // link опционально, если не передашь — сгенерится автоматически
+      });
+
       return updated;
     });
   }
@@ -424,6 +435,13 @@ export class TasksService {
         },
       });
 
+      await this.notify.notifyParticipants({
+        taskId,
+        actorUserId: user.id,
+        message: `Перемещение: «${fromColumn?.title ?? '—'}» → «${targetColumn.title}»`,
+        // link опционально, если не передашь — сгенерится автоматически
+      });
+
       return updated;
     });
   }
@@ -495,7 +513,13 @@ export class TasksService {
             description: `Убраны метки: ${removedNames.join(', ')}`,
             payload: { added: [], removed: removedNames },
           });
+          await this.notify.notifyParticipants({
+            taskId,
+            actorUserId: userId,
+            message: `Убраны метки: ${removedNames.join(', ')}`,
+          });
         }
+        // link опционально, если не передашь — сгенерится автоматически
         return { taskId, tags: [] };
       }
 
@@ -550,12 +574,30 @@ export class TasksService {
           taskId,
           action: 'UPDATE_TAGS',
           description: [
-            addedHuman.length ? `Добавлены метки: ${addedHuman.join(', ')}` : '',
-            removedNames.length ? `Удалены метки: ${removedNames.join(', ')}` : '',
+            addedHuman.length
+              ? `Добавлены метки: ${addedHuman.join(', ')}`
+              : '',
+            removedNames.length
+              ? `Удалены метки: ${removedNames.join(', ')}`
+              : '',
           ]
             .filter(Boolean)
             .join('; '),
           payload: { added: addedHuman, removed: removedNames },
+        });
+        await this.notify.notifyParticipants({
+          taskId,
+          actorUserId: userId,
+          message: [
+            addedHuman.length
+              ? `Добавлены метки: ${addedHuman.join(', ')}`
+              : '',
+            removedNames.length
+              ? `Удалены метки: ${removedNames.join(', ')}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('; '),
         });
       }
 
@@ -614,10 +656,18 @@ export class TasksService {
     if (!task) throw new NotFoundException('Task not found');
 
     const t = (text ?? '').trim();
-    return this.prisma.kanbanTaskComments.create({
+
+    const comment = await this.prisma.kanbanTaskComments.create({
       data: { taskId, authorId, text: t },
       select: { id: true },
     });
+    await this.notify.notifyParticipants({
+      taskId: task.id,
+      actorUserId: authorId,
+      message: `Оставил комментарий: ${t}`,
+    });
+
+    return comment;
   }
 
   /** Определить категорию и расширение по mime/расширению */
@@ -729,6 +779,12 @@ export class TasksService {
         taskId: comment.task.id,
         fileId: dbFile.id,
       },
+    });
+
+    await this.notify.notifyParticipants({
+      taskId: comment.task.id,
+      actorUserId: userId,
+      message: 'Добавлено вложение',
     });
 
     // Формат как ожидает фронт

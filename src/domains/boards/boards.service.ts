@@ -48,6 +48,11 @@ export class BoardsService {
                     file: true,
                   },
                 },
+                members: {
+                  include: {
+                    role: true,
+                  },
+                },
               },
             },
           },
@@ -104,6 +109,7 @@ export class BoardsService {
                     path: previewAtt.file.path, // если хотите потом брать свежую ссылку
                     attachmentsLength: t.attachments.length,
                     tags: t.tags.map((t) => t.name),
+                    members: t.members,
                   };
                 }
 
@@ -114,6 +120,7 @@ export class BoardsService {
                   path: '',
                   attachmentsLength: t.attachments.length,
                   tags: t.tags.map((t) => t.name),
+                  members: t.members,
                 };
               }),
             ),

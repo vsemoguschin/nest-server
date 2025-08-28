@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
 import { UserProfileDto } from 'src/profile/dto/user-profile.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
@@ -142,5 +143,31 @@ export class UsersService {
       },
     });
     return { message: 'Пароль изменен' };
+  }
+
+  async update(id: number, dto: UpdateUserDto) {
+    // Проверим, что пользователь существует (и не удалён, если у вас есть soft-delete)
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const data: any = {};
+    if (dto.tg_id !== undefined) data.tg_id = dto.tg_id;
+
+    if (Object.keys(data).length === 0) {
+      // ничего не меняем — вернём текущего пользователя
+      return this.prisma.user.findUnique({
+        where: { id },
+        select: { id: true, fullName: true, email: true, tg_id: true },
+      });
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data,
+      select: { id: true, fullName: true, email: true, tg_id: true },
+    });
   }
 }

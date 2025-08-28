@@ -23,6 +23,7 @@ import { UserProfileDto } from 'src/profile/dto/user-profile.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { UpdatePasswordDto } from './dto/user-update-pass.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('users')
@@ -32,7 +33,7 @@ export class UsersController {
 
   @Post()
   @ApiOperation({ summary: 'Создать нового пользователя' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'ROV', 'DP' , 'RP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'ROV', 'DP', 'RP')
   async createUser(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
@@ -59,13 +60,20 @@ export class UsersController {
   @ApiOperation({ summary: 'Удалить пользователя по ID' })
   @ApiParam({ name: 'id', type: 'integer', description: 'ID пользователя' })
   @ApiNoContentResponse({ description: 'Пользователь успешно удален' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'ROD', 'DP' , 'RP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'ROD', 'DP', 'RP')
   async deleteUser(@Param('id', ParseIntPipe) userId: number): Promise<void> {
     await this.usersService.deleteUser(userId);
   }
 
+  @Patch(':id')
+  // @UseGuards(AuthGuard) // при необходимости
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'DP', 'RP')
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
+    return this.usersService.update(id, dto);
+  }
+
   @Patch(':id/new-pass')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'DP' , 'RP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'DP', 'RP')
   @ApiOperation({ summary: 'Обновить пароль пользователя' })
   @ApiParam({ name: 'id', type: 'integer', description: 'ID пользователя' })
   @ApiBody({

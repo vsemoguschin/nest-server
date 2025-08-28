@@ -2,6 +2,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import axios from 'axios';
@@ -21,6 +22,7 @@ export class TelegramService {
   private readonly apiBase = this.token
     ? `https://api.telegram.org/bot${this.token}`
     : '';
+  private readonly logger = new Logger(TelegramService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -105,5 +107,21 @@ export class TelegramService {
           "'": '&#39;',
         })[ch as '&' | '<' | '>' | '"' | "'"] as string,
     );
+  }
+
+  async sendToChat(chatId: number, text: string, disableNotification = false) {
+    try {
+      await axios.post(`${this.apiBase}/sendMessage`, {
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        disable_notification: disableNotification,
+        // при желании: reply_markup, disable_web_page_preview и т.д.
+      });
+    } catch (e: any) {
+      this.logger.warn(
+        `TG send failed chat=${chatId}: ${e?.response?.data?.description || e?.message}`,
+      );
+    }
   }
 }
