@@ -32,10 +32,13 @@ import { BoardsModule } from './domains/boards/boards.module';
 import { ColumnsModule } from './domains/columns/columns.module';
 import { TasksModule } from './domains/board_tasks/board_tasks.module';
 import { KanbanFilesModule } from './domains/kanban-files/kanban-files.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { NotificationSchedulerService } from './notifications/notification-scheduler.service';
+import { TelegramService } from './services/telegram.service';
 
 @Module({
   imports: [
-    PrismaModule,  // Теперь PrismaService доступен глобально
+    PrismaModule, // Теперь PrismaService доступен глобально
     AuthModule,
     ProfileModule,
     RolesModule,
@@ -65,9 +68,12 @@ import { KanbanFilesModule } from './domains/kanban-files/kanban-files.module';
     ColumnsModule,
     TasksModule,
     KanbanFilesModule,
+    ScheduleModule.forRoot(),
+
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],
-  providers: [ProfileService],
+  providers: [ProfileService, TelegramService, NotificationSchedulerService],
+  exports: [NotificationSchedulerService],
 })
 export class AppModule {}
