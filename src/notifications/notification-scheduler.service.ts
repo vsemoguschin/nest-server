@@ -13,7 +13,7 @@ export class NotificationSchedulerService {
   ) {}
 
   // Метод, который будет запускаться по расписанию
-    // @Cron('0 0 15,18,21,23 * * *')
+  // @Cron('0 0 15,18,21,23 * * *')
   @Cron('0 59 14,17,20,23 * * *')
   async sendDailySummary() {
     this.logger.log('Starting daily data collection and notification...');
@@ -79,7 +79,7 @@ export class NotificationSchedulerService {
       // await this.telegramService.sendToChat(chatId, summaryText);
 
       // Вариант 2: Если нужно уведомить конкретных пользователей (например, всех админов)
-      const admins = [317401874];
+      const admins = [317401874, 368152093];
       for (const admin of admins) {
         await this.telegramService.sendToChat(admin, summaryText);
       }
