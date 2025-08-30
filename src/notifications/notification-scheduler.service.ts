@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule'; // Импорт для cron
+import { Cron } from '@nestjs/schedule'; // Импорт для cron
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from 'src/services/telegram.service';
 
 @Injectable()
 export class NotificationSchedulerService {
   private readonly logger = new Logger(NotificationSchedulerService.name);
+  private readonly env = process.env.NODE_ENV as 'development' | 'production';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -17,6 +18,10 @@ export class NotificationSchedulerService {
   @Cron('0 59 14,17,20,23 * * *')
   async sendDailySummary() {
     this.logger.log('Starting daily data collection and notification...');
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip telegram`);
+      return;
+    }
 
     try {
       const today = new Date().toISOString().slice(0, 10);
@@ -56,7 +61,7 @@ export class NotificationSchedulerService {
           .flatMap((d) => d.dops)
           .reduce((a, b) => a + b.price, 0);
         const totalSales = dealsSales + dopsSales;
-        const adExpenses = g.adExpenses.reduce((a, b) => a + b.price, 0);
+        // const adExpenses = g.adExpenses.reduce((a, b) => a + b.price, 0);
         const text =
           `\n<u>${projectName}</u>\n` +
           `Сумма оформленных: ${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
@@ -75,7 +80,7 @@ export class NotificationSchedulerService {
         `Общая сумма оформленных: <b>${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
         msgs.map((m) => m.text).join('');
 
-      const chatId = 317401874;
+      // const chatId = 317401874;
       // await this.telegramService.sendToChat(chatId, summaryText);
 
       // Вариант 2: Если нужно уведомить конкретных пользователей (например, всех админов)
@@ -89,4 +94,110 @@ export class NotificationSchedulerService {
       this.logger.error(`Error in daily summary: ${error.message}`);
     }
   }
+
+  @Cron('0 59 11 * * *')
+  //   @Cron('0 13 16 * * *')
+  async sendMainDailySummary() {
+    this.logger.log('Starting daily data collection and notification...');
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip telegram`);
+      return;
+    }
+
+    try {
+      const yesterday = new Date(new Date().setDate(new Date().getDate() - 1))
+        .toISOString()
+        .slice(0, 10);
+
+      const groups = await this.prisma.group.findMany({
+        where: {
+          workSpace: {
+            department: 'COMMERCIAL',
+          },
+        },
+        include: {
+          deals: {
+            where: {
+              saleDate: {
+                startsWith: yesterday,
+              },
+              reservation: false,
+            },
+            include: {
+              dops: true,
+            },
+          },
+          adExpenses: {
+            where: {
+              date: {
+                startsWith: yesterday,
+              },
+            },
+          },
+        },
+      });
+
+      const msgs = groups
+        .map((g) => {
+          const projectName = g.title;
+          const dealsSales = g.deals.reduce((a, b) => a + b.price, 0);
+          const dopsSales = g.deals
+            .flatMap((d) => d.dops)
+            .reduce((a, b) => a + b.price, 0);
+          const totalSales = dealsSales + dopsSales;
+          const adExpenses = g.adExpenses.reduce((a, b) => a + b.price, 0);
+          const drr = totalSales
+            ? +((adExpenses / totalSales) * 100).toFixed(2)
+            : 0;
+          const text =
+            `\n<u>${projectName}</u>\n` +
+            `Сумма оформленных: ${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
+            `<i> - Заказы: ${dealsSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+            `<i> - Допы: ${dopsSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+            `<i> - Расходы на рекламу: ${adExpenses.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+            `<i> - ДРР: ${drr}%\n</i>`;
+          return totalSales > 0
+            ? { totalSales, text, adExpenses }
+            : { totalSales: 0, text: '', adExpenses: 0 };
+        })
+        .sort((a, b) => b.totalSales - a.totalSales);
+
+      const totalSales = msgs.reduce((a, b) => a + b.totalSales, 0);
+      const totalAdExpenses = msgs.reduce((a, b) => a + b.adExpenses, 0);
+      const totalDRR = totalSales
+        ? +((totalAdExpenses / totalSales) * 100).toFixed(2)
+        : 0;
+
+      // Формируем текст уведомления на основе собранных данных
+      const summaryText =
+        `<b>Подробный отчет за вчерашний день</b>\n` +
+        `Общая сумма оформленных: <b>${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
+        `Общие расходы на рекламу: <b>${totalAdExpenses.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
+        `ДРР: <b>${totalDRR}%</b>\n` +
+        msgs.map((m) => m.text).join('');
+      console.log(summaryText);
+
+      // const chatId = 317401874;
+      // await this.telegramService.sendToChat(chatId, summaryText);
+
+      // Вариант 2: Если нужно уведомить конкретных пользователей (например, всех админов)
+      const admins = [317401874, 368152093];
+      // const admins = [317401874];
+      for (const admin of admins) {
+        await this.telegramService.sendToChat(admin, summaryText);
+      }
+
+      this.logger.log('Daily notification sent successfully');
+    } catch (error) {
+      this.logger.error(`Error in daily summary: ${error.message}`);
+    }
+  }
+
+  // @Cron('*/5 * * * * *')
+  // async test() {
+  //   if (this.env === 'development') {
+  //     return console.log('dev');
+  //   }
+  //   console.log('prod');
+  // }
 }

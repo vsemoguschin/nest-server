@@ -5,22 +5,35 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiResponse,
+  ApiOperation,
+  ApiExtraModels,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { DashboardsService } from './dashboards.service';
 import { WorkSpaceDto } from '../workspaces/dto/workspace.dto';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserDto } from '../users/dto/user.dto';
+import { ErrorResponse } from 'src/common/errors/error.response';
+import {
+  ApiErrorResponses,
+  ApiErrorResponsesDefault,
+} from 'src/common/swagger/api-error-responses';
 
+// @ApiExtraModels(ErrorResponse)
 @ApiTags('dashboards')
 @Controller('dashboards')
 @UseGuards(RolesGuard)
 export class DashboardsController {
   constructor(private readonly dashboardsService: DashboardsService) {}
 
+  // @ApiErrorResponses('/vsemo/dashboards/workspaces')
+  @ApiErrorResponsesDefault()
   @Get('/workspaces')
-  @ApiResponse({ status: 200, type: [WorkSpaceDto] })
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'RP', 'ROV')
   async getWorkspaces(@CurrentUser() user: UserDto) {
     return this.dashboardsService.getWorkspaces(user);

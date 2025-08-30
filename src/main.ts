@@ -7,7 +7,11 @@ import { HttpErrorFilter } from './common/filters/http-error.filter';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as dotenv from 'dotenv';
+import * as express from 'express';
+import { join } from 'path';
 import multer from 'multer';
+import { getSchemaPath, ApiExtraModels } from '@nestjs/swagger';
+import { ErrorResponse } from './common/errors/error.response';
 dotenv.config();
 
 async function bootstrap() {
@@ -47,14 +51,26 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpErrorFilter());
 
   // Настройка Swagger
-  // const config = new DocumentBuilder()
-  //   .setTitle('CRM API')
-  //   .setDescription('Документация API CRM-системы')
-  //   .setVersion('1.0')
-  //   .addTag('crm')
-  //   .build();
-  // const document = SwaggerModule.createDocument(app, config);
-  // SwaggerModule.setup('api-docs', app, document);
+  const config = new DocumentBuilder()
+    .setTitle('CRM API')
+    .setDescription('Документация API CRM-системы')
+    .setVersion('1.0')
+    .addTag('crm')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config, {
+    extraModels: [ErrorResponse],
+  });
+  SwaggerModule.setup('api-docs', app, document);
+  
+  const httpAdapter = app.getHttpAdapter();
+
+  httpAdapter.get('/api-json', (req, res) => {
+    // универсальная отправка ответа (Nest сам выставит JSON)
+    httpAdapter.reply(res, document, 200);
+  });
+
+  app.use(express.static(join(__dirname, '..', 'public'))); // отдаст /favicon.ico
 
   // (BigInt.prototype as any).toJSON = function () {
   //   return this.toString(); // Преобразуем BigInt в строку

@@ -1018,7 +1018,7 @@ export class ProductionService {
       try {
         const options = {
           method: 'GET',
-          url: `https://easyneonwork.kaiten.ru/api/latest/cards/${card_id}`,
+          url: `https://easyneonwork.kaiten.ru/api/latest/cards/${card_id}`, 
           headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
