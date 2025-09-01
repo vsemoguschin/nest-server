@@ -313,6 +313,7 @@ model Deal {
   masterReports         MasterReport[]
   masterRepairReports   MasterRepairReport[]
   packerReports         PackerReport[]
+  otherReports          OtherReport[]
 }
 
 // История изменения статуса
@@ -663,6 +664,9 @@ model OtherReport {
 
   userId       Int
   user         User    @relation(fields: [userId], references: [id])
+
+  dealId       Int?
+  deal         Deal?   @relation(fields: [dealId], references: [id])
 }
 
 model FrezerReport {
@@ -1009,4 +1013,12 @@ model Lighting {
   // Связь с заказом (TaskOrder)
   orderTaskId   Int
   orderTask     TaskOrder       @relation(fields: [orderTaskId], references: [id])
+}
+
+model ProdReport {
+  id       Int     @id @default(autoincrement())
+  date     String
+  type     String  // create/repair/packer/other
+  cost     Int     @default(0)
+  comment  String  @default("")
 }

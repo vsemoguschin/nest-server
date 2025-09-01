@@ -20,3 +20,5 @@ import { UsersModule } from '../domains/users/users.module';
   exports: [AuthService],
 })
 export class AuthModule {}
+const today = new Date().toISOString().slice(0, 10);
+console.log();
