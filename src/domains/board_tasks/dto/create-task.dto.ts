@@ -27,13 +27,6 @@ export class CreateTaskDto {
   @IsNumber()
   position?: number;
 
-  /** IDs пользователей, которых сразу назначаем участниками */
-  @IsOptional()
-  @IsArray()
-  @ArrayUnique()
-  @Type(() => Number)
-  memberIds?: number[];
-
   /** Теги, создадим записи KanbanTaskTags */
   @IsOptional()
   @IsArray()

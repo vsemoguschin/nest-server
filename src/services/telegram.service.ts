@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import * as FormData from 'form-data';
 
 type NotifyParams = {
   userId: number; // кому отправляем

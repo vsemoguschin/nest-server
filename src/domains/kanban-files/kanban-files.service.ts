@@ -19,11 +19,6 @@ type UploadArgs = {
   file: Express.Multer.File;
 };
 
-type RemoveArgs = {
-  userId: number;
-  attachmentId: number;
-};
-
 @Injectable()
 export class KanbanFilesService {
   private readonly YD_UPLOAD =
@@ -53,52 +48,6 @@ export class KanbanFilesService {
       return md.data.sizes[0].url || '';
     }
     return '';
-  }
-
-  /**
-   * Получает вложения по идентификатору задачи.
-   * @param taskId - Идентификатор задачи
-   * @returns Список вложений с файлами и данными создателя
-   */
-  async getAttachmentsByTaskId(taskId: number) {
-    const exists = await this.prisma.kanbanTask.findFirst({
-      where: { id: taskId, deletedAt: null },
-      select: { id: true, boardId: true },
-    });
-    if (!exists) throw new NotFoundException('Task not found');
-    const attachments = await this.prisma.kanbanFile.findMany({
-      where: {
-        deletedAt: null,
-        taskLinks: {
-          some: {
-            taskId,
-          },
-        },
-      },
-      include: {
-        uploadedBy: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    return await Promise.all(
-      attachments.map(async (file) => {
-        return {
-          id: file.id,
-          name: file.name,
-          path: file.path,
-          preview: await this.getFileOriginal(file.mimeType || '', file.path),
-          mimeType: file.mimeType,
-          size: file.size,
-          ya_name: file.ya_name,
-          directory: file.directory,
-          createdAt: file.createdAt,
-          uploadedBy: {
-            id: file.uploadedBy.id,
-            fullName: file.uploadedBy.fullName,
-          },
-        };
-      }),
-    );
   }
 
   /** Проверяем доступ пользователя к доске */
@@ -237,87 +186,6 @@ export class KanbanFilesService {
     };
   }
 
-  /** Обновить метаданные всех вложений задачи из Я.Диска и вернуть список */
-  async refreshAndListForTask(
-    userId: number,
-    boardId: number,
-    columnId: number,
-    taskId: number,
-  ) {
-    await this.assertBoardAccess(userId, boardId);
-    await this.assertTask(boardId, columnId, taskId);
-
-    const links = await this.prisma.kanbanTaskAttachment.findMany({
-      where: { taskId },
-      include: { file: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    // обновим метаданные в БД
-    for (const l of links) {
-      try {
-        const md = await this.getResourceMeta(l.file.path);
-        await this.prisma.kanbanFile.update({
-          where: { id: l.fileId },
-          data: {
-            size: md.size ?? l.file.size,
-            preview: md.preview || md.sizes?.[0]?.url || l.file.preview,
-            mimeType: md.mime_type ?? l.file.mimeType,
-          },
-        });
-      } catch (e) {
-        // если файл недоступен — пропустим, покажем что есть
-        // можно логировать
-      }
-    }
-
-    // перечитаем уже обновлённые записи
-    const fresh = await this.prisma.kanbanTaskAttachment.findMany({
-      where: { taskId },
-      include: { file: true },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const result: any = [];
-    for (const l of fresh) {
-      try {
-        const md = await this.getResourceMeta(l.file.path); // ← вернёт sizes
-        result.push({
-          id: l.id,
-          file: {
-            id: l.file.id,
-            name: l.file.name,
-            path: l.file.path, // оригинал
-            preview: md.preview || md.sizes?.[0]?.url || l.file.preview,
-            size: md.size ?? l.file.size,
-            mimeType: md.mime_type ?? l.file.mimeType,
-            directory: l.file.directory,
-            ya_name: l.file.ya_name,
-            createdAt: l.file.createdAt,
-            sizes: md.sizes || [], // ← ДОБАВЛЕНО
-          },
-        });
-      } catch {
-        result.push({
-          id: l.id,
-          file: {
-            id: l.file.id,
-            name: l.file.name,
-            path: l.file.path,
-            preview: l.file.preview,
-            size: l.file.size,
-            mimeType: l.file.mimeType,
-            directory: l.file.directory,
-            ya_name: l.file.ya_name,
-            createdAt: l.file.createdAt,
-            sizes: [], // ← пусто, если не удалось
-          },
-        });
-      }
-    }
-    return result;
-  }
-
   /** Список вложений задачи */
   async listForTask(
     userId: number,
@@ -352,45 +220,7 @@ export class KanbanFilesService {
     }));
   }
 
-  /** Удалить вложение; если файл больше не используется — удалить с Я.Диска и из БД */
-  async removeFromTask(args: RemoveArgs) {
-    const { userId, attachmentId } = args;
-    // await this.assertBoardAccess(userId, boardId);
-    // await this.assertTask(boardId, columnId, taskId);
-    const att = await this.prisma.kanbanFile.findFirst({
-      where: { id: attachmentId, deletedAt: null },
-    });
-    if (!att) throw new NotFoundException('Att not found');
 
-    const link = await this.prisma.kanbanTaskAttachment.findFirst({
-      where: { id: attachmentId },
-      include: { file: true },
-    });
-    if (!link) throw new NotFoundException('Attachment not found');
-
-    // удаляем связь
-    await this.prisma.kanbanTaskAttachment.delete({
-      where: { id: attachmentId },
-    });
-
-    // проверяем, остался ли файл где-то ещё прикреплён
-    const stillUsed = await this.prisma.kanbanTaskAttachment.findFirst({
-      where: { fileId: link.fileId },
-      select: { id: true },
-    });
-
-    if (!stillUsed) {
-      // удалить на Я.Диске
-      await axios.delete(this.YD_RES, {
-        params: { path: link.file.path, permanently: true },
-        headers: { Authorization: `OAuth ${this.TOKEN}` },
-      });
-      // и из БД
-      await this.prisma.kanbanFile.delete({ where: { id: link.fileId } });
-    }
-
-    return { success: true };
-  }
 
   /** Создать папку на Я.Диске (если уже есть — молча пропускаем) */
   private async ensureFolder(absPath: string) {
@@ -570,14 +400,7 @@ export class KanbanFilesService {
     }
   }
 
-  /** Вернёт только preview (без sizes) или null */
-  async getPreviewOnly(path: string): Promise<string | null> {
-    const { data } = await axios.get(`${this.API}/resources`, {
-      params: { path, fields: 'sizes' }, 
-      headers: this.headers,
-    });
-    return data?.sizes[0].url ?? null;
-  }
+
 
   /** Одноразовый href для скачивания или null */
   async getDownloadHref(path: string): Promise<string | null> {

@@ -8,6 +8,9 @@ import {
   Delete,
   UseGuards,
   Patch,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -24,12 +27,18 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { UpdatePasswordDto } from './dto/user-update-pass.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { TaskFilesService } from 'src/services/boards/task-files.service';
 
 @UseGuards(RolesGuard)
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly filesService: TaskFilesService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Создать нового пользователя' })
@@ -91,5 +100,31 @@ export class UsersController {
     @Body() updatePasswordDto: UpdatePasswordDto,
   ): Promise<void> {
     await this.usersService.updatePassword(userId, updatePasswordDto.newPass);
+  }
+
+  @Post(':id/avatar')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    }),
+  )
+  async uploadAvatar(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Файл не передан');
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.mimetype)) {
+      throw new BadRequestException('Неверный формат (разрешены JPG/PNG/WebP)');
+    }
+
+    const chatId = 317401874;
+    if (!chatId)
+      throw new BadRequestException('TELEGRAM_UPLOAD_CHAT_ID not set');
+
+    const avatarPath = await this.filesService.uploadAvatar(file);
+    return await this.usersService.updateAvatar(id, avatarPath);
   }
 }

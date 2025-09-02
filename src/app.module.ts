@@ -35,6 +35,8 @@ import { KanbanFilesModule } from './domains/kanban-files/kanban-files.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { NotificationSchedulerService } from './notifications/notification-scheduler.service';
 import { TelegramService } from './services/telegram.service';
+import { AttachmentsModule } from './domains/kanban/attachments/attachments.module';
+import { MembersModule } from './domains/kanban/members/members.module';
 
 @Module({
   imports: [
@@ -69,6 +71,8 @@ import { TelegramService } from './services/telegram.service';
     TasksModule,
     KanbanFilesModule,
     ScheduleModule.forRoot(),
+    AttachmentsModule,
+    MembersModule,
 
     // другие модули
   ],

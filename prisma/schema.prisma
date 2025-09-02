@@ -92,6 +92,7 @@ model User {
   status         String    @default("")
   deletedAt  DateTime?  // Поле для мягкого удаления
   createdAt  DateTime   @default(now())
+  avatarUrl      String?
 
   refreshTokens  RefreshToken[]
 

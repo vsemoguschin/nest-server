@@ -108,4 +108,6 @@ export class TaskNotifyService {
 
     await this.telegram.sendToChat(member.tg_id, text);
   }
+
+  
 }

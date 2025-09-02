@@ -8,10 +8,11 @@ import {
   ParseIntPipe,
   Patch,
   Post,
-  Put,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  ValidationPipe,
 } from '@nestjs/common';
 import { CreateTaskDto } from './dto/create-task.dto';
 
@@ -21,26 +22,54 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TasksService } from './board_tasks.service';
 import { UserDto } from '../users/dto/user.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
-import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 import { MoveTaskDto } from './dto/move-task.dto';
 import { UpdateTaskTagsDto } from './dto/update-task-tags.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateTaskOrderDto } from './dto/order.dto';
 import { UpdateTaskOrderDto } from './dto/update-order.dto';
+import { TaskAuditService } from 'src/services/boards/task-audit.service';
+import { TaskCommentsService } from 'src/services/boards/task-comments.service';
+import { TaskNotifyService } from 'src/services/task-notify.service';
+import { TaskFilesService } from 'src/services/boards/task-files.service';
+import { AttachmentsService } from '../kanban/attachments/attachments.service';
+import { TaskMembersService } from '../kanban/members/members.service';
+import { SearchTasksDto } from './dto/search-tasks.dto';
 
 @UseGuards(RolesGuard)
 @Controller('tasks')
 export class TasksController {
   constructor(
     private readonly tasksService: TasksService,
-    private readonly filesService: KanbanFilesService, // ← внедрили
+    private readonly attachmentsService: AttachmentsService,
+    private readonly membersService: TaskMembersService,
+    private readonly audit: TaskAuditService,
+    private readonly comments: TaskCommentsService,
+    private readonly notify: TaskNotifyService,
+    private readonly filesService: TaskFilesService,
   ) {}
+
+  @Get('search')
+  async search(
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    dto: SearchTasksDto,
+  ) {
+    // поиск по chatLink среди всех задач (без фильтра по доскам)
+    return this.tasksService.searchByChatLink(dto);
+  }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
   @Post()
   async createTask(@CurrentUser() user: UserDto, @Body() dto: CreateTaskDto) {
-    return this.tasksService.create(user, dto);
+    const column = await this.tasksService.ensureTaskColumn(dto.columnId);
+    const task = await this.tasksService.create(user, dto, column.boardId);
+    await this.audit.log({
+      userId: user.id,
+      taskId: task.id,
+      action: 'TASK_CREATED',
+      description: `${user.fullName} создал карточку`,
+    });
+    return task;
   }
 
   // Полная информация по карточке
@@ -60,42 +89,81 @@ export class TasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: UpdateTaskDto,
   ) {
-    return this.tasksService.update(user.id, taskId, dto);
+    const task = await this.tasksService.ensureTask(taskId);
+
+    const res = await this.tasksService.updateTask(user.id, task, dto);
+    const { updated, field, fromVal, toVal } = res; // всё типобезопасно
+    if (res.changed) {
+      await this.audit.log({
+        userId: user.id,
+        taskId,
+        action: 'UPDATE_TASK',
+        description: `Изменено поле: ${field}. Было - "${fromVal}", стало - "${toVal}"`,
+      });
+
+      await this.notify.notifyParticipants({
+        taskId,
+        actorUserId: user.id,
+        message: `Изменено поле: ${field}. Было - "${fromVal}", стало - "${toVal}"`,
+        // link опционально, если не передашь — сгенерится автоматически
+      });
+    }
+    return updated;
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
+  
+
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
   @Delete(':taskId')
   async deleteTask(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
   ) {
-    return this.tasksService.remove(user.id, taskId);
+    const task = await this.tasksService.ensureTask(taskId);
+    return this.tasksService.deleteTask(user.id, task);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
-  @Get(':taskId/attachments/refresh')
-  async refreshAttachments(
-    @CurrentUser() user: UserDto,
-    @Param('boardId', ParseIntPipe) boardId: number,
-    @Param('columnId', ParseIntPipe) columnId: number,
-    @Param('taskId', ParseIntPipe) taskId: number,
-  ) {
-    return this.filesService.refreshAndListForTask(
-      user.id,
-      boardId,
-      columnId,
-      taskId,
-    );
+  @Get(':taskId/attachments')
+  async getAttachmentsByTaskId(@Param('taskId', ParseIntPipe) taskId: number) {
+    return this.attachmentsService.getAttachmentsByTaskId(taskId);
   }
 
   @Patch(':taskId/move')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
-  async moveTask(
+  async updateTaskColumnId(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: MoveTaskDto,
   ) {
-    return this.tasksService.move(user, taskId, dto);
+    const task = await this.tasksService.ensureTask(taskId);
+    const { updated, movedBetweenColumns, fromColumn, targetColumn } =
+      await this.tasksService.updateTaskColumnId(user, task, dto);
+    await this.audit.log({
+      userId: user.id,
+      taskId,
+      action: 'MOVE_TASK',
+      description: movedBetweenColumns
+        ? `Перемещение: «${fromColumn?.title ?? '—'}» → «${targetColumn.title}»`
+        : `Изменение позиции в колонке «${targetColumn.title}»`,
+      payload: {
+        fromColumnId: fromColumn?.id ?? null,
+        fromColumnTitle: fromColumn?.title ?? null,
+        toColumnId: targetColumn.id,
+        toColumnTitle: targetColumn.title,
+        positionBefore: task.position,
+        positionAfter: updated.position,
+        afterTaskId: dto.afterTaskId ?? null,
+      },
+    });
+
+    await this.notify.notifyParticipants({
+      taskId,
+      actorUserId: user.id,
+      message: `Перемещение: «${fromColumn?.title ?? '—'}» → «${targetColumn.title}»`,
+      // link опционально, если не передашь — сгенерится автоматически
+    });
+    return updated;
   }
 
   /**
@@ -103,18 +171,72 @@ export class TasksController {
    * Пример тела: { "tags": ["bug", "urgent"] }
    */
   @Post(':taskId/tags')
-  async replace(
+  async replaceTaskTags(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: UpdateTaskTagsDto,
   ) {
-    return this.tasksService.replaceTaskTags(user.id, taskId, dto);
+    const task = await this.tasksService.ensureTask(taskId);
+    const { tags, removedNames, addedNames, names } =
+      await this.tasksService.replaceTaskTags(user.id, task, dto);
+
+    if (removedNames.length) {
+      await this.audit.log({
+        userId: user.id,
+        taskId: task.id,
+        action: 'UPDATE_TAGS',
+        description: `Убраны метки: ${removedNames.join(', ')}`,
+        payload: { added: [], removed: removedNames },
+      });
+      await this.notify.notifyParticipants({
+        taskId: task.id,
+        actorUserId: user.id,
+        message: `Убраны метки: ${removedNames.join(', ')}`,
+      });
+    }
+
+    const hasAdded = !!addedNames?.length;
+    if (hasAdded || removedNames.length > 0) {
+      // восстановим «человеческие» имена как они были в запросе, для added
+      const addedHuman = hasAdded
+        ? names.filter((n) => addedNames!.includes(n.toLowerCase()))
+        : [];
+      await this.audit.log({
+        userId: user.id,
+        taskId: task.id,
+        action: 'UPDATE_TAGS',
+        description: [
+          addedHuman.length ? `Добавлены метки: ${addedHuman.join(', ')}` : '',
+          removedNames.length
+            ? `Удалены метки: ${removedNames.join(', ')}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('; '),
+        payload: { added: addedHuman, removed: removedNames, addedNames },
+      });
+      await this.notify.notifyParticipants({
+        taskId: task.id,
+        actorUserId: user.id,
+        message: [
+          addedHuman.length ? `Добавлены метки: ${addedHuman.join(', ')}` : '',
+          removedNames.length
+            ? `Удалены метки: ${removedNames.join(', ')}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('; '),
+      });
+    }
+
+    return { taskId, tags };
   }
 
   /** Список комментариев задачи (с файлами и автором) */
   @Get(':taskId/comments')
-  listForTask(@Param('taskId', ParseIntPipe) taskId: number) {
-    return this.tasksService.listForTask(taskId);
+  async listForTask(@Param('taskId', ParseIntPipe) taskId: number) {
+    await this.tasksService.ensureTask(taskId);
+    return this.comments.listForTask(taskId);
   }
 
   /** Создать комментарий к задаче */
@@ -124,9 +246,19 @@ export class TasksController {
     @Body() dto: CreateCommentDto,
     @CurrentUser() user: UserDto,
   ) {
-    const c = await this.tasksService.createForTask(taskId, user.id, dto.text);
+    await this.tasksService.ensureTask(taskId);
+    const comment = await this.comments.createForTask(
+      taskId,
+      user.id,
+      dto.text,
+    );
+    await this.notify.notifyParticipants({
+      taskId,
+      actorUserId: user.id,
+      message: `Оставил комментарий: ${comment.text}`,
+    });
     // компонент ожидает id, чтобы затем грузить файлы
-    return { id: c.id };
+    return { id: comment.id };
   }
 
   /** Прикрепить файл к комментарию (1:N — файл получает commentId) */
@@ -138,7 +270,28 @@ export class TasksController {
     @CurrentUser() user: UserDto,
   ) {
     if (!file) throw new NotFoundException('No file provided');
-    return this.tasksService.attachFileToComment(commentId, file, user.id);
+    const comment = await this.comments.ensureComment(commentId);
+    const task = await this.tasksService.ensureTask(comment.task.id);
+    const dbFile = await this.filesService.uploadFile(
+      file,
+      user.id,
+      task.boardId,
+      comment.id,
+    );
+    await this.attachmentsService.create(task.id, dbFile.id);
+    await this.notify.notifyParticipants({
+      taskId: comment.task.id,
+      actorUserId: user.id,
+      message: 'Добавлено вложение',
+    });
+
+    await this.audit.log({
+      userId: user.id,
+      description: 'Добавил вложение ' + dbFile.name,
+      taskId: comment.task.id,
+      action: 'ADD_ATTACHMENTS',
+    });
+    return dbFile;
   }
 
   /** Список заказов задачи */
@@ -182,11 +335,91 @@ export class TasksController {
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
   ) {
-    return this.tasksService.getMembers(user.id, taskId);
+    await this.tasksService.ensureTask(taskId);
+    return this.membersService.getMembers(user.id, taskId);
+  }
+
+  @Get(':taskId/avaliable-members')
+  async getAvaliableMembers(
+    @CurrentUser() user: UserDto,
+    @Param('taskId', ParseIntPipe) taskId: number,
+  ) {
+    const task = await this.tasksService.ensureTask(taskId);
+    return await this.membersService.getAvaliableMembers(taskId, task.boardId);
+  }
+
+  @Get(':taskId/avaliable-columns')
+  async getAvaliableColumns(
+    @CurrentUser() user: UserDto,
+    @Param('taskId', ParseIntPipe) taskId: number,
+  ) {
+    const task = await this.tasksService.ensureTask(taskId);
+    return await this.tasksService.getAvaliableColumns(
+      task.columnId,
+      task.boardId,
+    );
+  }
+
+  @Post(':id/column/:columnId')
+  async moveTaskToColumn(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('columnId', ParseIntPipe) columnId: number,
+  ) {
+    return this.tasksService.updateColumn(id, columnId);
+  }
+
+  @Post(':taskId/members/:userId')
+  async addMemberToTask(
+    @CurrentUser() user: UserDto,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+  ) {
+    const task = await this.tasksService.ensureTask(taskId);
+    const newMember = await this.membersService.addMemberToTask(task, userId);
+    await this.audit.log({
+      userId: user.id,
+      taskId,
+      action: 'ADD_MEMBER',
+      description: `${user.fullName} добавил ${newMember.fullName}`,
+    });
+
+    await this.notify.notifyParticipants({
+      taskId,
+      actorUserId: user.id,
+      message: `${user.fullName} добавил ${newMember.fullName}`,
+      // link опционально, если не передашь — сгенерится автоматически
+    });
+    return newMember;
+  }
+  @Delete(':taskId/members/:userId')
+  async deleteMemberFromTask(
+    @CurrentUser() user: UserDto,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+  ) {
+    const task = await this.tasksService.ensureTask(taskId);
+    const deletedMember = await this.membersService.deleteMemberFromTask(
+      task,
+      userId,
+    );
+    await this.audit.log({
+      userId: user.id,
+      taskId,
+      action: 'ADD_MEMBER',
+      description: `${user.fullName} удалил ${deletedMember.fullName}`,
+    });
+
+    await this.notify.notifyParticipants({
+      taskId,
+      actorUserId: user.id,
+      message: `${user.fullName} удалил ${deletedMember.fullName}`,
+    });
+    return deletedMember;
   }
 
   @Get(':taskId/audit')
   async getTaskAudit(@Param('taskId', ParseIntPipe) taskId: number) {
-    return this.tasksService.getTaskAudit(taskId);
+    await this.tasksService.ensureTask(taskId);
+    return this.audit.getTaskAudit(taskId);
   }
 }
