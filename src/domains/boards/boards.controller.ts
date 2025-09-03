@@ -41,7 +41,7 @@ export class BoardsController {
     return this.boardsService.getKanban(user.id, id);
   }
 
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'DO')
   @Post()
   async createBoard(@CurrentUser() user: UserDto, @Body() dto: CreateBoardDto) {
     return this.boardsService.create(user.id, dto);

@@ -500,6 +500,7 @@ export class TasksService {
       const addedNames = [...futureNamesLower].filter(
         (n) => !currentNames.has(n),
       );
+      // console.log(addedNames);
 
       // Если список пуст — снять все теги
       if (names.length === 0) {
@@ -562,6 +563,7 @@ export class TasksService {
             color: t.color,
           })),
         removedNames,
+        addedNames,
         names,
       };
     });

@@ -111,8 +111,6 @@ export class TasksController {
     return updated;
   }
 
-  
-
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
   @Delete(':taskId')
   async deleteTask(
@@ -279,6 +277,7 @@ export class TasksController {
       comment.id,
     );
     await this.attachmentsService.create(task.id, dbFile.id);
+    await this.tasksService.ensureMember(task.id, user.id);
     await this.notify.notifyParticipants({
       taskId: comment.task.id,
       actorUserId: user.id,

@@ -121,9 +121,7 @@ export class TaskFilesService {
    * Загрузить файл на Я.Диск и привязать к комментарию (1:N: KanbanFile.commentId)
    * Возвращает объект в формате, удобном фронту.
    */
-  async uploadAvatar(
-    file: Express.Multer.File,
-  ) {
+  async uploadAvatar(file: Express.Multer.File) {
     const { category, ext } = this.resolveCategory(file);
     const yaName = `${uuidv4()}${ext}`;
     const absPath = `EasyCRM/avatars/${yaName}`;
@@ -151,6 +149,7 @@ export class TaskFilesService {
       params: { path, fields: 'sizes' },
       headers: this.headers,
     });
+
     return data?.sizes[0].url ?? null;
   }
 
