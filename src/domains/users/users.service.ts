@@ -13,7 +13,7 @@ export class UsersService {
   async getProfile(userId: number): Promise<UserProfileDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId, deletedAt: null },
-      include: { role: true }, // Включаем связанную модель Role
+      include: { role: true, boards: true }, // Включаем связанную модель Role
     });
 
     if (!user) {

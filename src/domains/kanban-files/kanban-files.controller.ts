@@ -56,13 +56,4 @@ export class KanbanFilesController {
     return this.filesService.createLikeReview(file, user, taskId);
   }
 
-
-
-  @Get('download')
-  // @Redirect(undefined, 302)
-  async download(@Query('path') path: string) {
-    const href = await this.filesService.getDownloadHref(path);
-    if (!href) throw new NotFoundException('No download link');
-    return { url: href, statusCode: 302 };
-  }
 }

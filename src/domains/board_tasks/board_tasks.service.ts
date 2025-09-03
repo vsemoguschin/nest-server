@@ -213,14 +213,26 @@ export class TasksService {
    * Поиск задач по подстроке в chatLink среди всех задач, без учёта доски.
    * Исключаем удалённые (deletedAt != null).
    */
-  async searchByChatLink(dto: SearchTasksDto): Promise<SearchTaskItem[]> {
+  async searchByChatLink(
+    dto: SearchTasksDto,
+    user: UserDto,
+  ): Promise<SearchTaskItem[]> {
     const q = dto.q.trim();
     if (q.length < 2) return [];
+    const userBoards = user.boards.map((b) => b.id);
 
     return this.prisma.kanbanTask.findMany({
       where: {
         deletedAt: null,
-        chatLink: { contains: q, mode: 'insensitive' },
+        OR: [
+          {
+            chatLink: { contains: q, mode: 'insensitive' },
+          },
+          {
+            title: { contains: q, mode: 'insensitive' },
+          },
+        ],
+        boardId: { in: userBoards },
       },
       select: searchSelect,
       orderBy: { updatedAt: 'desc' },
@@ -238,8 +250,6 @@ export class TasksService {
     await this.assertBoardAccess(userId, task.boardId);
 
     return await this.prisma.$transaction(async (tx) => {
-      await this.ensureMember(task.id, userId, tx);
-
       const keys = (
         ['title', 'description', 'chatLink', 'columnId'] as const
       ).filter((k) => (dto as any)[k] !== undefined);

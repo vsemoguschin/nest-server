@@ -60,4 +60,12 @@ export class AttachmentsController {
       description: `Удалил вложение: "${att.file.name}"`,
     });
   }
+
+  @Get('download')
+  // @Redirect(undefined, 302)
+  async download(@Query('path') path: string) {
+    const href = await this.attachmentsService.getDownloadHref(path);
+    if (!href) throw new NotFoundException('No download link');
+    return { url: href, statusCode: 302 };
+  }
 }

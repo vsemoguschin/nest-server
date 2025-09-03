@@ -23,6 +23,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       include: {
         role: true, // Включаем роль
         workSpace: true,
+        boards: true,
       },
     });
 

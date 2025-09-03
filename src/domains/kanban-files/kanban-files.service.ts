@@ -402,14 +402,5 @@ export class KanbanFilesService {
 
 
 
-  /** Одноразовый href для скачивания или null */
-  async getDownloadHref(path: string): Promise<string | null> {
-    const { data } = await axios.get(`${this.API}/resources/download`, {
-      params: { path},
-      headers: this.headers,
-    });
-    console.log(data);
 
-    return data?.href ?? null;
-  }
 }

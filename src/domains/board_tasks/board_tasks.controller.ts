@@ -51,11 +51,12 @@ export class TasksController {
 
   @Get('search')
   async search(
+    @CurrentUser() user: UserDto,
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     dto: SearchTasksDto,
   ) {
     // поиск по chatLink среди всех задач (без фильтра по доскам)
-    return this.tasksService.searchByChatLink(dto);
+    return this.tasksService.searchByChatLink(dto, user);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
@@ -93,6 +94,7 @@ export class TasksController {
 
     const res = await this.tasksService.updateTask(user.id, task, dto);
     const { updated, field, fromVal, toVal } = res; // всё типобезопасно
+    await this.tasksService.ensureMember(task.id, user.id);
     if (res.changed) {
       await this.audit.log({
         userId: user.id,
@@ -137,12 +139,14 @@ export class TasksController {
     const task = await this.tasksService.ensureTask(taskId);
     const { updated, movedBetweenColumns, fromColumn, targetColumn } =
       await this.tasksService.updateTaskColumnId(user, task, dto);
+    await this.tasksService.ensureMember(task.id, user.id);
+    const msg = `Перемещение: «${fromColumn?.title ?? '—'}» → «${targetColumn.title}»`;
     await this.audit.log({
       userId: user.id,
       taskId,
       action: 'MOVE_TASK',
       description: movedBetweenColumns
-        ? `Перемещение: «${fromColumn?.title ?? '—'}» → «${targetColumn.title}»`
+        ? msg
         : `Изменение позиции в колонке «${targetColumn.title}»`,
       payload: {
         fromColumnId: fromColumn?.id ?? null,
@@ -158,10 +162,10 @@ export class TasksController {
     await this.notify.notifyParticipants({
       taskId,
       actorUserId: user.id,
-      message: `Перемещение: «${fromColumn?.title ?? '—'}» → «${targetColumn.title}»`,
+      message: msg,
       // link опционально, если не передашь — сгенерится автоматически
     });
-    return updated;
+    return { updated, message: msg };
   }
 
   /**
@@ -363,8 +367,10 @@ export class TasksController {
   async moveTaskToColumn(
     @Param('id', ParseIntPipe) id: number,
     @Param('columnId', ParseIntPipe) columnId: number,
+    @CurrentUser('user') user: UserDto,
   ) {
-    return this.tasksService.updateColumn(id, columnId);
+    const task = await this.tasksService.updateColumn(id, columnId);
+    return { task };
   }
 
   @Post(':taskId/members/:userId')

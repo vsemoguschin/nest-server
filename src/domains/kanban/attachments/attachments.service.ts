@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import axios from 'axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class AttachmentsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private readonly API = 'https://cloud-api.yandex.net/v1/disk';
+  private readonly headers = { Authorization: `OAuth ${process.env.YA_TOKEN}` };
 
   async ensureAttachment(attachmentId: number) {
     const att = await this.prisma.kanbanTaskAttachment.findFirst({
@@ -70,7 +74,7 @@ export class AttachmentsService {
   }
 
   /** Удалить вложение; если файл больше не используется — удалить с Я.Диска и из БД */
-  async removeFromTask(att: { id: number, fileId: number }) {
+  async removeFromTask(att: { id: number; fileId: number }) {
     const file = await this.prisma.kanbanFile.findFirst({
       where: { id: att.id, deletedAt: null },
     });
@@ -87,8 +91,17 @@ export class AttachmentsService {
       select: { id: true },
     });
 
-
-
     return stillUsed;
+  }
+
+  /** Одноразовый href для скачивания или null */
+  async getDownloadHref(path: string): Promise<string | null> {
+    const { data } = await axios.get(`${this.API}/resources/download`, {
+      params: { path },
+      headers: this.headers,
+    });
+    console.log(data);
+
+    return data?.href ?? null;
   }
 }

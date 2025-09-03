@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { BoardsService } from './boards.service';
@@ -36,9 +37,16 @@ export class BoardsController {
   @Get(':id/kanban')
   async getKanban(
     @CurrentUser() user: UserDto,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIntPipe) boardId: number,
+    @Query('hidden') hidden?: string, // CSV: "1,2,3"
   ) {
-    return this.boardsService.getKanban(user.id, id);
+    const hiddenIds =
+      (hidden ?? '')
+        .split(',')
+        .map((s) => parseInt(s, 10))
+        .filter((n) => Number.isFinite(n)) || [];
+
+    return this.boardsService.getKanban(user.id!, boardId, hiddenIds);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO')
@@ -68,6 +76,15 @@ export class BoardsController {
     @Body() dto: CreateBoardTagDto,
   ) {
     return this.boardsService.createTag(boardId, dto);
+  }
+
+  @Get(':boardId/columns')
+  async getColumns(
+    @CurrentUser() user: UserDto,
+    @Param('boardId', ParseIntPipe) boardId: number,
+  ) {
+    this.boardsService.ensureBoard(boardId);
+    return await this.boardsService.getColumns(boardId);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')

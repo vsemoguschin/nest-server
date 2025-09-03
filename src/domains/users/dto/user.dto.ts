@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsOptional, IsInt } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsInt, IsArray } from 'class-validator';
 import { RoleDto } from 'src/domains/roles/dto/role.dto';
 import { WorkSpaceDto } from 'src/domains/workspaces/dto/workspace.dto';
 
@@ -107,4 +107,7 @@ export class UserDto {
   @IsOptional()
   @IsString()
   isIntern?: boolean = false;
+
+  @IsArray()
+  boards: { id: number }[];
 }

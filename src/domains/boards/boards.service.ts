@@ -17,7 +17,11 @@ export class BoardsService {
     private readonly files: KanbanFilesService,
   ) {}
 
-  async getKanban(userId: number, boardId: number) {
+  async getKanban(userId: number, boardId: number, hiddenIds: number[] = []) {
+    const columnsWhere: any = { deletedAt: null };
+    if (hiddenIds?.length) {
+      columnsWhere.id = { notIn: hiddenIds };
+    }
     const board = await this.prisma.board.findFirst({
       where: {
         id: boardId,
@@ -28,7 +32,7 @@ export class BoardsService {
         id: true,
         title: true,
         columns: {
-          where: { deletedAt: null },
+          where: columnsWhere,
           orderBy: { position: 'asc' },
           select: {
             id: true,
@@ -48,11 +52,7 @@ export class BoardsService {
                     file: true,
                   },
                 },
-                members: {
-                  include: {
-                    role: true,
-                  },
-                },
+                members: true
               },
             },
           },
@@ -128,6 +128,22 @@ export class BoardsService {
         }),
       ),
     };
+  }
+
+  /**Получить список доступных колонок для добавления в задачу */
+  async getColumns(boardId: number) {
+    // подтягиваем участников
+    const avalCol = await this.prisma.column.findMany({
+      where: {
+        boardId,
+      },
+    });
+
+    // нормализуем ответ в плоский массив
+    return (avalCol ?? []).map((c) => ({
+      id: c.id,
+      title: c.title,
+    }));
   }
 
   async create(userId: number, dto: CreateBoardDto) {
@@ -266,7 +282,7 @@ export class BoardsService {
   }
 
   /** Проверка существования доски */
-  private async ensureBoard(boardId: number) {
+  async ensureBoard(boardId: number) {
     const board = await this.prisma.board.findFirst({
       where: { id: boardId, deletedAt: null },
       select: { id: true },
