@@ -76,7 +76,7 @@ export class UsersController {
 
   @Patch(':id')
   // @UseGuards(AuthGuard) // при необходимости
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'DP', 'RP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'DP', 'RP', 'ROD')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
     return this.usersService.update(id, dto);
   }
