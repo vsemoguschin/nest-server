@@ -250,12 +250,14 @@ export class ProductionController {
   @Patch('master-repair/:id')
   @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER')
   async updateRepairReport(
+    @CurrentUser() user: UserDto,
     @Param('id') id: string,
     @Body() updateMasterRepairReportDto: UpdateMasterRepairReportDto,
   ) {
     return this.productionService.updateMasterRepairReport(
       +id,
       updateMasterRepairReportDto,
+      user,
     );
   }
 
@@ -376,10 +378,11 @@ export class ProductionController {
   @Patch('other-report/:id')
   @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER', 'LOGIST')
   async updateOtherReport(
+    @CurrentUser('user') user: UserDto,
     @Param('id') id: string,
     @Body() updateOtherReportDto: UpdateOtherReportDto,
   ) {
-    return this.productionService.updateOtherReport(+id, updateOtherReportDto);
+    return this.productionService.updateOtherReport(+id, updateOtherReportDto, user);
   }
 
   @Delete('other-report/:id')

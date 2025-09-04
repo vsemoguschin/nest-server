@@ -16,7 +16,21 @@ export class ProfileService {
     if (!user) {
       throw new NotFoundException('Пользователь не найден');
     }
-    const { password, ...userData } = user;
-    return userData;
+
+    const boardsIds = user?.boards.map((b) => b.id);
+
+    const avaliableBoards = await this.prisma.board.findMany({
+      where: {
+        id: ['ADMIN'].includes(user?.role.shortName)
+          ? { gt: 0 }
+          : { in: boardsIds },
+      },
+    });
+
+    const { password, boards, ...userData } = user;
+    return {
+      ...userData,
+      boards: avaliableBoards.map((b) => ({ id: b.id, title: b.title })),
+    };
   }
 }

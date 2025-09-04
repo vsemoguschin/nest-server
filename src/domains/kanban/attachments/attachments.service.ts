@@ -100,7 +100,7 @@ export class AttachmentsService {
       params: { path },
       headers: this.headers,
     });
-    console.log(data);
+    // console.log(data);
 
     return data?.href ?? null;
   }

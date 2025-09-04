@@ -17,7 +17,8 @@ export class BoardsService {
     private readonly files: KanbanFilesService,
   ) {}
 
-  async getKanban(userId: number, boardId: number, hiddenIds: number[] = []) {
+  async getKanban(user: UserDto, boardId: number, hiddenIds: number[] = []) {
+    const userId = user.id;
     const columnsWhere: any = { deletedAt: null };
     if (hiddenIds?.length) {
       columnsWhere.id = { notIn: hiddenIds };
@@ -26,7 +27,11 @@ export class BoardsService {
       where: {
         id: boardId,
         deletedAt: null,
-        // users: { some: { id: userId } },
+        users: {
+          some: ['ADMIN'].includes(user?.role.shortName)
+            ? { id: { gt: 0 } }
+            : { id: userId },
+        },
       },
       select: {
         id: true,
@@ -46,13 +51,14 @@ export class BoardsService {
                 title: true,
                 description: true,
                 position: true,
+                columnId: true,
                 tags: { select: { name: true } },
                 attachments: {
                   include: {
                     file: true,
                   },
                 },
-                members: true
+                members: true,
               },
             },
           },
@@ -79,37 +85,38 @@ export class BoardsService {
                 );
 
                 let size = '';
-                console.log(previewAtt?.file.path);
+                // console.log(previewAtt?.file.path);
 
                 if (previewAtt) {
-                  try {
-                    const md = await axios.get(
-                      'https://cloud-api.yandex.net/v1/disk/resources',
-                      {
-                        params: { path: previewAtt.file.path },
-                        headers: {
-                          Authorization: `OAuth ${process.env.YA_TOKEN}`,
-                        },
-                      },
-                    );
-                    // console.log(md.data);
-                    // console.log(previewAtt.file.path);
-                    // console.log(previewAtt.file.path);
-                    size = md.data.sizes[0].url || '';
-                  } catch (e) {
-                    console.log(e.response.data);
-                  }
+                  // try {
+                  //   const md = await axios.get(
+                  //     'https://cloud-api.yandex.net/v1/disk/resources',
+                  //     {
+                  //       params: { path: previewAtt.file.path },
+                  //       headers: {
+                  //         Authorization: `OAuth ${process.env.YA_TOKEN}`,
+                  //       },
+                  //     },
+                  //   );
+                  //   // console.log(md.data);
+                  //   // console.log(previewAtt.file.path);
+                  //   // console.log(previewAtt.file.path);
+                  //   size = md.data.sizes[0].url || '';
+                  // } catch (e) {
+                  //   console.log(e.response.data);
+                  // }
 
                   // console.log(t.tags);
 
                   return {
                     id: t.id,
                     title: t.title,
-                    preview: size,
-                    path: previewAtt.file.path, // если хотите потом брать свежую ссылку
+                    preview: previewAtt?.file.path ?? '',
+                    path: previewAtt?.file.path ?? '', // если хотите потом брать свежую ссылку
                     attachmentsLength: t.attachments.length,
                     tags: t.tags.map((t) => t.name),
                     members: t.members,
+                    columnId: t.columnId,
                   };
                 }
 
@@ -118,6 +125,7 @@ export class BoardsService {
                   title: t.title,
                   preview: '',
                   path: '',
+                  columnId: t.columnId,
                   attachmentsLength: t.attachments.length,
                   tags: t.tags.map((t) => t.name),
                   members: t.members,

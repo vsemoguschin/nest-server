@@ -1009,6 +1009,13 @@ export class ProductionService {
     if (!report) {
       throw new NotFoundException(`Report with ID ${id} not found`);
     }
+    const today = new Date().toISOString().slice(0, 10);
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      today > report.date
+    ) {
+      throw new BadRequestException('Отчет изменить нельзя');
+    }
     let dealId = 0;
     if (dto.name && dto.name.includes('easyneonwork.kaiten.ru/')) {
       const linkSplit = dto.name.split('/');
@@ -1018,7 +1025,7 @@ export class ProductionService {
       try {
         const options = {
           method: 'GET',
-          url: `https://easyneonwork.kaiten.ru/api/latest/cards/${card_id}`, 
+          url: `https://easyneonwork.kaiten.ru/api/latest/cards/${card_id}`,
           headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
@@ -1045,7 +1052,7 @@ export class ProductionService {
               },
             });
             dealId = deal?.id ?? 0;
-            console.log(deal);
+            // console.log(deal);
           }
         }
       } catch (error) {
@@ -1054,7 +1061,7 @@ export class ProductionService {
       }
     }
     if (user.role.shortName === 'MASTER') {
-      dto.comment = report.comment;
+      // dto.comment = report.comment;
       dto.penaltyCost = report.penaltyCost;
     }
     return this.prisma.masterReport.update({
@@ -1237,12 +1244,23 @@ export class ProductionService {
     });
   }
 
-  async updateMasterRepairReport(id: number, dto: UpdateMasterRepairReportDto) {
+  async updateMasterRepairReport(
+    id: number,
+    dto: UpdateMasterRepairReportDto,
+    user: UserDto,
+  ) {
     const report = await this.prisma.masterRepairReport.findUnique({
       where: { id },
     });
     if (!report) {
       throw new NotFoundException(`Repair Report with ID ${id} not found`);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      today > report.date
+    ) {
+      throw new BadRequestException('Отчет изменить нельзя');
     }
     let dealId = 0;
     if (dto.name && dto.name.includes('easyneonwork.kaiten.ru/')) {
@@ -1584,6 +1602,13 @@ export class ProductionService {
     if (!report) {
       throw new NotFoundException(`Packer report with ID ${id} not found`);
     }
+    const today = new Date().toISOString().slice(0, 10);
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      today > report.date
+    ) {
+      throw new BadRequestException('Отчет изменить нельзя');
+    }
 
     let dealId = 0;
     const name = dto.name;
@@ -1835,10 +1860,17 @@ export class ProductionService {
     });
   }
 
-  async updateOtherReport(id: number, dto: UpdateOtherReportDto) {
+  async updateOtherReport(id: number, dto: UpdateOtherReportDto, user: UserDto) {
     const report = await this.prisma.otherReport.findUnique({ where: { id } });
     if (!report) {
       throw new NotFoundException(`Other Report with ID ${id} not found`);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      today > report.date
+    ) {
+      throw new BadRequestException('Отчет изменить нельзя');
     }
     return this.prisma.otherReport.update({
       where: { id },

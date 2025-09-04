@@ -46,7 +46,7 @@ export class BoardsController {
         .map((s) => parseInt(s, 10))
         .filter((n) => Number.isFinite(n)) || [];
 
-    return this.boardsService.getKanban(user.id!, boardId, hiddenIds);
+    return this.boardsService.getKanban(user, boardId, hiddenIds);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO')

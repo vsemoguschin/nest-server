@@ -30,4 +30,6 @@ export class UserProfileDto {
 
   @ApiProperty({ type: () => RoleDto, description: 'Роль пользователя' })
   role: RoleDto; // Включаем модель RoleDto
+
+  boards: { id: number; title: string }[];
 }
