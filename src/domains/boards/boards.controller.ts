@@ -33,7 +33,7 @@ export class BoardsController {
     return this.boardsService.listAllUsers();
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ','ASSISTANT')
   @Get(':id/kanban')
   async getKanban(
     @CurrentUser() user: UserDto,
@@ -61,7 +61,7 @@ export class BoardsController {
     return this.boardsService.listForUser(user);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ','ASSISTANT')
   @Get(':id/tags')
   async getTags(
     @Param('id', ParseIntPipe) id: number,

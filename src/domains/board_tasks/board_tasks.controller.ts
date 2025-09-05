@@ -74,7 +74,19 @@ export class TasksController {
   }
 
   // Полная информация по карточке
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'ASSISTANT',
+  )
   @Get(':taskId')
   async getOne(
     @CurrentUser() user: UserDto,
@@ -123,7 +135,19 @@ export class TasksController {
     return this.tasksService.deleteTask(user.id, task);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'ASSISTANT',
+  )
   @Get(':taskId/attachments')
   async getAttachmentsByTaskId(@Param('taskId', ParseIntPipe) taskId: number) {
     return this.attachmentsService.getAttachmentsByTaskId(taskId);

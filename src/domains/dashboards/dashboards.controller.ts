@@ -53,6 +53,7 @@ export class DashboardsController {
     'MTZ',
     'LOGIST',
     'MARKETER',
+    'ASSISTANT'
   )
   async getDeals(@CurrentUser() user: UserDto) {
     return this.dashboardsService.getDeals(user);

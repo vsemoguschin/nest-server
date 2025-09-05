@@ -74,6 +74,7 @@ export class DealsController {
     'MOV',
     'LOGIST',
     'MARKETER',
+    'ASSISTANT'
   )
   async getList(
     @CurrentUser() user: UserDto,
@@ -96,7 +97,7 @@ export class DealsController {
     description:
       'Endpoint: GET /deals/search?name=Название. Поиск сделок по названию.',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST', 'ASSISTANT')
   async searchDealsByName(
     @CurrentUser() user: UserDto,
     @Query('name') name: string,
@@ -123,6 +124,7 @@ export class DealsController {
     'MOV',
     'LOGIST',
     'MARKETER',
+    'ASSISTANT'
   )
   async getOne(@Param('id', ParseIntPipe) id: number): Promise<DealDto> {
     return this.dealsService.findOne(id);

@@ -130,6 +130,7 @@ export class DealsService {
       user.role.shortName === 'KD' ||
       user.role.shortName === 'LOGIST' ||
       user.role.shortName === 'MOV' ||
+      user.role.shortName === 'ASSISTANT' ||
       user.role.shortName === 'MARKETER'
         ? { gt: 0 }
         : user.workSpaceId;
@@ -317,6 +318,7 @@ export class DealsService {
       user.role.shortName === 'ROV' ||
       user.role.shortName === 'LOGIST' ||
       user.role.shortName === 'KD' ||
+      user.role.shortName === 'ASSISTANT' ||
       user.role.shortName === 'MOV'
         ? { gt: 0 }
         : user.workSpaceId;
