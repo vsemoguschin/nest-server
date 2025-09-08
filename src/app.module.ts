@@ -37,6 +37,7 @@ import { NotificationSchedulerService } from './notifications/notification-sched
 import { TelegramService } from './services/telegram.service';
 import { AttachmentsModule } from './domains/kanban/attachments/attachments.module';
 import { MembersModule } from './domains/kanban/members/members.module';
+import { CommentsModule } from './domains/kanban/comments/comments.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { MembersModule } from './domains/kanban/members/members.module';
     ScheduleModule.forRoot(),
     AttachmentsModule,
     MembersModule,
+    CommentsModule,
 
     // другие модули
   ],

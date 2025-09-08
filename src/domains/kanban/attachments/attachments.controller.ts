@@ -36,30 +36,30 @@ export class AttachmentsController {
   }
 
   // Удалить вложение (и файл на диске, если больше нигде не используется)
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
-  @Delete(':attachmentId')
-  async remove(
-    @CurrentUser() user: UserDto,
-    @Param('attachmentId', ParseIntPipe) attachmentId: number,
-  ) {
-    const att = await this.attachmentsService.ensureAttachment(attachmentId);
-    const stillUsed = await this.attachmentsService.removeFromTask({
-      id: att.id,
-      fileId: att.fileId,
-    });
-    if (!stillUsed) {
-      await this.filesService.deleteFile({
-        filePath: att.file.path,
-        fileId: att.fileId,
-      });
-    }
-    await this.audit.log({
-      userId: user.id,
-      taskId: att.taskId,
-      action: 'DEL_ATTACHMENTS',
-      description: `Удалил вложение: "${att.file.name}"`,
-    });
-  }
+  // @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  // @Delete(':attachmentId')
+  // async remove(
+  //   @CurrentUser() user: UserDto,
+  //   @Param('attachmentId', ParseIntPipe) attachmentId: number,
+  // ) {
+  //   const att = await this.attachmentsService.ensureAttachment(attachmentId);
+  //   const stillUsed = await this.attachmentsService.removeFromTask({
+  //     id: att.id,
+  //     fileId: att.fileId,
+  //   });
+  //   if (!stillUsed) {
+  //     await this.filesService.deleteFile({
+  //       filePath: att.file.path,
+  //       fileId: att.fileId,
+  //     });
+  //   }
+  //   await this.audit.log({
+  //     userId: user.id,
+  //     taskId: att.taskId,
+  //     action: 'DEL_ATTACHMENTS',
+  //     description: `Удалил вложение: "${att.file.name}"`,
+  //   });
+  // }
 
   @Get('download')
   // @Redirect(undefined, 302)

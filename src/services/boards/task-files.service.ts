@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'node:path';
@@ -77,7 +82,7 @@ export class TaskFilesService {
       headers: { Authorization: `OAuth ${TOKEN}` },
     });
 
-    console.log(md);
+    // console.log(md);
 
     // 3) запись файла в БД с привязкой к комменту
     const dbFile = await this.prisma.kanbanFile.create({
@@ -124,7 +129,7 @@ export class TaskFilesService {
    * Возвращает объект в формате, удобном фронту.
    */
   async uploadAvatar(file: Express.Multer.File) {
-    const { category, ext } = this.resolveCategory(file);
+    const { ext } = this.resolveCategory(file);
     const yaName = `${uuidv4()}${ext}`;
     const absPath = `EasyCRM/avatars/${yaName}`;
 
@@ -151,17 +156,101 @@ export class TaskFilesService {
       params: { path, fields: 'sizes' },
       headers: this.headers,
     });
-
-    return data?.sizes[0].url ?? null;
+    if (data.sizes) {
+      return data?.sizes[0].url;
+    }
+    return null;
   }
 
-  async deleteFile(att: { filePath: string; fileId: number }) {
-    // удалить на Я.Диске
+  // async deleteFile(att: { filePath: string; fileId: number }) {
+  //   // удалить на Я.Диске
+  //   await axios.delete(this.YD_RES, {
+  //     params: { path: att.filePath, permanently: true },
+  //     headers: { Authorization: `OAuth ${this.TOKEN}` },
+  //   });
+  //   // и из БД
+  //   await this.prisma.kanbanFile.delete({ where: { id: att.fileId } });
+  // }
+
+  /** helper: удалить один путь на Я.Диске (если path пустой — считаем успехом) */
+  private async deleteOnYandex(path?: string | null): Promise<void> {
+    if (!path) return;
     await axios.delete(this.YD_RES, {
-      params: { path: att.filePath, permanently: true },
-      headers: { Authorization: `OAuth ${this.TOKEN}` },
+      headers: this.headers,
+      params: { path, permanently: true },
     });
-    // и из БД
-    await this.prisma.kanbanFile.delete({ where: { id: att.fileId } });
+  }
+
+  /**
+   * Полное удаление файла:
+   * - DELETE на Я.Диске
+   * - удаление taskLinks
+   * - удаление записи файла
+   */
+  async deleteFile(fileId: number): Promise<void> {
+    const file = await this.prisma.kanbanFile.findUnique({
+      where: { id: fileId },
+    });
+    if (!file) {
+      throw new NotFoundException(`Файл с id=${fileId} не найден`);
+    }
+
+    try {
+      await this.deleteOnYandex(file.path);
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.kanbanTaskAttachment.deleteMany({ where: { fileId } });
+        await tx.kanbanFile.delete({ where: { id: fileId } });
+      });
+    } catch (e: any) {
+      console.error('Ошибка при удалении файла:', e?.response?.data || e);
+      throw new InternalServerErrorException('Не удалось удалить файл');
+    }
+  }
+
+  async deleteFiles(
+    fileIds: number[],
+  ): Promise<{ deleted: number[]; failed: { id: number; reason: string }[] }> {
+    if (!fileIds?.length) return { deleted: [], failed: [] };
+
+    const files = await this.prisma.kanbanFile.findMany({
+      where: { id: { in: fileIds } },
+      select: { id: true, path: true },
+    });
+    if (!files.length) return { deleted: [], failed: [] };
+
+    const results = await Promise.allSettled(
+      files.map(async (f) => {
+        await this.deleteOnYandex(f.path);
+        return f.id;
+      }),
+    );
+
+    const deleted: number[] = [];
+    const failed: { id: number; reason: string }[] = [];
+
+    results.forEach((r, idx) => {
+      const id = files[idx].id;
+      if (r.status === 'fulfilled') deleted.push(id);
+      else
+        failed.push({
+          id,
+          reason:
+            (r as PromiseRejectedResult)?.reason?.message ??
+            'Yandex delete failed',
+        });
+    });
+
+    // Чистим только успешно удалённые
+    if (deleted.length) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.kanbanTaskAttachment.deleteMany({
+          where: { fileId: { in: deleted } },
+        });
+        await tx.kanbanFile.deleteMany({ where: { id: { in: deleted } } });
+      });
+    }
+
+    return { deleted, failed };
   }
 }

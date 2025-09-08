@@ -1,5 +1,5 @@
 // src/notifications/task-notify.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TelegramService } from './telegram.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 
@@ -14,6 +14,8 @@ type NotifyOpts = {
 
 @Injectable()
 export class TaskNotifyService {
+  private readonly logger = new Logger(TaskNotifyService.name);
+  private readonly env = process.env.NODE_ENV as 'development' | 'production';
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramService,
@@ -30,6 +32,10 @@ export class TaskNotifyService {
    * Если link не передана — подставим дефолтную ссылку.
    */
   async notifyParticipants(opts: NotifyOpts) {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip telegram`);
+      return;
+    }
     const { taskId, actorUserId, message, link, silent = false } = opts;
 
     const task = await this.prisma.kanbanTask.findUnique({
@@ -58,12 +64,12 @@ export class TaskNotifyService {
       `<a href="${url}">Открыть карточку</a>`;
 
     // все участники с tg_id, кроме инициатора
-    // const targets = task.members.filter(
-    //   (u) => u.id !== actorUserId && typeof u.tg_id === 'number' && u.tg_id > 0,
-    // );
+    const targets = task.members.filter(
+      (u) => u.id !== actorUserId && typeof u.tg_id === 'number' && u.tg_id > 0,
+    );
 
     await Promise.allSettled(
-      task.members.map((u) => this.telegram.sendToChat(u.tg_id!, text, silent)),
+      targets.map((u) => this.telegram.sendToChat(u.tg_id!, text, silent)),
     );
   }
 
@@ -76,6 +82,10 @@ export class TaskNotifyService {
     memberUserId: number,
     actorUserId: number,
   ) {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip telegram`);
+      return;
+    }
     const task = await this.prisma.kanbanTask.findUnique({
       where: { id: taskId },
       select: {
@@ -108,6 +118,4 @@ export class TaskNotifyService {
 
     await this.telegram.sendToChat(member.tg_id, text);
   }
-
-  
 }

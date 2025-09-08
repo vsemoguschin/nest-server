@@ -17,8 +17,8 @@ import { TaskMembersService } from '../kanban/members/members.service';
   providers: [
     TasksService,
     PrismaService,
-    TelegramService,
     TaskNotifyService,
+    TelegramService,
     AttachmentsService,
     TaskAuditService,
     TaskMembersService,
