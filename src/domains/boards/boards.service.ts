@@ -51,6 +51,7 @@ export class BoardsService {
                 title: true,
                 position: true,
                 columnId: true,
+                cover: true,
 
                 // только имена тегов
                 tags: { select: { name: true } },
@@ -71,6 +72,9 @@ export class BoardsService {
                         mimeType: true,
                       },
                     },
+                  },
+                  orderBy: {
+                    createdAt: 'desc',
                   },
                   take: 1,
                 },
@@ -110,7 +114,7 @@ export class BoardsService {
               return {
                 id: t.id,
                 title: t.title,
-                preview: previewPath,
+                preview: t.cover ?? previewPath,
                 path: previewPath,
                 columnId: t.columnId,
                 attachmentsLength: t._count.attachments, // ⬅️ теперь через _count
@@ -130,6 +134,9 @@ export class BoardsService {
     const avalCol = await this.prisma.column.findMany({
       where: {
         boardId,
+      },
+      orderBy: {
+        position: 'asc',
       },
     });
 

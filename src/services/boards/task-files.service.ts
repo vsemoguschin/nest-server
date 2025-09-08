@@ -18,6 +18,15 @@ export class TaskFilesService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private decodeOriginalName(name?: string): string {
+    if (!name) return '';
+    try {
+      return Buffer.from(name, 'latin1').toString('utf8');
+    } catch {
+      return name;
+    }
+  }
+
   /** Определить категорию и расширение по mime/расширению */
   private resolveCategory(file: Express.Multer.File): {
     category: 'images' | 'pdf' | 'cdr';
@@ -84,10 +93,13 @@ export class TaskFilesService {
 
     // console.log(md);
 
+    const safeName =
+      this.decodeOriginalName(file.originalname) || md.data?.name || yaName;
+
     // 3) запись файла в БД с привязкой к комменту
     const dbFile = await this.prisma.kanbanFile.create({
       data: {
-        name: file.originalname || md.data?.name || yaName,
+        name: safeName,
         ya_name: yaName,
         size: md.data?.size ?? file.size ?? 0,
         preview: md.data?.sizes?.[0]?.url || md.data.preview || '',

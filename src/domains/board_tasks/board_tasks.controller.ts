@@ -35,6 +35,14 @@ import { TaskFilesService } from 'src/services/boards/task-files.service';
 import { AttachmentsService } from '../kanban/attachments/attachments.service';
 import { TaskMembersService } from '../kanban/members/members.service';
 import { SearchTasksDto } from './dto/search-tasks.dto';
+import { ApiBody, ApiOperation } from '@nestjs/swagger';
+import { IsNotEmpty, IsString } from 'class-validator';
+
+class UpdateCoverDto {
+  @IsString()
+  @IsNotEmpty()
+  path!: string;
+}
 
 @UseGuards(RolesGuard)
 @Controller('tasks')
@@ -190,6 +198,27 @@ export class TasksController {
       // link опционально, если не передашь — сгенерится автоматически
     });
     return { updated, message: msg };
+  }
+
+  @Patch(':taskId/move-to-next-column')
+  @ApiOperation({ summary: 'Переместить задачу в следующую колонку' })
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
+  async moveToNextColumn(
+    @CurrentUser() user: UserDto,
+    @Param('taskId', ParseIntPipe) taskId: number,
+  ) {
+    // const task = await this.tasksService.ensureTask(taskId);
+    const { updated, fromColumn, targetColumn } =
+      await this.tasksService.moveToNextColumn(taskId);
+    await this.tasksService.ensureMember(taskId, user.id);
+    const msg = `Перемещение: «${fromColumn?.title ?? '—'}» → «${targetColumn.title}»`;
+    await this.audit.log({
+      userId: user.id,
+      taskId,
+      action: 'MOVE_TASK',
+      description: msg,
+    });
+    return updated;
   }
 
   /**
@@ -450,5 +479,16 @@ export class TasksController {
   async getTaskAudit(@Param('taskId', ParseIntPipe) taskId: number) {
     await this.tasksService.ensureTask(taskId);
     return this.audit.getTaskAudit(taskId);
+  }
+
+  @Patch(':id/cover')
+  @ApiOperation({ summary: 'Установить обложку задачи' })
+  @ApiBody({ schema: { properties: { path: { type: 'string' } } } })
+  async setCover(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCoverDto,
+  ) {
+    // сервис обновит поле cover путём из dto.path и вернёт обновлённую задачу
+    return this.tasksService.updateCover(id, dto.path);
   }
 }

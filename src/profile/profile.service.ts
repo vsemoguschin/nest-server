@@ -21,7 +21,7 @@ export class ProfileService {
 
     const avaliableBoards = await this.prisma.board.findMany({
       where: {
-        id: ['ADMIN'].includes(user?.role.shortName)
+        id: ['ADMIN', 'G'].includes(user?.role.shortName)
           ? { gt: 0 }
           : { in: boardsIds },
       },

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -63,6 +64,7 @@ export class TasksService {
       where: { id: taskId, deletedAt: null },
       include: {
         members: true,
+        column: true,
       },
     });
     if (!task) throw new NotFoundException('Task not found');
@@ -461,6 +463,76 @@ export class TasksService {
   }
 
   /**
+   * Перемещает задачу в следующую колонку по возрастанию column.position (в рамках того же boardId)
+   * и ставит задачу в начало колонки (минимальная позиция - 1 или 1, если колонка пустая).
+   * Возвращает обновлённую задачу и информацию о колонках.
+   */
+  async moveToNextColumn(taskId: number): Promise<{
+    updated: any;
+    fromColumn: {
+      id: number;
+      title: string;
+      position: Prisma.Decimal;
+      boardId: number;
+    };
+    targetColumn: {
+      id: number;
+      title: string;
+      position: Prisma.Decimal;
+      boardId: number;
+    };
+  }> {
+    // 1) Текущая задача + её колонка
+    const task = await this.ensureTask(taskId);
+    const fromColumn = task.column as {
+      id: number;
+      title: string;
+      position: Prisma.Decimal;
+      boardId: number;
+    };
+
+    // 2) Ищем следующую колонку в том же борде по position > текущей
+    const targetColumn = await this.prisma.column.findFirst({
+      where: {
+        boardId: fromColumn.boardId, // при необходимости замените на ваш внешний ключ (projectId и т.п.)
+        position: { gt: fromColumn.position },
+      },
+      orderBy: { position: 'asc' },
+      select: { id: true, title: true, position: true, boardId: true },
+    });
+
+    if (!targetColumn) {
+      throw new BadRequestException('Следующая колонка не найдена');
+    }
+
+    // 3) Определяем "верхнюю" позицию в целевой колонке
+    const topInTarget = await this.prisma.kanbanTask.findFirst({
+      where: { columnId: targetColumn.id },
+      orderBy: { position: 'asc' },
+      select: { position: true },
+    });
+
+    // Если колонка пустая -> ставим 1, иначе (минимальная - 1)
+    // Prisma Decimal: используем Prisma.Decimal для корректной математики
+    const newTopPosition = topInTarget
+      ? new Prisma.Decimal(topInTarget.position).minus(1)
+      : new Prisma.Decimal(1);
+
+    // 4) Обновляем задачу: columnId и позицию
+    const updated = await this.prisma.kanbanTask.update({
+      where: { id: taskId },
+      data: {
+        columnId: targetColumn.id,
+        position: newTopPosition, // карточка становится первой
+      },
+      // при желании ограничьте select
+      // select: { id: true, columnId: true, position: true, title: true }
+    });
+
+    return { updated, fromColumn, targetColumn };
+  }
+
+  /**
    * Полностью заменить теги у задачи на переданный список имён.
    * Отсутствие / пустой массив -> очистить все теги.
    * Новые имена будут созданы в справочнике kanbanTaskTags внутри boardId задачи.
@@ -643,7 +715,7 @@ export class TasksService {
                   color: l.color ?? '',
                   elements: l.elements ?? 0,
                 })),
-              }, 
+              },
             }
           : undefined,
       },
@@ -799,5 +871,32 @@ export class TasksService {
       });
     }
     return toAdd;
+  }
+
+  /**
+   * Обновляет поле cover у задачи
+   * @param id ID задачи
+   * @param path Путь к изображению (attachment.path)
+   */
+  async updateCover(id: number, path: string) {
+    try {
+      const task = await this.prisma.kanbanTask.update({
+        where: { id },
+        data: { cover: path },
+        // при желании укажите select, чтобы вернуть только нужные поля
+        // select: { id: true, title: true, cover: true }
+      });
+
+      return task;
+    } catch (e) {
+      // P2025 — запись не найдена
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2025'
+      ) {
+        throw new NotFoundException(`Task ${id} not found`);
+      }
+      throw e;
+    }
   }
 }
