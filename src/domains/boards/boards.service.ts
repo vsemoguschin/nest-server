@@ -49,16 +49,44 @@ export class BoardsService {
               select: {
                 id: true,
                 title: true,
-                description: true,
                 position: true,
                 columnId: true,
+
+                // только имена тегов
                 tags: { select: { name: true } },
+
+                // ⬇️ берём ТОЛЬКО одно превью-изображение (jpeg/png/webp)
                 attachments: {
-                  include: {
-                    file: true,
+                  where: {
+                    file: {
+                      mimeType: {
+                        in: ['image/jpeg', 'image/png', 'image/webp'],
+                      },
+                    },
+                  },
+                  select: {
+                    file: {
+                      select: {
+                        path: true, // если будет thumbnailPath — добавим его здесь
+                        mimeType: true,
+                      },
+                    },
+                  },
+                  take: 1,
+                },
+
+                // ⬇️ общее количество вложений без тащения их данных
+                _count: { select: { attachments: true } },
+
+                // ⬇️ "узкий" набор полей участников (ровно то, что нужно в карточке)
+                members: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    avatarUrl: true,
+                    role: { select: { fullName: true } },
                   },
                 },
-                members: true,
               },
             },
           },
@@ -76,62 +104,20 @@ export class BoardsService {
             id: c.id,
             title: c.title,
             position: c.position,
-            tasks: await Promise.all(
-              c.tasks.map(async (t) => {
-                const previewAtt = t.attachments.find(
-                  (att) =>
-                    att.file.mimeType === 'image/jpeg' ||
-                    att.file.mimeType === 'image/png',
-                );
+            tasks: c.tasks.map((t) => {
+              const previewPath = t.attachments[0]?.file.path ?? '';
 
-                let size = '';
-                // console.log(previewAtt?.file.path);
-
-                if (previewAtt) {
-                  // try {
-                  //   const md = await axios.get(
-                  //     'https://cloud-api.yandex.net/v1/disk/resources',
-                  //     {
-                  //       params: { path: previewAtt.file.path },
-                  //       headers: {
-                  //         Authorization: `OAuth ${process.env.YA_TOKEN}`,
-                  //       },
-                  //     },
-                  //   );
-                  //   // console.log(md.data);
-                  //   // console.log(previewAtt.file.path);
-                  //   // console.log(previewAtt.file.path);
-                  //   size = md.data.sizes[0].url || '';
-                  // } catch (e) {
-                  //   console.log(e.response.data);
-                  // }
-
-                  // console.log(t.tags);
-
-                  return {
-                    id: t.id,
-                    title: t.title,
-                    preview: previewAtt?.file.path ?? '',
-                    path: previewAtt?.file.path ?? '', // если хотите потом брать свежую ссылку
-                    attachmentsLength: t.attachments.length,
-                    tags: t.tags.map((t) => t.name),
-                    members: t.members,
-                    columnId: t.columnId,
-                  };
-                }
-
-                return {
-                  id: t.id,
-                  title: t.title,
-                  preview: '',
-                  path: '',
-                  columnId: t.columnId,
-                  attachmentsLength: t.attachments.length,
-                  tags: t.tags.map((t) => t.name),
-                  members: t.members,
-                };
-              }),
-            ),
+              return {
+                id: t.id,
+                title: t.title,
+                preview: previewPath,
+                path: previewPath,
+                columnId: t.columnId,
+                attachmentsLength: t._count.attachments, // ⬅️ теперь через _count
+                tags: t.tags.map((x) => x.name),
+                members: t.members,
+              };
+            }),
           };
         }),
       ),

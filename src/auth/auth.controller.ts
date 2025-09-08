@@ -2,8 +2,8 @@ import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { Public } from './public.decorator';
 import { RefreshDto } from './dto/refresh.dto';
+import { Public } from './public.decorator';
 
 @ApiTags('auth')
 @Controller('/') // Если хотите, чтобы URL был /api/login (при глобальном префиксе "api")

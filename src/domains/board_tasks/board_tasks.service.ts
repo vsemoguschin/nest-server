@@ -643,7 +643,7 @@ export class TasksService {
                   color: l.color ?? '',
                   elements: l.elements ?? 0,
                 })),
-              },
+              }, 
             }
           : undefined,
       },
