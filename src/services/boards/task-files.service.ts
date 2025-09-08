@@ -77,6 +77,8 @@ export class TaskFilesService {
       headers: { Authorization: `OAuth ${TOKEN}` },
     });
 
+    console.log(md);
+
     // 3) запись файла в БД с привязкой к комменту
     const dbFile = await this.prisma.kanbanFile.create({
       data: {
