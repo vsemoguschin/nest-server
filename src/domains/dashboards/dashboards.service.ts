@@ -147,6 +147,9 @@ export class DashboardsService {
               },
             },
           },
+          orderBy: {
+            title: 'asc',
+          },
         },
       },
     });

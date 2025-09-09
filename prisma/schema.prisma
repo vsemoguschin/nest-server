@@ -976,6 +976,7 @@ model TaskOrder {
   gift           Boolean         @default(false) // Подарок
   adapter        String          @default("")    // Блок (например, Помещение, Уличный, Нет)
   plug           String          @default("")    // Вилка
+  switch         String          @default("")    // Выключатель
   fitting        String          @default("")    // Крепления
   dimmer         Boolean         @default(false) // Диммер
   giftPack       Boolean         @default(false) // Подарочная упаковка
