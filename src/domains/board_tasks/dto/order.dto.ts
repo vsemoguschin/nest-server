@@ -33,6 +33,7 @@ export class CreateTaskOrderDto {
   @IsOptional() @IsString() plug?: string;
   @IsOptional() @IsString() fitting?: string;
   @IsOptional() @IsBoolean() dimmer?: boolean;
+  @IsOptional() @IsBoolean() switch?: boolean;
   @IsOptional() @IsBoolean() giftPack?: boolean;
   @IsOptional() @IsString() description?: string;
 

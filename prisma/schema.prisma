@@ -976,7 +976,7 @@ model TaskOrder {
   gift           Boolean         @default(false) // Подарок
   adapter        String          @default("")    // Блок (например, Помещение, Уличный, Нет)
   plug           String          @default("")    // Вилка
-  switch         String          @default("")    // Выключатель
+  switch         Boolean         @default(true)    // Выключатель
   fitting        String          @default("")    // Крепления
   dimmer         Boolean         @default(false) // Диммер
   giftPack       Boolean         @default(false) // Подарочная упаковка
@@ -990,15 +990,17 @@ model TaskOrder {
   deal       Deal?        @relation(fields: [dealId], references: [id])
 
   taskId     Int
-  task       KanbanTask        @relation(fields: [taskId], references: [id])
+  task       KanbanTask   @relation(fields: [taskId], references: [id])
 
 }
+
+
 
 // НЕОН
 model Neon {
   id        Int         @id @default(autoincrement()) 
   width     String      @default("")
-  length    Int         @default(0)// Длина неона
+  length    Decimal     @default(0)// Длина неона
   color     String      @default("")// Цвет неона
 
   // Связь с заказом (TaskOrder)
@@ -1008,7 +1010,7 @@ model Neon {
 // НЕОН
 model Lighting {
   id        Int         @id @default(autoincrement()) 
-  length    Int         @default(0)// Длина неона
+  length    Decimal     @default(0)// Длина неона
   color     String      @default("")// Цвет неона
   elements  Int         @default(0) // Количество элементов
 

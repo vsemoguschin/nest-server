@@ -37,6 +37,7 @@ import { TaskMembersService } from '../kanban/members/members.service';
 import { SearchTasksDto } from './dto/search-tasks.dto';
 import { ApiBody, ApiOperation } from '@nestjs/swagger';
 import { IsNotEmpty, IsString } from 'class-validator';
+import { CopyTaskToBoardDto } from './dto/copy-to-board.dto';
 
 class UpdateCoverDto {
   @IsString()
@@ -219,6 +220,29 @@ export class TasksController {
       description: msg,
     });
     return updated;
+  }
+
+  @Post(':taskId/copy-to-board')
+  @ApiOperation({
+    summary:
+      'Копировать задачу на другую доску (без cover), с дубликатами orders',
+  })
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV')
+  async copyToBoard(
+    @CurrentUser() user: UserDto,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Body(new ValidationPipe({ transform: true, whitelist: true }))
+    dto: CopyTaskToBoardDto,
+  ) {
+    const created = await this.tasksService.copyToBoard(user, taskId, dto);
+    await this.audit.log({
+      userId: user.id,
+      taskId: created.id,
+      action: 'TASK_CREATED',
+      description: `Скопировано из #${taskId} → доска ${dto.boardId}`,
+      payload: { fromTaskId: taskId, toBoardId: dto.boardId },
+    });
+    return created;
   }
 
   /**
@@ -420,7 +444,7 @@ export class TasksController {
   async moveTaskToColumn(
     @Param('id', ParseIntPipe) id: number,
     @Param('columnId', ParseIntPipe) columnId: number,
-    @CurrentUser('user') user: UserDto,
+    // @CurrentUser('user') user: UserDto,
   ) {
     const task = await this.tasksService.updateColumn(id, columnId);
     return { task };
@@ -489,6 +513,7 @@ export class TasksController {
     @Body() dto: UpdateCoverDto,
   ) {
     // сервис обновит поле cover путём из dto.path и вернёт обновлённую задачу
-    return this.tasksService.updateCover(id, dto.path);
+    const task = await this.tasksService.updateCover(id, dto.path);
+    return { message: 'Обложка обновлена' };
   }
 }

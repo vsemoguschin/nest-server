@@ -29,7 +29,7 @@ export class TaskFilesService {
 
   /** Определить категорию и расширение по mime/расширению */
   private resolveCategory(file: Express.Multer.File): {
-    category: 'images' | 'pdf' | 'cdr';
+    category: 'images' | 'pdf' | 'cdr' | 'video';
     ext: string;
   } {
     const mime = (file.mimetype || '').toLowerCase();
@@ -39,6 +39,8 @@ export class TaskFilesService {
       return { category: 'images', ext: ext || '.bin' };
     if (mime === 'application/pdf' || ext === '.pdf')
       return { category: 'pdf', ext: '.pdf' };
+    if (mime.startsWith('video/') || ['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext))
+      return { category: 'video', ext: ext || '.mp4' };
     if (
       ext === '.cdr' ||
       mime === 'application/vnd.corel-draw' ||
@@ -48,7 +50,7 @@ export class TaskFilesService {
       return { category: 'cdr', ext: '.cdr' };
 
     throw new BadRequestException(
-      'Unsupported file type. Allowed: images, pdf, cdr',
+      'Unsupported file type. Allowed: images, pdf, cdr, video',
     );
   }
 
@@ -73,6 +75,17 @@ export class TaskFilesService {
     const TOKEN = process.env.YA_TOKEN as string;
     const YD_UPLOAD = 'https://cloud-api.yandex.net/v1/disk/resources/upload';
     const YD_RES = 'https://cloud-api.yandex.net/v1/disk/resources';
+
+    // ensure base directory exists (e.g., EasyCRM/boards/{boardId}/{category})
+    const baseDir = `EasyCRM/${directory}`;
+    try {
+      await axios.put(YD_RES, null, {
+        params: { path: baseDir },
+        headers: { Authorization: `OAuth ${TOKEN}` },
+      });
+    } catch (e: any) {
+      // 409 (already exists) — ignore; other errors let upload try anyway
+    }
 
     const up = await axios.get(YD_UPLOAD, {
       params: { path: absPath, overwrite: true },

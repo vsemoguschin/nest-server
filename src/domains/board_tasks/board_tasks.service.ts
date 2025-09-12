@@ -108,6 +108,148 @@ export class TasksService {
     return last ? Number(last.position) + 1 : 1;
   }
 
+  /**
+   * Скопировать задачу на другую доску (без cover) и дублировать все orders (с neons и lightings).
+   * Целевая колонка выбирается первой по позиции на целевой доске.
+   */
+  async copyToBoard(user: UserDto, taskId: number, dto: { boardId: number }) {
+    const srcTask = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      include: {
+        orders: {
+          where: { deletedAt: null },
+          include: { neons: true, lightings: true },
+        },
+        // берем только zip-вложения
+        attachments: {
+          where: { file: { is: { mimeType: 'application/zip' } } },
+          select: { fileId: true },
+        },
+      },
+    });
+    if (!srcTask) throw new NotFoundException('Task not found');
+
+    const board = await this.prisma.board.findFirst({
+      where: { id: dto.boardId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!board) throw new NotFoundException('Target board not found');
+
+    const targetColumn = await this.prisma.column.findFirst({
+      where: { boardId: dto.boardId, deletedAt: null },
+      orderBy: { position: 'asc' },
+      select: { id: true, boardId: true },
+    });
+    if (!targetColumn)
+      throw new NotFoundException('Target column not found on board');
+
+    return this.prisma.$transaction(async (tx) => {
+      const position = await this.nextPosition(
+        targetColumn.boardId,
+        targetColumn.id,
+      );
+
+      const created = await tx.kanbanTask.create({
+        data: {
+          title: srcTask.title,
+          description: '',
+          chatLink: srcTask.chatLink,
+          cover: srcTask.cover,
+          position,
+          boardId: targetColumn.boardId,
+          columnId: targetColumn.id,
+          creatorId: user.id,
+          members: { connect: [{ id: user.id }] },
+        },
+        select: { id: true, boardId: true, columnId: true, title: true },
+      });
+
+      // Дублируем все заказы и их дочерние записи
+      for (const order of srcTask.orders ?? []) {
+        await tx.taskOrder.create({
+          data: {
+            taskId: created.id,
+            dealId: (order as any).dealId ?? null,
+            title: order.title ?? '',
+            deadline: order.deadline ?? '',
+            material: order.material ?? '',
+            boardWidth: order.boardWidth ?? 0,
+            boardHeight: order.boardHeight ?? 0,
+            holeType: order.holeType ?? '',
+            stand: order.stand ?? false,
+            laminate: order.laminate ?? '',
+            print: order.print ?? false,
+            printQuality: order.printQuality ?? false,
+            acrylic: order.acrylic ?? '',
+            type: order.type ?? '',
+            wireLength: order.wireLength ?? '',
+            elements: order.elements ?? 0,
+            gift: order.gift ?? false,
+            adapter: order.adapter ?? '',
+            plug: order.plug ?? '',
+            switch: order.switch ?? true,
+            fitting: order.fitting ?? '',
+            dimmer: order.dimmer ?? false,
+            giftPack: order.giftPack ?? false,
+            description: order.description ?? '',
+
+            neons:
+              (order.neons?.length ?? 0)
+                ? {
+                    createMany: {
+                      data: order.neons.map((n) => ({
+                        width: n.width ?? '',
+                        length: (n as any).length ?? 0,
+                        color: n.color ?? '',
+                      })),
+                    },
+                  }
+                : undefined,
+            lightings:
+              (order.lightings?.length ?? 0)
+                ? {
+                    createMany: {
+                      data: order.lightings.map((l) => ({
+                        length: (l as any).length ?? 0,
+                        color: l.color ?? '',
+                        elements: l.elements ?? 0,
+                      })),
+                    },
+                  }
+                : undefined,
+          },
+        });
+      }
+
+      // Привяжем zip-вложения (не создаем новые файлы, просто коннектим тот же fileId)
+      if (srcTask.attachments && srcTask.attachments.length) {
+        await tx.kanbanTaskAttachment.createMany({
+          data: srcTask.attachments.map((a) => ({
+            taskId: created.id,
+            fileId: a.fileId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      // Если у исходной задачи есть cover — прикрепим соответствующий файл к новой задаче
+      if (srcTask.cover) {
+        const coverFile = await tx.kanbanFile.findFirst({
+          where: { path: srcTask.cover, deletedAt: null },
+          select: { id: true },
+        });
+        if (coverFile) {
+          await tx.kanbanTaskAttachment.createMany({
+            data: [{ taskId: created.id, fileId: coverFile.id }],
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return created;
+    });
+  }
+
   async create(user: UserDto, dto: CreateTaskDto, boardId: number) {
     const position =
       dto.position ?? (await this.nextPosition(boardId, dto.columnId));
@@ -202,6 +344,7 @@ export class TasksService {
       tags: task.tags,
       members: task.members,
       attachmentsLength: task.attachments.length,
+      cover: task.cover,
 
       comments: [],
       audits: [],
