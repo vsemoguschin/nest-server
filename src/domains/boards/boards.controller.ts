@@ -33,7 +33,7 @@ export class BoardsController {
     return this.boardsService.listAllUsers();
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ','ASSISTANT')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ','ASSISTANT', 'LOGIST')
   @Get(':id/kanban')
   async getKanban(
     @CurrentUser() user: UserDto,
@@ -87,7 +87,7 @@ export class BoardsController {
     return await this.boardsService.getColumns(boardId);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ', 'LOGIST')
   @Get(':id')
   async getBoardById(
     @CurrentUser() user: UserDto,
@@ -103,6 +103,7 @@ export class BoardsController {
   }
 
   /** Добавить пользователя на доску */
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
   @Post('users/:userId')
   addUser(
     @Param('userId', ParseIntPipe) userId: number,
@@ -112,6 +113,7 @@ export class BoardsController {
   }
 
   /** Удалить пользователя с доски */
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
   @Delete('users/:userId')
   removeUser(
     @Param('userId', ParseIntPipe) userId: number,
