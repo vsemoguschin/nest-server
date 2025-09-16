@@ -164,7 +164,7 @@ export class DashboardsService {
     };
 
     if (
-      !['ADMIN', 'G', 'KD', 'ROV', 'MOV', 'MARKETER'].includes(
+      !['ADMIN', 'G', 'KD', 'ROV', 'MOV', 'MARKETER', 'LOGIST'].includes(
         user.role.shortName,
       )
     ) {
@@ -524,6 +524,9 @@ export class DashboardsService {
               bonusPercentage = 0.07;
             }
           }
+          if (m.groupId === 19) {
+            bonusPercentage = 0.07;
+          }
 
           // console.log('bonusPercentage', bonusPercentage);
 
@@ -606,15 +609,19 @@ export class DashboardsService {
         .map((dop) => {
           // console.log(dop);
           const dealerPart = dop.price / dealDopsPrice;
-
-          const bonusPercentage =
-            deal.workSpace.title === 'B2B'
-              ? 0.1
-              : prevPeriodDatas.find(
-                  (p) =>
-                    p.period === dop.saleDate.slice(0, 7) &&
-                    p.userId === dop.userId,
-                )?.bonusPercentage || 0;
+          let bonusPercentage = 0;
+          if (deal.groupId === 19) {
+            bonusPercentage = 0.07;
+          } else if (deal.workSpace.title === 'B2B') {
+            bonusPercentage = 0.1;
+          } else {
+            bonusPercentage =
+              prevPeriodDatas.find(
+                (p) =>
+                  p.period === dop.saleDate.slice(0, 7) &&
+                  p.userId === dop.userId,
+              )?.bonusPercentage || 0;
+          }
           const paid = +(dopPaid * dealerPart).toFixed(2);
           return {
             title: dop.type,
@@ -1060,6 +1067,9 @@ export class DashboardsService {
             const workSpacePlanBonus = isOverRopPlan ? 3000 : 0;
             totalSalary += workSpacePlanBonus;
             bonus += workSpacePlanBonus;
+          }
+          if (m.groupId === 19) {
+            bonusPercentage = 0.07;
           }
           totalSalary += dealPays + dopPays;
           const rem = +(totalSalary - pays).toFixed(2);

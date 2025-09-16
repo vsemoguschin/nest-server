@@ -228,7 +228,7 @@ export class AttachmentsService {
     const { path, w, h, format } = q;
     if (!path) throw new BadRequestException('path is required');
 
-    console.log('here');
+    // console.log('here');
     // 1) получаем прямой href и открываем исходный поток
     const href = await this.getDownloadHref(path);
     const src = await this.openSourceStream(href);
@@ -237,7 +237,7 @@ export class AttachmentsService {
     const needTransform = isImage && (!!w || !!h || !!format);
 
     if (!needTransform) {
-
+      
       // отдаём как есть (inline)
       return {
         stream: src.stream,

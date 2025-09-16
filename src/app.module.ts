@@ -38,6 +38,7 @@ import { TelegramService } from './services/telegram.service';
 import { AttachmentsModule } from './domains/kanban/attachments/attachments.module';
 import { MembersModule } from './domains/kanban/members/members.module';
 import { CommentsModule } from './domains/kanban/comments/comments.module';
+import { VkAdsModule } from './domains/vk-ads/vk-ads.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { CommentsModule } from './domains/kanban/comments/comments.module';
     AttachmentsModule,
     MembersModule,
     CommentsModule,
+    VkAdsModule,
 
     // другие модули
   ],

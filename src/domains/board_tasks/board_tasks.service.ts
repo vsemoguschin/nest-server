@@ -122,11 +122,15 @@ export class TasksService {
         },
         // берем только zip-вложения
         attachments: {
-          where: { file: { is: { mimeType: 'application/zip' } } },
+          // include: {
+          //   file: true,
+          // },
+          where: { file: { path: { endsWith: '.cdr' } } },
           select: { fileId: true },
         },
       },
     });
+    console.log(srcTask?.attachments);
     if (!srcTask) throw new NotFoundException('Task not found');
 
     const board = await this.prisma.board.findFirst({
