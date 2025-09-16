@@ -33,7 +33,20 @@ export class BoardsController {
     return this.boardsService.listAllUsers();
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ','ASSISTANT', 'LOGIST')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'ASSISTANT',
+    'LOGIST',
+  )
   @Get(':id/kanban')
   async getKanban(
     @CurrentUser() user: UserDto,
@@ -55,13 +68,38 @@ export class BoardsController {
     return this.boardsService.create(user.id, dto);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+  )
   @Get()
   async listBoards(@CurrentUser() user: UserDto) {
     return this.boardsService.listForUser(user);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ','ASSISTANT')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'ASSISTANT',
+    'LOGIST',
+  )
   @Get(':id/tags')
   async getTags(
     @Param('id', ParseIntPipe) id: number,
@@ -87,7 +125,19 @@ export class BoardsController {
     return await this.boardsService.getColumns(boardId);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ', 'LOGIST')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+  )
   @Get(':id')
   async getBoardById(
     @CurrentUser() user: UserDto,
