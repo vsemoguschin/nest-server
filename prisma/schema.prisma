@@ -1026,3 +1026,170 @@ model ProdReport {
   cost     Int     @default(0)
   comment  String  @default("")
 }
+
+// ===== CRM Customers (from external API) =====
+model CrmCustomer {
+  id               Int                @id @default(autoincrement())
+  externalId       String             @unique // ID from external system
+
+  fullName         String
+  photoUrl         String             @default("")
+  birthday         String             @default("") // dd.mm.yyyy or empty
+  sex              String             @default("")  // "m" | "f" | ""
+
+  phone            String             @default("")
+  email            String             @default("")
+  address          String             @default("")
+  otherContacts    String             @default("")
+
+  firstContactDate String             @default("")
+  lastContactDate  String             @default("")
+  nextContactDate  String             @default("")
+
+  shortNotes       String             @default("")
+  comments         String             @default("")
+
+  // Relations to simple reference tables
+  countryId        Int?
+  country          CrmCountry?        @relation(fields: [countryId], references: [id])
+
+  cityId           Int?
+  city             CrmCity?           @relation(fields: [cityId], references: [id])
+
+  crmStatusId      Int?
+  crmStatus        CrmStatus?         @relation(fields: [crmStatusId], references: [id])
+
+  sourceId         Int?
+  source           CrmSource?         @relation(fields: [sourceId], references: [id])
+
+  salesChannelId   Int?
+  salesChannel     CrmSalesChannel?   @relation(fields: [salesChannelId], references: [id])
+
+  managerId        Int?
+  manager          CrmManager?        @relation(fields: [managerId], references: [id])
+
+  // Social/platform links
+  vkId             Int?
+  vk               CrmVk?             @relation(fields: [vkId], references: [id])
+
+  avitoId          Int?
+  avito            CrmAvito?          @relation(fields: [avitoId], references: [id])
+
+  // Tagging (many-to-many via join table)
+  tags             CrmCustomerTag[]
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([externalId])
+}
+
+model CrmCountry {
+  id         Int           @id @default(autoincrement())
+  externalId String?       @unique // e.g., 272680 (as string)
+  name       String
+
+  customers  CrmCustomer[]
+}
+
+model CrmCity {
+  id         Int           @id @default(autoincrement())
+  externalId String?       @unique // e.g., 5401585 (as string)
+  name       String
+
+  customers  CrmCustomer[]
+}
+
+model CrmStatus {
+  id         Int           @id @default(autoincrement())
+  externalId String?       @unique // e.g., 289750
+  name       String
+  color      String         @default("")
+  type       Int            @default(0)
+
+  customers  CrmCustomer[]
+}
+
+model CrmSource {
+  id         Int           @id @default(autoincrement())
+  externalId String?       @unique // e.g., 157642
+  name       String
+
+  customers  CrmCustomer[]
+}
+
+model CrmSalesChannel {
+  id         Int           @id @default(autoincrement())
+  externalId String?       @unique // e.g., 194494
+  code       Int           @default(0)
+  name       String
+
+  customers  CrmCustomer[]
+}
+
+model CrmManager {
+  id                Int       @id @default(autoincrement())
+  externalId        String?   @unique // e.g., 58841
+  fullName          String
+  email             String    @default("")
+  login             String    @default("")
+  phone             String    @default("")
+  vk                String?   // profile link if present
+  lastLoginDate     String    @default("")
+  lastActivityDate  String    @default("")
+  isActive          Boolean   @default(true)
+  // Store complex permissions structure as JSON
+  permissions       Json?
+
+  customers         CrmCustomer[]
+}
+
+model CrmVk {
+  id               Int       @id @default(autoincrement())
+  externalId       String    @unique // e.g., "213329253"
+  name             String
+  messagesGroupId  String    @default("")
+
+  customers        CrmCustomer[]
+}
+
+model CrmAvito {
+  id        Int     @id @default(autoincrement())
+  externalId String @unique // e.g., "33680330"
+  name      String
+  chatId    String  @default("")
+
+  customers CrmCustomer[]
+}
+
+model CrmTag {
+  id         Int      @id @default(autoincrement())
+  externalId String?  @unique // e.g., 377570
+  name       String
+  color      String   @default("")
+  textColor  String   @default("")
+
+  customers  CrmCustomerTag[]
+}
+
+// Join table for many-to-many: Customer ↔ Tag
+model CrmCustomerTag {
+  id          Int          @id @default(autoincrement())
+  customerId  Int
+  tagId       Int
+
+  customer    CrmCustomer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag         CrmTag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, tagId])
+  @@index([tagId])
+}
+
+// Состояние синхронизаций (для надёжного ежедневного импорта)
+model CrmSyncState {
+  id                  Int      @id @default(autoincrement())
+  key                 String   @unique
+  lastDailyImportDate String   @default("") // формат YYYY-MM-DD (Europe/Moscow)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}

@@ -34,6 +34,7 @@ import { TasksModule } from './domains/board_tasks/board_tasks.module';
 import { KanbanFilesModule } from './domains/kanban-files/kanban-files.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { NotificationSchedulerService } from './notifications/notification-scheduler.service';
+import { BluesalesImportService } from './integrations/bluesales/bluesales-import.service';
 import { TelegramService } from './services/telegram.service';
 import { AttachmentsModule } from './domains/kanban/attachments/attachments.module';
 import { MembersModule } from './domains/kanban/members/members.module';
@@ -81,7 +82,7 @@ import { VkAdsModule } from './domains/vk-ads/vk-ads.module';
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],
-  providers: [ProfileService, TelegramService, NotificationSchedulerService],
+  providers: [ProfileService, TelegramService, NotificationSchedulerService, BluesalesImportService],
   exports: [NotificationSchedulerService],
 })
 export class AppModule {}

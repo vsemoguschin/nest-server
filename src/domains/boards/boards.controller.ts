@@ -46,6 +46,9 @@ export class BoardsController {
     'DIZ',
     'ASSISTANT',
     'LOGIST',
+    'MASTER',
+    'FRZ',
+    'PACKER'
   )
   @Get(':id/kanban')
   async getKanban(
@@ -80,6 +83,9 @@ export class BoardsController {
     'MOV',
     'DIZ',
     'LOGIST',
+    'FRZ',
+    'MASTER',
+    'PACKER',
   )
   @Get()
   async listBoards(@CurrentUser() user: UserDto) {
@@ -99,6 +105,9 @@ export class BoardsController {
     'DIZ',
     'ASSISTANT',
     'LOGIST',
+    'MASTER',
+    'PACKER',
+    'FRZ'
   )
   @Get(':id/tags')
   async getTags(

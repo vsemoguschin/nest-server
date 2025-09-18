@@ -51,6 +51,7 @@ export class ProductionController {
     'LOGIST',
     'PACKER',
     'FINANCIER',
+    'FRZ'
   )
   async getPredata(@CurrentUser() user: UserDto) {
     return this.productionService.getPredata(user);
@@ -156,7 +157,7 @@ export class ProductionController {
   }
 
   @Get('frezer/:id/reports')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'FRZ')
   async getFrezerReports(
     @Query('from') from: string,
     @Query('to') to: string,

@@ -91,6 +91,11 @@ export class BoardsService {
                     role: { select: { fullName: true } },
                   },
                 },
+                orders: {
+                  select: {
+                    deadline: true,
+                  },
+                },
               },
             },
           },
@@ -108,20 +113,26 @@ export class BoardsService {
             id: c.id,
             title: c.title,
             position: c.position,
-            tasks: c.tasks.map((t) => {
-              const previewPath = t.attachments[0]?.file.path ?? '';
+            tasks: c.tasks
+              .map((t) => {
+                const previewPath = t.attachments[0]?.file.path ?? '';
 
-              return {
-                id: t.id,
-                title: t.title,
-                preview: t.cover ?? previewPath,
-                path: previewPath,
-                columnId: t.columnId,
-                attachmentsLength: t._count.attachments, // ⬅️ теперь через _count
-                tags: t.tags.map((x) => x.name),
-                members: t.members,
-              };
-            }),
+                return {
+                  id: t.id,
+                  title: t.title,
+                  preview: t.cover ?? previewPath,
+                  path: previewPath,
+                  columnId: t.columnId,
+                  attachmentsLength: t._count.attachments,
+                  tags: t.tags.map((x) => x.name),
+                  members: t.members,
+                  deadline:
+                    t.orders.sort((a, b) =>
+                      a.deadline.localeCompare(b.deadline),
+                    )[0]?.deadline || '',
+                };
+              })
+              .sort((a, b) => a.deadline.localeCompare(b.deadline)),
           };
         }),
       ),

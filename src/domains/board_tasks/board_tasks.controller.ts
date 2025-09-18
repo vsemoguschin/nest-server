@@ -95,7 +95,10 @@ export class TasksController {
     'MOV',
     'DIZ',
     'ASSISTANT',
-    'LOGIST'
+    'LOGIST',
+    'MASTER',
+    'PACKER',
+    'FRZ',
   )
   @Get(':taskId')
   async getOne(
@@ -105,7 +108,19 @@ export class TasksController {
     return this.tasksService.getOne(user.id, taskId);
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ', 'LOGIST')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+  )
   @Patch(':taskId')
   async updateTask(
     @CurrentUser() user: UserDto,
@@ -157,7 +172,10 @@ export class TasksController {
     'MOV',
     'DIZ',
     'ASSISTANT',
-    'LOGIST'
+    'LOGIST',
+    'MASTER',
+    'PACKER',
+    'FRZ'
   )
   @Get(':taskId/attachments')
   async getAttachmentsByTaskId(@Param('taskId', ParseIntPipe) taskId: number) {
@@ -165,7 +183,22 @@ export class TasksController {
   }
 
   @Patch(':taskId/move')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ', 'LOGIST')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+    'MASTER',
+    'PACKER',
+    'FRZ'
+  )
   async updateTaskColumnId(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
@@ -205,7 +238,22 @@ export class TasksController {
 
   @Patch(':taskId/move-to-next-column')
   @ApiOperation({ summary: 'Переместить задачу в следующую колонку' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ', 'LOGIST')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+    'MASTER',
+    'PACKER',
+    'FRZ'
+  )
   async moveToNextColumn(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,

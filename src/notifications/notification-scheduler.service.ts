@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule'; // Импорт для cron
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from 'src/services/telegram.service';
+import { BluesalesImportService } from '../integrations/bluesales/bluesales-import.service';
 
 @Injectable()
 export class NotificationSchedulerService {
@@ -11,6 +12,7 @@ export class NotificationSchedulerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegramService: TelegramService, // Инжектим существующий сервис
+    private readonly bluesalesImport: BluesalesImportService,
   ) {}
 
   // Метод, который будет запускаться по расписанию
@@ -200,4 +202,62 @@ export class NotificationSchedulerService {
   //   }
   //   console.log('prod');
   // }
+
+  // Импорт «только новых клиентов» за прошедший день, с надёжным восстановлением пропущенных дат
+  @Cron('0 0 0 * * *', { timeZone: 'Europe/Moscow' })
+  async importNewCustomersDaily() {
+    const key = 'dailyCustomers';
+    const ymdInMoscow = (d: Date) =>
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Moscow',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(d);
+    const addDaysYmd = (ymd: string, days: number) => {
+      const [y, m, d] = ymd.split('-').map((v) => parseInt(v, 10));
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      dt.setUTCDate(dt.getUTCDate() + days);
+      const y2 = dt.getUTCFullYear();
+      const m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
+      const d2 = String(dt.getUTCDate()).padStart(2, '0');
+      return `${y2}-${m2}-${d2}`;
+    };
+
+    try {
+      // вчера по Москве
+      const now = new Date();
+      const todayMsk = ymdInMoscow(now);
+      const yesterdayMsk = addDaysYmd(todayMsk, -1);
+
+      let state = await this.prisma.crmSyncState.findUnique({ where: { key } });
+
+      // Если нет состояния — импортируем только вчерашний день
+      let startDate = state?.lastDailyImportDate
+        ? addDaysYmd(state.lastDailyImportDate, 1)
+        : yesterdayMsk;
+
+      // Нечего импортировать
+      if (startDate > yesterdayMsk) return;
+
+      // Идём по дням до вчера включительно
+      let cur = startDate;
+      while (cur <= yesterdayMsk) {
+        await this.bluesalesImport.importDay(cur);
+
+        // Обновляем прогресс после каждого дня
+        state = await this.prisma.crmSyncState.upsert({
+          where: { key },
+          update: { lastDailyImportDate: cur },
+          create: { key, lastDailyImportDate: cur },
+        });
+
+        cur = addDaysYmd(cur, 1);
+      }
+
+      this.logger.log(`Daily customers import done. Last date: ${state?.lastDailyImportDate}`);
+    } catch (e: any) {
+      this.logger.error(`Daily customers import failed: ${e?.message || e}`);
+    }
+  }
 }

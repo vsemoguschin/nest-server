@@ -18,10 +18,10 @@ export class StatisticsDayDto {
   @IsIn(ENTITIES as unknown as string[]) entity: string;
 
   // Accept both `ids` and `id` from query; normalize into `ids`
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @Transform(({ value, obj }) => value ?? obj.id)
-  ids: string; // "1,2,3"
+  ids?: string; // "1,2,3"
 
   // Optional alias to satisfy whitelist=true while allowing `id`
   @IsOptional()
@@ -60,4 +60,11 @@ export class StatisticsDayDto {
   @IsOptional() @IsString() ad_group_id_ne?: string;
   @IsOptional() @IsString() package_id?: string;
   @IsOptional() @IsString() package_id_ne?: string;
+}
+
+// Generic response type for statistics day API
+export interface StatsDayResponse<TExtra = {}> {
+  count?: number;
+  offset?: number;
+  items: Array<{ id: number | string } & TExtra & Record<string, any>>;
 }
