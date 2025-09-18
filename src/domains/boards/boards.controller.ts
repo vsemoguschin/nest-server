@@ -7,7 +7,6 @@ import {
   ParseIntPipe,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import { BoardsService } from './boards.service';
@@ -47,8 +46,9 @@ export class BoardsController {
     'ASSISTANT',
     'LOGIST',
     'MASTER',
+    'RP',
     'FRZ',
-    'PACKER'
+    'PACKER',
   )
   @Get(':id/kanban')
   async getKanban(
@@ -85,6 +85,7 @@ export class BoardsController {
     'LOGIST',
     'FRZ',
     'MASTER',
+    'RP',
     'PACKER',
   )
   @Get()
@@ -106,8 +107,9 @@ export class BoardsController {
     'ASSISTANT',
     'LOGIST',
     'MASTER',
+    'RP',
     'PACKER',
-    'FRZ'
+    'FRZ',
   )
   @Get(':id/tags')
   async getTags(

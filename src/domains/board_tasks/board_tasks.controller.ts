@@ -96,7 +96,7 @@ export class TasksController {
     'DIZ',
     'ASSISTANT',
     'LOGIST',
-    'MASTER',
+    'MASTER', 'RP',
     'PACKER',
     'FRZ',
   )
@@ -173,7 +173,7 @@ export class TasksController {
     'DIZ',
     'ASSISTANT',
     'LOGIST',
-    'MASTER',
+    'MASTER', 'RP',
     'PACKER',
     'FRZ'
   )
@@ -195,7 +195,7 @@ export class TasksController {
     'MOV',
     'DIZ',
     'LOGIST',
-    'MASTER',
+    'MASTER', 'RP',
     'PACKER',
     'FRZ'
   )
@@ -250,7 +250,7 @@ export class TasksController {
     'MOV',
     'DIZ',
     'LOGIST',
-    'MASTER',
+    'MASTER', 'RP',
     'PACKER',
     'FRZ'
   )
