@@ -3,8 +3,10 @@ import {
   Controller,
   Delete,
   Get,
+  MaxFileSizeValidator,
   NotFoundException,
   Param,
+  ParseFilePipe,
   ParseIntPipe,
   Patch,
   Post,
@@ -44,6 +46,8 @@ class UpdateCoverDto {
   @IsNotEmpty()
   path!: string;
 }
+
+const ONE_GB = 1024 * 1024 * 1024;
 
 @UseGuards(RolesGuard)
 @Controller('tasks')
@@ -96,7 +100,8 @@ export class TasksController {
     'DIZ',
     'ASSISTANT',
     'LOGIST',
-    'MASTER', 'RP',
+    'MASTER',
+    'RP',
     'PACKER',
     'FRZ',
   )
@@ -173,9 +178,10 @@ export class TasksController {
     'DIZ',
     'ASSISTANT',
     'LOGIST',
-    'MASTER', 'RP',
+    'MASTER',
+    'RP',
     'PACKER',
-    'FRZ'
+    'FRZ',
   )
   @Get(':taskId/attachments')
   async getAttachmentsByTaskId(@Param('taskId', ParseIntPipe) taskId: number) {
@@ -195,9 +201,10 @@ export class TasksController {
     'MOV',
     'DIZ',
     'LOGIST',
-    'MASTER', 'RP',
+    'MASTER',
+    'RP',
     'PACKER',
-    'FRZ'
+    'FRZ',
   )
   async updateTaskColumnId(
     @CurrentUser() user: UserDto,
@@ -250,9 +257,10 @@ export class TasksController {
     'MOV',
     'DIZ',
     'LOGIST',
-    'MASTER', 'RP',
+    'MASTER',
+    'RP',
     'PACKER',
-    'FRZ'
+    'FRZ',
   )
   async moveToNextColumn(
     @CurrentUser() user: UserDto,
@@ -392,10 +400,20 @@ export class TasksController {
 
   /** Прикрепить файл к комментарию (1:N — файл получает commentId) */
   @Post('comments/:commentId/files')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: ONE_GB }, // ← повысили лимит Multer
+      // storage: ... // ваш storage, если нужен
+    }),
+  )
   async attachFileToComment(
     @Param('commentId', ParseIntPipe) commentId: number,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: ONE_GB })],
+      }),
+    )
+    file: Express.Multer.File,
     @CurrentUser() user: UserDto,
   ) {
     if (!file) throw new NotFoundException('No file provided');

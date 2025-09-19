@@ -52,6 +52,7 @@ export class BoardsService {
                 position: true,
                 columnId: true,
                 cover: true,
+                boardId: true,
 
                 // только имена тегов
                 tags: { select: { name: true } },
@@ -126,6 +127,7 @@ export class BoardsService {
                   attachmentsLength: t._count.attachments,
                   tags: t.tags.map((x) => x.name),
                   members: t.members,
+                  boardId: t.boardId,
                   deadline:
                     t.orders.sort((a, b) =>
                       a.deadline.localeCompare(b.deadline),

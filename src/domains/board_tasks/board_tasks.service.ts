@@ -38,7 +38,9 @@ const searchSelect = {
   id: true,
   title: true,
   chatLink: true,
+  cover: true,
   board: { select: { id: true, title: true } },
+  boardId: true,
   column: { select: { id: true, title: true } },
   members: {
     select: {
@@ -370,7 +372,7 @@ export class TasksService {
     if (q.length < 2) return [];
     const userBoards = user.boards.map((b) => b.id);
 
-    return this.prisma.kanbanTask.findMany({
+    const tasks = await this.prisma.kanbanTask.findMany({
       where: {
         deletedAt: null,
         OR: [
@@ -383,9 +385,24 @@ export class TasksService {
         ],
         boardId: { in: userBoards },
       },
-      select: searchSelect,
+      select: { ...searchSelect, attachments: { select: { file: true } } },
       orderBy: { updatedAt: 'desc' },
       take: dto.take ?? 20,
+    });
+
+    return tasks.map((t) => {
+      const previewPath = t.attachments[0]?.file.path ?? '';
+      return {
+        id: t.id,
+        title: t.title,
+        board: t.board,
+        boardId: t.boardId,
+        column: t.column,
+        members: t.members,
+        chatLink: t.chatLink,
+        cover: t.cover ?? previewPath,
+        // attachments: t.attachments,
+      };
     });
   }
 
