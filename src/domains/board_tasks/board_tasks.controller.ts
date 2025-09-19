@@ -277,7 +277,7 @@ export class TasksController {
     summary:
       'Копировать задачу на другую доску (без cover), с дубликатами orders',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP')
   async copyToBoard(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
