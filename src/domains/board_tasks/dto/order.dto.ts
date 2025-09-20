@@ -35,6 +35,7 @@ export class CreateTaskOrderDto {
   @IsOptional() @IsBoolean() dimmer?: boolean;
   @IsOptional() @IsBoolean() switch?: boolean;
   @IsOptional() @IsBoolean() giftPack?: boolean;
+  @IsOptional() @IsBoolean() docs?: boolean;
   @IsOptional() @IsString() description?: string;
 
   /** Если dealId в схеме опциональный — можно передавать; если обязателен, не отправляйте или установите на бэке по умолчанию */

@@ -44,7 +44,7 @@ export class BoardsService {
             title: true,
             position: true,
             tasks: {
-              where: { deletedAt: null },
+              where: { deletedAt: null, archived: false },
               orderBy: { position: 'asc' },
               select: {
                 id: true,
@@ -95,6 +95,16 @@ export class BoardsService {
                 orders: {
                   select: {
                     deadline: true,
+                    type: true,
+                    holeType: true,
+                    fitting: true,
+                    laminate: true,
+                    acrylic: true,
+                    dimmer: true,
+                    docs: true,
+                    print: true,
+                    neons: { select: { color: true, width: true } },
+                    lightings: { select: { color: true } },
                   },
                 },
               },
@@ -104,7 +114,6 @@ export class BoardsService {
       },
     });
     if (!board) throw new NotFoundException('Board not found or access denied');
-
     return {
       id: board.id,
       title: board.title,
@@ -117,6 +126,39 @@ export class BoardsService {
             tasks: c.tasks
               .map((t) => {
                 const previewPath = t.attachments[0]?.file.path ?? '';
+                // console.log(t.cover); 
+                // build warnings from orders
+                const warningsSet = new Set<string>();
+                for (const o of t.orders ?? []) {
+                  if (o.type) warningsSet.add(o.type);
+                  if (o.holeType) warningsSet.add('Отверстия ' + o.holeType);
+                  if (
+                    o.fitting &&
+                    o.fitting.toLowerCase().includes('держатели')
+                  )
+                    warningsSet.add(o.fitting);
+                  // laminates and acrylic are strings; if present, add their values
+                  if (o.laminate) warningsSet.add(o.laminate);
+                  if (o.print) warningsSet.add('Печать');
+                  if (!o.acrylic.toLowerCase().includes('нет'))
+                    warningsSet.add('Акрил ' + o.acrylic);
+                  // booleans as 'Да'
+                  if (o.docs) warningsSet.add('Документы');
+                  if (o.dimmer) warningsSet.add('Диммер');
+                  // neons
+                  for (const n of o.neons ?? []) {
+                    const color = (n.color || '').toLowerCase();
+                    const width = (n.width || '').toLowerCase();
+                    if (color === 'rgb') warningsSet.add('РГБ');
+                    if (color === 'смарт') warningsSet.add('Смарт');
+                    if (width === '8мм') warningsSet.add('8мм неон');
+                  }
+                  // lightings
+                  for (const l of o.lightings ?? []) {
+                    const color = (l.color || '').toLowerCase();
+                    if (color === 'rgb') warningsSet.add('РГБ подсветка');
+                  }
+                }
 
                 return {
                   id: t.id,
@@ -132,9 +174,16 @@ export class BoardsService {
                     t.orders.sort((a, b) =>
                       a.deadline.localeCompare(b.deadline),
                     )[0]?.deadline || '',
+                  warnings: Array.from(warningsSet),
                 };
               })
-              .sort((a, b) => a.deadline.localeCompare(b.deadline)),
+              .sort((a, b) => {
+                const aHas = !!a.deadline;
+                const bHas = !!b.deadline;
+                if (aHas && bHas) return a.deadline.localeCompare(b.deadline);
+                if (aHas !== bHas) return aHas ? -1 : 1; // с дедлайном раньше
+                return 0; // оба без дедлайна — сохраняем позицию
+              }),
           };
         }),
       ),

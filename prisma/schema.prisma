@@ -830,6 +830,7 @@ model KanbanTask {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   deletedAt    DateTime?
+  archived     Boolean    @default(false)
   cover        String?
   chatLink     String?
 
@@ -982,6 +983,7 @@ model TaskOrder {
   giftPack       Boolean         @default(false) // Подарочная упаковка
   description    String          @default("")    // Описание
   deletedAt      DateTime?                       // Для мягкого удаления
+  docs           Boolean         @default(false) // Документы
 
   neons          Neon[]
   lightings      Lighting[]
@@ -994,8 +996,6 @@ model TaskOrder {
 
 }
 
-
-
 // НЕОН
 model Neon {
   id        Int         @id @default(autoincrement()) 
@@ -1007,7 +1007,7 @@ model Neon {
   orderTaskId   Int
   orderTask     TaskOrder       @relation(fields: [orderTaskId], references: [id])
 }
-// НЕОН
+
 model Lighting {
   id        Int         @id @default(autoincrement()) 
   length    Decimal     @default(0)// Длина неона

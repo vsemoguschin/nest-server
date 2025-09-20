@@ -21,6 +21,7 @@
     "doc": "npx typedoc --out docs src",
     "git-push": "git add . && read -p 'Commit message: ' msg && git commit -m \"$msg\" && git push origin main",
     "seed:update": "ts-node src/seeds/seed-update.ts",
+    "seed:rename-board": "ts-node src/seeds/seed-rename-board.ts",
     "prisma:deploy": "prisma db push && prisma generate"
   },
   "dependencies": {

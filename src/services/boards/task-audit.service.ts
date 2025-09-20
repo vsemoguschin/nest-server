@@ -12,6 +12,7 @@ type Action =
   | 'DEL_ATTACHMENTS'
   | 'ADD_MEMBER'
   | 'DEL_MEMBER'
+  | 'MOVE_TO_BOARD'
   | 'TASK_CREATED';
 
 export type AuditLogParams = {

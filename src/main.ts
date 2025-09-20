@@ -12,13 +12,16 @@ import { join } from 'path';
 import multer from 'multer';
 import { getSchemaPath, ApiExtraModels } from '@nestjs/swagger';
 import { ErrorResponse } from './common/errors/error.response';
+
 dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    logger: winstonLogger,
+    // logger: winstonLogger,
+    // bufferLogs: true
   });
 
+  // app.useLogger(winstonLogger); 
   app.set('trust proxy', true);
 
   app.enableCors({

@@ -39,7 +39,10 @@ export class TaskFilesService {
       return { category: 'images', ext: ext || '.bin' };
     if (mime === 'application/pdf' || ext === '.pdf')
       return { category: 'pdf', ext: '.pdf' };
-    if (mime.startsWith('video/') || ['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext))
+    if (
+      mime.startsWith('video/') ||
+      ['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext)
+    )
       return { category: 'video', ext: ext || '.mp4' };
     if (
       ext === '.cdr' ||
@@ -69,59 +72,81 @@ export class TaskFilesService {
     const directory = `boards/${boardId}/${category}`;
     const absPath = `EasyCRM/${directory}/${yaName}`;
 
-    // Загрузка на Я.Диск — используем те же эндпоинты, что и в вашем файловом сервисе
-    // 1) получить href для загрузки
-    const axios = (await import('axios')).default;
+    const axiosMod = (await import('axios')).default;
+    const http = axiosMod.create({
+      timeout: 300_000, // до 5 минут на медленные аплоады
+      maxContentLength: Infinity, // не ограничивать размер ответа
+      maxBodyLength: Infinity, // не ограничивать размер тела запроса
+    });
+
     const TOKEN = process.env.YA_TOKEN as string;
+    if (!TOKEN) throw new Error('YA_TOKEN is not set');
+    const auth = { Authorization: `OAuth ${TOKEN}` };
+
     const YD_UPLOAD = 'https://cloud-api.yandex.net/v1/disk/resources/upload';
     const YD_RES = 'https://cloud-api.yandex.net/v1/disk/resources';
 
-    // ensure base directory exists (e.g., EasyCRM/boards/{boardId}/{category})
+    // 1) ensure base directory
     const baseDir = `EasyCRM/${directory}`;
     try {
-      await axios.put(YD_RES, null, {
+      await http.put(YD_RES, null, {
         params: { path: baseDir },
-        headers: { Authorization: `OAuth ${TOKEN}` },
+        headers: auth,
       });
     } catch (e: any) {
-      // 409 (already exists) — ignore; other errors let upload try anyway
+      // 409 Already exists — игнорируем, остальные ошибки не блокируют следующую попытку
+      if (!(e?.response?.status === 409)) throw e;
     }
 
-    const up = await axios.get(YD_UPLOAD, {
+    // 2) get upload href
+    const up = await http.get(YD_UPLOAD, {
       params: { path: absPath, overwrite: true },
-      headers: { Authorization: `OAuth ${TOKEN}` },
-    });
-    await axios.put(up.data.href, file.buffer, {
-      headers: { 'Content-Type': 'application/octet-stream' },
+      headers: auth,
     });
 
-    // 2) свежие метаданные (несколько попыток, чтобы появились sizes/preview)
-    const md = await axios.get(YD_RES, {
-      params: {
-        path: absPath,
-        fields: 'name,path,size,mime_type,preview,sizes,file',
+    // 3) upload binary (важно: Content-Length и корректный Content-Type)
+    const contentLength = String(file.size ?? file.buffer?.length ?? 0);
+    await http.put(up.data.href, file.buffer, {
+      headers: {
+        'Content-Type': file.mimetype || 'application/octet-stream',
+        'Content-Length': contentLength,
       },
-      headers: { Authorization: `OAuth ${TOKEN}` },
     });
 
-    // console.log(md);
+    // 4) fetch metadata with small retry — чтобы успели появиться size/preview
+    let md: any | null = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        md = await http.get(YD_RES, {
+          params: {
+            path: absPath,
+            fields: 'name,path,size,mime_type,preview,sizes,file',
+          },
+          headers: auth,
+        });
+        if (md?.data?.size) break;
+      } catch (_) {
+        // noop — повторим
+      }
+      await new Promise((res) => setTimeout(res, 300 * (attempt + 1)));
+    }
 
     const safeName =
-      this.decodeOriginalName(file.originalname) || md.data?.name || yaName;
+      this.decodeOriginalName(file.originalname) || md?.data?.name || yaName;
 
-    // 3) запись файла в БД с привязкой к комменту
+    // 5) запись в БД
     const dbFile = await this.prisma.kanbanFile.create({
       data: {
         name: safeName,
         ya_name: yaName,
-        size: md.data?.size ?? file.size ?? 0,
-        preview: md.data?.sizes?.[0]?.url || md.data.preview || '',
+        size: md?.data?.size ?? file.size ?? 0,
+        preview: md?.data?.sizes?.[0]?.url || md?.data?.preview || '',
         directory,
         path: absPath,
-        mimeType: md.data?.mime_type || file.mimetype || null,
+        mimeType: md?.data?.mime_type || file.mimetype || null,
         uploadedById: userId,
         commentId: commentId ?? null,
-        file: md.data.file ?? '',
+        file: md?.data?.file ?? '',
       },
       select: {
         id: true,
@@ -136,7 +161,6 @@ export class TaskFilesService {
       },
     });
 
-    // Формат как ожидает фронт
     return {
       id: dbFile.id,
       name: dbFile.name,

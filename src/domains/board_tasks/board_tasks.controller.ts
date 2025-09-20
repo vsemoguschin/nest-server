@@ -1,10 +1,10 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   MaxFileSizeValidator,
-  NotFoundException,
   Param,
   ParseFilePipe,
   ParseIntPipe,
@@ -17,7 +17,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { CreateTaskDto } from './dto/create-task.dto';
-
+import * as multer from 'multer';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -37,14 +37,20 @@ import { TaskFilesService } from 'src/services/boards/task-files.service';
 import { AttachmentsService } from '../kanban/attachments/attachments.service';
 import { TaskMembersService } from '../kanban/members/members.service';
 import { SearchTasksDto } from './dto/search-tasks.dto';
+import { ListArchivedDto } from './dto/list-archived.dto';
 import { ApiBody, ApiOperation } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsString } from 'class-validator';
 import { CopyTaskToBoardDto } from './dto/copy-to-board.dto';
 
 class UpdateCoverDto {
   @IsString()
   @IsNotEmpty()
   path!: string;
+}
+
+class SetArchivedDto {
+  @IsBoolean()
+  archived!: boolean;
 }
 
 const ONE_GB = 1024 * 1024 * 1024;
@@ -70,6 +76,19 @@ export class TasksController {
   ) {
     // поиск по chatLink среди всех задач (без фильтра по доскам)
     return this.tasksService.searchByChatLink(dto, user);
+  }
+
+  @Get('archived')
+  async listArchived(
+    @CurrentUser() user: UserDto,
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    dto: ListArchivedDto,
+  ) {
+    return this.tasksService.listArchived(user, {
+      boardId: dto.boardId,
+      take: dto.take,
+      cursor: dto.cursor,
+    });
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
@@ -280,6 +299,35 @@ export class TasksController {
     return updated;
   }
 
+  // Архивировать/разархивировать карточку
+  @Patch(':taskId/archived')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+  )
+  async setArchived(
+    @CurrentUser() user: UserDto,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Body() dto: SetArchivedDto,
+  ) {
+    const task = await this.tasksService.ensureTask(taskId);
+    const updated = await this.tasksService.setArchived(
+      user.id,
+      task,
+      dto.archived,
+    );
+    return updated;
+  }
+
   @Post(':taskId/copy-to-board')
   @ApiOperation({
     summary:
@@ -301,6 +349,31 @@ export class TasksController {
       payload: { fromTaskId: taskId, toBoardId: dto.boardId },
     });
     return created;
+  }
+
+  @Post(':taskId/move-to-board')
+  @ApiOperation({ summary: 'Переместить задачу на другую доску' })
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP')
+  async moveToBoard(
+    @CurrentUser() user: UserDto,
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Body(new ValidationPipe({ transform: true, whitelist: true }))
+    dto: CopyTaskToBoardDto,
+  ) {
+    const updated = await this.tasksService.moveToBoard(user, taskId, dto);
+    await this.audit.log({
+      userId: user.id,
+      taskId: updated.id,
+      action: 'MOVE_TO_BOARD',
+      description: `Перемещено #${taskId} → доска ${dto.boardId}`,
+      payload: { taskId, toBoardId: dto.boardId },
+    });
+    await this.notify.notifyParticipants({
+      taskId: updated.id,
+      actorUserId: user.id,
+      message: `Перемещено на доску ${dto.boardId}`,
+    });
+    return updated;
   }
 
   /**
@@ -402,8 +475,8 @@ export class TasksController {
   @Post('comments/:commentId/files')
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: ONE_GB }, // ← повысили лимит Multer
-      // storage: ... // ваш storage, если нужен
+      storage: multer.memoryStorage(), // ← гарантирует file.buffer
+      limits: { fileSize: ONE_GB },
     }),
   )
   async attachFileToComment(
@@ -416,15 +489,18 @@ export class TasksController {
     file: Express.Multer.File,
     @CurrentUser() user: UserDto,
   ) {
-    if (!file) throw new NotFoundException('No file provided');
+    if (!file) throw new BadRequestException('File is required'); // ← было NotFoundException
+
     const comment = await this.comments.ensureComment(commentId);
     const task = await this.tasksService.ensureTask(comment.task.id);
+
     const dbFile = await this.filesService.uploadFile(
       file,
       user.id,
       task.boardId,
       comment.id,
     );
+
     await this.attachmentsService.create(task.id, dbFile.id);
     await this.tasksService.ensureMember(task.id, user.id);
     await this.notify.notifyParticipants({
@@ -439,6 +515,7 @@ export class TasksController {
       taskId: comment.task.id,
       action: 'ADD_ATTACHMENTS',
     });
+
     return dbFile;
   }
 
@@ -581,7 +658,7 @@ export class TasksController {
     @Body() dto: UpdateCoverDto,
   ) {
     // сервис обновит поле cover путём из dto.path и вернёт обновлённую задачу
-    const task = await this.tasksService.updateCover(id, dto.path);
+    await this.tasksService.updateCover(id, dto.path);
     return { message: 'Обложка обновлена' };
   }
 }

@@ -204,7 +204,7 @@ export class NotificationSchedulerService {
   // }
 
   // Импорт «только новых клиентов» за прошедший день, с надёжным восстановлением пропущенных дат
-  @Cron('0 0 0 * * *', { timeZone: 'Europe/Moscow' })
+  @Cron('0 59 23 * * *', { timeZone: 'Europe/Moscow' })
   async importNewCustomersDaily() {
     const key = 'dailyCustomers';
     const ymdInMoscow = (d: Date) =>

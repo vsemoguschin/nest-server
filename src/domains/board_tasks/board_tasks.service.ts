@@ -73,6 +73,21 @@ export class TasksService {
     return task;
   }
 
+  /** Установить флаг архивации */
+  async setArchived(
+    userId: number,
+    task: { id: number; boardId: number },
+    archived: boolean,
+  ) {
+    await this.assertBoardAccess(userId, task.boardId);
+    const updated = await this.prisma.kanbanTask.update({
+      where: { id: task.id },
+      data: { archived },
+      select: { id: true, archived: true, updatedAt: true },
+    });
+    return updated;
+  }
+
   /** убеждаемся, что колонка принадлежит этой доске и не удалена */
   async ensureTaskColumn(columnId: number) {
     const column = await this.prisma.column.findFirst({
@@ -124,15 +139,14 @@ export class TasksService {
         },
         // берем только zip-вложения
         attachments: {
-          // include: {
-          //   file: true,
-          // },
+          // берём только последний загруженный .cdr
           where: { file: { path: { endsWith: '.cdr' } } },
           select: { fileId: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
         },
       },
     });
-    console.log(srcTask?.attachments);
     if (!srcTask) throw new NotFoundException('Task not found');
 
     const board = await this.prisma.board.findFirst({
@@ -160,7 +174,7 @@ export class TasksService {
           title: srcTask.title,
           description: '',
           chatLink: srcTask.chatLink,
-          cover: srcTask.cover,
+          cover: null,
           position,
           boardId: targetColumn.boardId,
           columnId: targetColumn.id,
@@ -198,6 +212,7 @@ export class TasksService {
             dimmer: order.dimmer ?? false,
             giftPack: order.giftPack ?? false,
             description: order.description ?? '',
+            docs: (order as any).docs ?? false,
 
             neons:
               (order.neons?.length ?? 0)
@@ -227,33 +242,104 @@ export class TasksService {
         });
       }
 
-      // Привяжем zip-вложения (не создаем новые файлы, просто коннектим тот же fileId)
+      // Соберём файлы для переноса в новую карточку: все .cdr вложения + файл из cover (если есть)
+      const cdrFileIds: number[] = [];
       if (srcTask.attachments && srcTask.attachments.length) {
-        await tx.kanbanTaskAttachment.createMany({
-          data: srcTask.attachments.map((a) => ({
-            taskId: created.id,
-            fileId: a.fileId,
-          })),
-          skipDuplicates: true,
-        });
+        for (const a of srcTask.attachments) cdrFileIds.push(a.fileId);
       }
-
-      // Если у исходной задачи есть cover — прикрепим соответствующий файл к новой задаче
+      let coverFileId: number | null = null;
       if (srcTask.cover) {
         const coverFile = await tx.kanbanFile.findFirst({
           where: { path: srcTask.cover, deletedAt: null },
           select: { id: true },
         });
         if (coverFile) {
-          await tx.kanbanTaskAttachment.createMany({
-            data: [{ taskId: created.id, fileId: coverFile.id }],
-            skipDuplicates: true,
-          });
+          coverFileId = coverFile.id;
         }
+      }
+
+      // 1) прикрепим как вложения к задаче (сумма всех файлов)
+      const toAttach = [...cdrFileIds, ...(coverFileId ? [coverFileId] : [])];
+      if (toAttach.length) {
+        await tx.kanbanTaskAttachment.createMany({
+          data: toAttach.map((fid) => ({ taskId: created.id, fileId: fid })),
+          skipDuplicates: true,
+        });
+      }
+
+      // 2) создадим отдельные комментарии: один для изображения cover, другой для .cdr файлов
+      if (coverFileId) {
+        const coverComment = await tx.kanbanTaskComments.create({
+          data: {
+            taskId: created.id,
+            authorId: user.id,
+            text: '',
+          },
+          select: { id: true },
+        });
+        await tx.kanbanFile.update({
+          where: { id: coverFileId },
+          data: { commentId: coverComment.id },
+          select: { id: true },
+        });
+      }
+      if (cdrFileIds.length) {
+        const cdrComment = await tx.kanbanTaskComments.create({
+          data: {
+            taskId: created.id,
+            authorId: user.id,
+            text: 'Макет',
+          },
+          select: { id: true },
+        });
+        await tx.kanbanFile.updateMany({
+          where: { id: { in: cdrFileIds } },
+          data: { commentId: cdrComment.id },
+        });
       }
 
       return created;
     });
+  }
+
+  /**
+   * Переместить задачу на другую доску: меняем boardId, назначаем первую колонку целевой доски,
+   * ставим задачу в конец этой колонки (nextPosition). Вложения, метки, заказы и участники сохраняются.
+   */
+  async moveToBoard(user: UserDto, taskId: number, dto: { boardId: number }) {
+    const srcTask = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: { id: true, boardId: true, columnId: true, title: true },
+    });
+    if (!srcTask) throw new NotFoundException('Task not found');
+
+    const board = await this.prisma.board.findFirst({
+      where: { id: dto.boardId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!board) throw new NotFoundException('Target board not found');
+
+    const targetColumn = await this.prisma.column.findFirst({
+      where: { boardId: dto.boardId, deletedAt: null },
+      orderBy: { position: 'asc' },
+      select: { id: true, boardId: true },
+    });
+    if (!targetColumn)
+      throw new NotFoundException('Target column not found on board');
+
+    const position = await this.nextPosition(targetColumn.boardId, targetColumn.id);
+
+    const updated = await this.prisma.kanbanTask.update({
+      where: { id: taskId },
+      data: {
+        boardId: targetColumn.boardId,
+        columnId: targetColumn.id,
+        position,
+      },
+      select: { id: true, title: true, boardId: true, columnId: true, position: true },
+    });
+
+    return updated;
   }
 
   async create(user: UserDto, dto: CreateTaskDto, boardId: number) {
@@ -351,6 +437,7 @@ export class TasksService {
       members: task.members,
       attachmentsLength: task.attachments.length,
       cover: task.cover,
+      archived: task.archived,
 
       comments: [],
       audits: [],
@@ -404,6 +491,84 @@ export class TasksService {
         // attachments: t.attachments,
       };
     });
+  }
+
+  /**
+   * Список архивированных задач пользователя по его доскам.
+   * Возвращает тот же набор полей, что и searchByChatLink.
+   */
+  async listArchived(
+    user: UserDto,
+    params: { boardId: number; take?: number; cursor?: string },
+  ): Promise<{ items: SearchTaskItem[]; nextCursor: string | null }> {
+    const userBoards = user.boards.map((b) => b.id);
+    const take = params.take ?? 30;
+    const boardId = params.boardId;
+
+    // decode cursor if provided
+    let cursorData: { id: number; updatedAt: string } | null = null;
+    if (params.cursor) {
+      try {
+        const json = Buffer.from(params.cursor, 'base64').toString('utf-8');
+        cursorData = JSON.parse(json);
+      } catch {
+        cursorData = null;
+      }
+    }
+
+    const where: any = {
+      deletedAt: null,
+      archived: true,
+      boardId: { in: userBoards, equals: boardId },
+    };
+
+    if (cursorData) {
+      const dt = new Date(cursorData.updatedAt);
+      where.OR = [
+        { updatedAt: { lt: dt } },
+        { updatedAt: dt, id: { lt: cursorData.id } },
+      ];
+    }
+
+    // fetch take+1 to detect next page
+    const rows = await this.prisma.kanbanTask.findMany({
+      where,
+      select: {
+        ...searchSelect,
+        attachments: { select: { file: true } },
+        updatedAt: true,
+        id: true,
+      },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: take + 1,
+    });
+
+    const hasMore = rows.length > take;
+    const slice = hasMore ? rows.slice(0, take) : rows;
+
+    const items: SearchTaskItem[] = slice.map((t) => {
+      const previewPath = (t as any).attachments?.[0]?.file?.path ?? '';
+      return {
+        id: t.id,
+        title: t.title,
+        board: t.board,
+        boardId: t.boardId,
+        column: t.column,
+        members: t.members,
+        chatLink: t.chatLink,
+        cover: t.cover ?? previewPath,
+      } as SearchTaskItem;
+    });
+
+    let nextCursor: string | null = null;
+    if (hasMore) {
+      const last = slice[slice.length - 1] as any;
+      nextCursor = Buffer.from(
+        JSON.stringify({ id: last.id, updatedAt: last.updatedAt.toISOString() }),
+      ).toString('base64');
+    }
+
+    return { items, nextCursor };
   }
 
   /**Редактировать основную информацию задачи */
@@ -794,7 +959,7 @@ export class TasksService {
   /** Создать для задачи */
   async createOrderForTask(taskId: number, dto: CreateTaskOrderDto) {
     await this.ensureTask(taskId);
-    console.log(dto);
+    // console.log(dto);
 
     // дефолты / нормализация
     const {

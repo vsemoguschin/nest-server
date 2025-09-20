@@ -24,7 +24,20 @@ export class ColumnsController {
   constructor(private readonly columnsService: ColumnsService) {}
 
   // Получить колонки конкретной доски
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'LOGIST',
+    'MASTER',
+    'PACKER',
+    'RP',
+    'DP',
+  )
   @Get()
   async list(
     @CurrentUser() user: UserDto,
@@ -34,17 +47,14 @@ export class ColumnsController {
   }
 
   // Создать колонку в доске
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'LOGIST')
   @Post()
-  async create(
-    @CurrentUser() user: UserDto,
-    @Body() dto: CreateColumnDto,
-  ) {
+  async create(@CurrentUser() user: UserDto, @Body() dto: CreateColumnDto) {
     return this.columnsService.create(user.id, dto);
   }
 
   // Обновить колонку (название/позицию)
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'LOGIST')
   @Patch(':id')
   async update(
     @CurrentUser() user: UserDto,
@@ -55,7 +65,7 @@ export class ColumnsController {
   }
 
   // Удалить (soft) колонку
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'LOGIST')
   @Delete(':id')
   async remove(
     @CurrentUser() user: UserDto,
