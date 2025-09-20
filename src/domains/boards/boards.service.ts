@@ -126,7 +126,7 @@ export class BoardsService {
             tasks: c.tasks
               .map((t) => {
                 const previewPath = t.attachments[0]?.file.path ?? '';
-                // console.log(t.cover); 
+                // console.log(t.cover);
                 // build warnings from orders
                 const warningsSet = new Set<string>();
                 for (const o of t.orders ?? []) {
@@ -139,7 +139,7 @@ export class BoardsService {
                     warningsSet.add(o.fitting);
                   // laminates and acrylic are strings; if present, add their values
                   if (o.laminate) warningsSet.add(o.laminate);
-                  if (o.print) warningsSet.add('Печать');
+                  if (o.print) warningsSet.add('Цветная подложка');
                   if (!o.acrylic.toLowerCase().includes('нет'))
                     warningsSet.add('Акрил ' + o.acrylic);
                   // booleans as 'Да'
