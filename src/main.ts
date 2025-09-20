@@ -21,7 +21,7 @@ async function bootstrap() {
     // bufferLogs: true
   });
 
-  // app.useLogger(winstonLogger); 
+  // app.useLogger(winstonLogger);
   app.set('trust proxy', true);
 
   app.enableCors({
@@ -33,8 +33,15 @@ async function bootstrap() {
       'https://front.easy-crm.pro',
     ], // Разрешаем доступ с localhost:3001
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Разрешаем HTTP-методы
-    allowedHeaders: 'Content-Type, Authorization', // Разрешаем заголовки
     credentials: true, // Разрешаем передачу cookies и аутентификационных данных
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
+    exposedHeaders: ['Content-Length', 'ETag'],
   });
 
   app.setGlobalPrefix('vsemo');
@@ -65,7 +72,7 @@ async function bootstrap() {
     extraModels: [ErrorResponse],
   });
   SwaggerModule.setup('api-docs', app, document);
-  
+
   const httpAdapter = app.getHttpAdapter();
 
   httpAdapter.get('/api-json', (req, res) => {
