@@ -403,9 +403,7 @@ export class VkAdsService {
   // Specialized version of getV3Day for ad_plans (entity is implicit)
   async getAdPlansDay(
     q: StatisticsDayAdPlansDto,
-  ): Promise<
-    StatsDayResponse<{ status?: string; name?: string; spent_nds?: number }>
-  > {
+  ): Promise<StatsDayResponse<{ status?: string; name?: string }>> {
     const url = `/api/v3/statistics/ad_plans/day.json`;
     // const { data } = await this.http.get(url, {
     // });
@@ -461,35 +459,22 @@ export class VkAdsService {
         });
       }
 
-      // Enrich each item with ad plan status, name and computed spent_nds
+      // Enrich each item with ad plan status and name when applicable
       if (Array.isArray((data as any)?.items)) {
         for (const it of (data as any).items as Array<{
           id: number | string;
           status?: string;
           name?: string;
-          spent_nds?: number;
         }>) {
           const idNum = typeof it?.id === 'number' ? it.id : Number(it?.id);
           if (!Number.isNaN(idNum)) {
             if (adPlanStatuses && adPlanStatuses[idNum])
               it.status = adPlanStatuses[idNum];
             if (adPlanNames && adPlanNames[idNum]) it.name = adPlanNames[idNum];
-            // Calculate spent_nds = spent * 1.2 (fallback to spend)
-            try {
-              const rawSpent =
-                Number((it as any)?.total?.base?.spent ?? (it as any)?.total?.base?.spend ?? 0) || 0;
-              it.spent_nds = Number((rawSpent * 1.2).toFixed(2));
-            } catch {
-              it.spent_nds = 0;
-            }
           }
         }
       }
-      return data as StatsDayResponse<{
-        status?: string;
-        name?: string;
-        spent_nds?: number;
-      }>;
+      return data as StatsDayResponse<{ status?: string; name?: string }>;
     } catch (e) {
       this.handleError(e);
     }
@@ -647,26 +632,27 @@ export class VkAdsService {
       if (uniqueRefs.size) {
         const refs = Array.from(uniqueRefs);
         const allowedStatusExternalIds = [
-          '9',
-          '51422',
-          '1185',
-          '328',
-          '5879',
-          '1919',
-          '419',
-          '4355',
-          '1721',
-          '4443',
-          '4135',
-          '26',
-          '5761',
-          '1960',
-          '27452',
-          '200',
+          'Макет нарисован', //9
+          'ХОЧЕТ КУПИТЬ', //51422
+          'Бизнес макет', //1185
+          'Личный контакт', //328
+          'Ожидаем предоплату', //5879
+          'Бронь цены', //1919
+          'Предоплата получена', //419
+          'Заказ оплачен полностью', //4355
+          'Заказ отправлен', //1721
+          'Не оплачивает', //4443
+          'Ждем отзыв', //4135
+          'Постоянник', //26
+          'Постоянник (начало)', //5761
+          'Постоянник (макет)', //1960
+          'Постоянник (хочет)', //27452
+          'Проблемный клиент', //200
+          'Заказ доставлен',
         ];
 
         const statusRows = await this.prisma.crmStatus.findMany({
-          where: { id: { in: allowedStatusExternalIds.map((i) => +i) } },
+          where: { name: { in: allowedStatusExternalIds } },
           select: { id: true },
         });
         const allowedStatusIds = statusRows.map((s) => s.id);
@@ -797,13 +783,19 @@ export class VkAdsService {
             // Compute spent_nds (spent * 1.2) and maketPrice = spent_nds / makets
             try {
               const rawSpent =
-                Number((it as any)?.total?.base?.spent ?? (it as any)?.total?.base?.spend ?? 0) || 0;
+                Number(
+                  (it as any)?.total?.base?.spent ??
+                    (it as any)?.total?.base?.spend ??
+                    0,
+                ) || 0;
               const spentNds = rawSpent * 1.2;
               it.spent_nds = Number(spentNds.toFixed(2));
             } catch {
               it.spent_nds = 0;
             }
-            it.maketPrice = it.makets ? Number(((it.spent_nds || 0) / it.makets).toFixed(2)) : 0;
+            it.maketPrice = it.makets
+              ? Number(((it.spent_nds || 0) / it.makets).toFixed(2))
+              : 0;
             // Attach ad expenses total for the date range and DRR = adExpenses/dealsPrice*100
             it.adExpenses = adExpensesTotal;
             it.drr = it.dealsPrice

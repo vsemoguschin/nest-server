@@ -105,130 +105,163 @@ async function getCustomersPage(
 }
 
 async function upsertReferenceData(c: ApiCustomer) {
-  // Upsert reference tables and return their IDs
+  // Reference tables: if a row exists by externalId — reuse id without updating; otherwise create
+  const getOrCreate = async <T extends { id: number }>(
+    find: () => Promise<T | null>,
+    create: () => Promise<T>,
+  ) => {
+    const existing = await find();
+    if (existing) return existing.id;
+    const created = await create();
+    return created.id;
+  };
+
   const countryId = c.country
-    ? (
-        await prisma.crmCountry.upsert({
-          where: { externalId: String(c.country.id) },
-          update: { name: c.country.name },
-          create: { externalId: String(c.country.id), name: c.country.name },
-        })
-      ).id
+    ? await getOrCreate(
+        () =>
+          prisma.crmCountry.findUnique({
+            where: { externalId: String(c.country!.id) },
+            select: { id: true },
+          }),
+        () =>
+          prisma.crmCountry.create({
+            data: { externalId: String(c.country!.id), name: c.country!.name },
+            select: { id: true },
+          }),
+      )
     : null;
 
   const cityId = c.city
-    ? (
-        await prisma.crmCity.upsert({
-          where: { externalId: String(c.city.id) },
-          update: { name: c.city.name },
-          create: { externalId: String(c.city.id), name: c.city.name },
-        })
-      ).id
+    ? await getOrCreate(
+        () =>
+          prisma.crmCity.findUnique({
+            where: { externalId: String(c.city!.id) },
+            select: { id: true },
+          }),
+        () =>
+          prisma.crmCity.create({
+            data: { externalId: String(c.city!.id), name: c.city!.name },
+            select: { id: true },
+          }),
+      )
     : null;
 
   const crmStatusId = c.crmStatus
-    ? (
-        await prisma.crmStatus.upsert({
-          where: { externalId: String(c.crmStatus.id) },
-          update: {
-            name: c.crmStatus.name,
-            color: c.crmStatus.color,
-            type: c.crmStatus.type,
-          },
-          create: {
-            externalId: String(c.crmStatus.id),
-            name: c.crmStatus.name,
-            color: c.crmStatus.color,
-            type: c.crmStatus.type,
-          },
-        })
-      ).id
+    ? await getOrCreate(
+        () =>
+          prisma.crmStatus.findUnique({
+            where: { externalId: String(c.crmStatus!.id) },
+            select: { id: true },
+          }),
+        () =>
+          prisma.crmStatus.create({
+            data: {
+              externalId: String(c.crmStatus!.id),
+              name: c.crmStatus!.name,
+              color: c.crmStatus!.color,
+              type: c.crmStatus!.type,
+            },
+            select: { id: true },
+          }),
+      )
     : null;
 
   const sourceId = c.source
-    ? (
-        await prisma.crmSource.upsert({
-          where: { externalId: String(c.source.id) },
-          update: { name: c.source.name },
-          create: { externalId: String(c.source.id), name: c.source.name },
-        })
-      ).id
+    ? await getOrCreate(
+        () =>
+          prisma.crmSource.findUnique({
+            where: { externalId: String(c.source!.id) },
+            select: { id: true },
+          }),
+        () =>
+          prisma.crmSource.create({
+            data: { externalId: String(c.source!.id), name: c.source!.name },
+            select: { id: true },
+          }),
+      )
     : null;
 
   const salesChannelId = c.salesChannel
-    ? (
-        await prisma.crmSalesChannel.upsert({
-          where: { externalId: String(c.salesChannel.id) },
-          update: { name: c.salesChannel.name, code: c.salesChannel.code },
-          create: {
-            externalId: String(c.salesChannel.id),
-            name: c.salesChannel.name,
-            code: c.salesChannel.code,
-          },
-        })
-      ).id
+    ? await getOrCreate(
+        () =>
+          prisma.crmSalesChannel.findUnique({
+            where: { externalId: String(c.salesChannel!.id) },
+            select: { id: true },
+          }),
+        () =>
+          prisma.crmSalesChannel.create({
+            data: {
+              externalId: String(c.salesChannel!.id),
+              name: c.salesChannel!.name,
+              code: c.salesChannel!.code,
+            },
+            select: { id: true },
+          }),
+      )
     : null;
 
   const managerId = c.manager
-    ? (
-        await prisma.crmManager.upsert({
-          where: { externalId: String(c.manager.id) },
-          update: {
-            fullName: c.manager.fullName,
-            email: c.manager.email || '',
-            login: c.manager.login || '',
-            phone: c.manager.phone || '',
-            vk: c.manager.vk || null,
-            lastLoginDate: c.manager.lastLoginDate || '',
-            lastActivityDate: c.manager.lastActivityDate || '',
-            isActive: Boolean(c.manager.isActive),
-            permissions: c.manager.permissionsSettings ?? undefined,
-          },
-          create: {
-            externalId: String(c.manager.id),
-            fullName: c.manager.fullName,
-            email: c.manager.email || '',
-            login: c.manager.login || '',
-            phone: c.manager.phone || '',
-            vk: c.manager.vk || null,
-            lastLoginDate: c.manager.lastLoginDate || '',
-            lastActivityDate: c.manager.lastActivityDate || '',
-            isActive: Boolean(c.manager.isActive),
-            permissions: c.manager.permissionsSettings ?? undefined,
-          },
-        })
-      ).id
+    ? await getOrCreate(
+        () =>
+          prisma.crmManager.findUnique({
+            where: { externalId: String(c.manager!.id) },
+            select: { id: true },
+          }),
+        () =>
+          prisma.crmManager.create({
+            data: {
+              externalId: String(c.manager!.id),
+              fullName: c.manager!.fullName,
+              email: c.manager!.email || '',
+              login: c.manager!.login || '',
+              phone: c.manager!.phone || '',
+              vk: c.manager!.vk || null,
+              lastLoginDate: c.manager!.lastLoginDate || '',
+              lastActivityDate: c.manager!.lastActivityDate || '',
+              isActive: Boolean(c.manager!.isActive),
+              permissions: c.manager!.permissionsSettings ?? undefined,
+            },
+            select: { id: true },
+          }),
+      )
     : null;
 
   const vkId = c.vk
-    ? (
-        await prisma.crmVk.upsert({
-          where: { externalId: String(c.vk.id) },
-          update: {
-            name: c.vk.name,
-            messagesGroupId: c.vk.messagesGroupId || '',
-          },
-          create: {
-            externalId: String(c.vk.id),
-            name: c.vk.name,
-            messagesGroupId: c.vk.messagesGroupId || '',
-          },
-        })
-      ).id
+    ? await getOrCreate(
+        () =>
+          prisma.crmVk.findUnique({
+            where: { externalId: String(c.vk!.id) },
+            select: { id: true },
+          }),
+        () =>
+          prisma.crmVk.create({
+            data: {
+              externalId: String(c.vk!.id),
+              name: c.vk!.name,
+              messagesGroupId: c.vk!.messagesGroupId || '',
+            },
+            select: { id: true },
+          }),
+      )
     : null;
 
   const avitoId = c.avito
-    ? (
-        await prisma.crmAvito.upsert({
-          where: { externalId: String(c.avito.id) },
-          update: { name: c.avito.name, chatId: c.avito.chatId || '' },
-          create: {
-            externalId: String(c.avito.id),
-            name: c.avito.name,
-            chatId: c.avito.chatId || '',
-          },
-        })
-      ).id
+    ? await getOrCreate(
+        () =>
+          prisma.crmAvito.findUnique({
+            where: { externalId: String(c.avito!.id) },
+            select: { id: true },
+          }),
+        () =>
+          prisma.crmAvito.create({
+            data: {
+              externalId: String(c.avito!.id),
+              name: c.avito!.name,
+              chatId: c.avito!.chatId || '',
+            },
+            select: { id: true },
+          }),
+      )
     : null;
 
   return {
@@ -246,81 +279,71 @@ async function upsertReferenceData(c: ApiCustomer) {
 async function upsertCustomer(c: ApiCustomer) {
   const refs = await upsertReferenceData(c);
 
-  // Upsert customer core
-  const customer = await prisma.crmCustomer.upsert({
+  // If customer exists by externalId — reuse and skip updating fields
+  const existing = await prisma.crmCustomer.findUnique({
     where: { externalId: String(c.id) },
-    update: {
-      fullName: c.fullName,
-      photoUrl: c.photoUrl || '',
-      birthday: c.birthday || '',
-      sex: c.sex || '',
-      phone: c.phone || '',
-      email: c.email || '',
-      address: c.address || '',
-      otherContacts: c.otherContacts || '',
-      firstContactDate: c.firstContactDate || '',
-      lastContactDate: c.lastContactDate || '',
-      nextContactDate: c.nextContactDate || '',
-      shortNotes: c.shortNotes || '',
-      comments: c.comments || '',
-      countryId: refs.countryId,
-      cityId: refs.cityId,
-      crmStatusId: refs.crmStatusId,
-      sourceId: refs.sourceId,
-      salesChannelId: refs.salesChannelId,
-      managerId: refs.managerId,
-      vkId: refs.vkId,
-      avitoId: refs.avitoId,
-    },
-    create: {
-      externalId: String(c.id),
-      fullName: c.fullName,
-      photoUrl: c.photoUrl || '',
-      birthday: c.birthday || '',
-      sex: c.sex || '',
-      phone: c.phone || '',
-      email: c.email || '',
-      address: c.address || '',
-      otherContacts: c.otherContacts || '',
-      firstContactDate: c.firstContactDate || '',
-      lastContactDate: c.lastContactDate || '',
-      nextContactDate: c.nextContactDate || '',
-      shortNotes: c.shortNotes || '',
-      comments: c.comments || '',
-      countryId: refs.countryId ?? undefined,
-      cityId: refs.cityId ?? undefined,
-      crmStatusId: refs.crmStatusId ?? undefined,
-      sourceId: refs.sourceId ?? undefined,
-      salesChannelId: refs.salesChannelId ?? undefined,
-      managerId: refs.managerId ?? undefined,
-      vkId: refs.vkId ?? undefined,
-      avitoId: refs.avitoId ?? undefined,
-    },
+    select: { id: true },
   });
 
-  // Upsert tags and link
-  if (Array.isArray(c.tags) && c.tags.length) {
-    for (const t of c.tags) {
-      const tag = await prisma.crmTag.upsert({
-        where: { externalId: String(t.id) },
-        update: {
-          name: t.name,
-          color: t.color || '',
-          textColor: t.textColor || '',
+  const customer = existing
+    ? { id: existing.id }
+    : await prisma.crmCustomer.create({
+        data: {
+          externalId: String(c.id),
+          fullName: c.fullName,
+          photoUrl: c.photoUrl || '',
+          birthday: c.birthday || '',
+          sex: c.sex || '',
+          phone: c.phone || '',
+          email: c.email || '',
+          address: c.address || '',
+          otherContacts: c.otherContacts || '',
+          firstContactDate: c.firstContactDate || '',
+          lastContactDate: c.lastContactDate || '',
+          nextContactDate: c.nextContactDate || '',
+          shortNotes: c.shortNotes || '',
+          comments: c.comments || '',
+          countryId: refs.countryId ?? undefined,
+          cityId: refs.cityId ?? undefined,
+          crmStatusId: refs.crmStatusId ?? undefined,
+          sourceId: refs.sourceId ?? undefined,
+          salesChannelId: refs.salesChannelId ?? undefined,
+          managerId: refs.managerId ?? undefined,
+          vkId: refs.vkId ?? undefined,
+          avitoId: refs.avitoId ?? undefined,
         },
-        create: {
-          externalId: String(t.id),
-          name: t.name,
-          color: t.color || '',
-          textColor: t.textColor || '',
-        },
+        select: { id: true },
       });
 
-      await prisma.crmCustomerTag.upsert({
-        where: { customerId_tagId: { customerId: customer.id, tagId: tag.id } },
-        update: {},
-        create: { customerId: customer.id, tagId: tag.id },
+  // Tags: ensure tag exists (no update if exists) and ensure link exists
+  if (Array.isArray(c.tags) && c.tags.length) {
+    for (const t of c.tags) {
+      const tagExisting = await prisma.crmTag.findUnique({
+        where: { externalId: String(t.id) },
+        select: { id: true },
       });
+      const tagId = tagExisting
+        ? tagExisting.id
+        : (
+            await prisma.crmTag.create({
+              data: {
+                externalId: String(t.id),
+                name: t.name,
+                color: t.color || '',
+                textColor: t.textColor || '',
+              },
+              select: { id: true },
+            })
+          ).id;
+
+      const link = await prisma.crmCustomerTag.findUnique({
+        where: { customerId_tagId: { customerId: customer.id, tagId } },
+        select: { customerId: true, tagId: true },
+      });
+      if (!link)
+        await prisma.crmCustomerTag.create({
+          data: { customerId: customer.id, tagId },
+        });
     }
   }
 }
@@ -390,7 +413,6 @@ async function importMonth(fromYmd: string, tillYmd: string) {
         (BLUESALES_THROTTLE_MS || 500) * Math.pow(2, Math.min(retries, 5)),
       );
       const status = e?.response?.status;
-      console.log(e?.response?.data);
       if (status === 400) {
         // Часто 400 у этого API = нет данных в заданном диапазоне.
         if (start === 0) {
@@ -419,7 +441,10 @@ async function importMonth(fromYmd: string, tillYmd: string) {
   }
 }
 
-async function importRangeByMonths(from: string, till: string) {
+async function importAllCustomers() {
+  const from = process.env.BLUESALES_FULL_FROM || '2023-01-01';
+  const till = process.env.BLUESALES_FULL_TILL || '2025-09-28';
+
   // идём по месяцам, чтобы не упираться в возможные ограничения offset
   let cur = from.slice(0, 7) + '-01';
   while (cur <= till) {
@@ -435,79 +460,8 @@ async function importRangeByMonths(from: string, till: string) {
   }
 }
 
-function ymdInMoscow(d: Date) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Moscow',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d);
-}
-
-function firstDayOfMonth(ymd: string) {
-  return ymd.slice(0, 7) + '-01';
-}
-
-function addMonthsYmd(ymd: string, months: number) {
-  const [y, m, d] = ymd.split('-').map((v) => parseInt(v, 10));
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCMonth(dt.getUTCMonth() + months);
-  const y2 = dt.getUTCFullYear();
-  const m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
-  const d2 = String(dt.getUTCDate()).padStart(2, '0');
-  return `${y2}-${m2}-${d2}`;
-}
-
 async function main() {
-  // Можно явно выбрать фазу одной из опций ниже.
-  // Если не выбрано — выполняется последовательный запуск: recent → full (без перекрытия дат).
-  //   --phase=recent | --phase=full
-  //   BLUESALES_PHASE=recent|full
-  const argPhase = process.argv
-    .find((a) => a.startsWith('--phase='))
-    ?.split('=')[1];
-  const envPhase = process.env.BLUESALES_PHASE;
-  const explicitPhase = (argPhase || envPhase || '').toLowerCase();
-
-  const todayMsk = ymdInMoscow(new Date());
-
-  const runRecent = async () => {
-    const threeMonthsAgo = addMonthsYmd(todayMsk, -3);
-    const from = firstDayOfMonth(threeMonthsAgo);
-    const till = todayMsk;
-    console.log(`\n[PHASE=recent] Importing last 3 months: ${from} .. ${till}`);
-    await importRangeByMonths(from, till);
-    return { from, till };
-  };
-
-  const runFull = async (recentFrom?: string) => {
-    const fullFrom = process.env.BLUESALES_FULL_FROM || '2023-01-01';
-    // Чтобы не дублировать работу, ограничим full до дня перед recentFrom (если он задан)
-    const rawFullTill = process.env.BLUESALES_FULL_TILL || todayMsk;
-    const fullTill = recentFrom ? addDaysYmd(recentFrom, -1) : rawFullTill;
-
-    if (fullTill < fullFrom) {
-      console.log(`\n[PHASE=full] Skipped: fullTill(${fullTill}) < fullFrom(${fullFrom}).`);
-      return { from: fullFrom, till: fullTill, skipped: true } as const;
-    }
-
-    console.log(`\n[PHASE=full] Importing full range: ${fullFrom} .. ${fullTill}`);
-    await importRangeByMonths(fullFrom, fullTill);
-    return { from: fullFrom, till: fullTill } as const;
-  };
-
-  if (explicitPhase === 'recent') {
-    await runRecent();
-    return;
-  }
-  if (explicitPhase === 'full') {
-    await runFull();
-    return;
-  }
-
-  // По умолчанию: сначала последние 3 месяца, затем «всё остальное» с 2023-01-01 до дня перед recent-окном
-  const recent = await runRecent();
-  await runFull(recent.from);
+  await importAllCustomers();
 }
 
 main()

@@ -1005,7 +1005,7 @@ export class TasksService {
 
   /** Обновить (полная замена массивов неонов/подсветок) */
   async updateOrder(orderId: number, dto: UpdateTaskOrderDto) {
-    console.log(dto);
+    // console.log(dto);
     const ex = await this.prisma.taskOrder.findFirst({
       where: { id: orderId, deletedAt: null },
       select: { id: true },
