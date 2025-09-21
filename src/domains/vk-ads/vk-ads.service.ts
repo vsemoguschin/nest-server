@@ -1,8 +1,13 @@
 import axios, { AxiosInstance } from 'axios';
 import { Injectable, HttpException } from '@nestjs/common';
-import { StatsDayResponse } from './dto/statistics-day.dto';
-import { AdPlan, AdPlansListResponse } from './dto/ad-plans.dto';
-import { AdGroupsListResponse } from './dto/ad-groups.dto';
+import {
+  StatisticsDayAdPlansDto,
+  StatisticsDayGroupsDto,
+  StatsDayResponse,
+} from './dto/statistics-day.dto';
+import { AdPlan } from './dto/ad-plans.dto';
+import { PrismaService } from '../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 type VkError = { error?: { message?: string; code?: string } };
 
@@ -28,12 +33,148 @@ export class VkAdsService {
 
   private readonly VK_ADS_API_HOST = process.env.VK_ADS_API_HOST;
 
-  constructor() {
+  // In-memory cache and helpers for heavy operations
+  private cache = new Map<string, { ts: number; ttl: number; value: any }>();
+  private readonly DEFAULT_TTL = 2 * 60 * 1000; // 2 minutes
+  private inflight = new Map<string, Promise<any>>();
+
+  constructor(private readonly prisma: PrismaService) {
     this.http = axios.create({
       baseURL: this.VK_ADS_API_HOST,
       headers: { Authorization: `Bearer ${this.VK_ADS_TOKEN}` },
       timeout: 20000,
     });
+  }
+  private async getAllAdPlanIdsCsv(statusesFilter?: string[]): Promise<{
+    idsCsv: string;
+    statusById: Record<number, string>;
+    nameById: Record<number, string>;
+  }> {
+    const limit = 250;
+    const statuses =
+      statusesFilter && statusesFilter.length
+        ? statusesFilter
+        : ['active', 'blocked', 'deleted'];
+    const ids: number[] = [];
+    const statusById: Record<number, string> = {};
+    const nameById: Record<number, string> = {};
+    try {
+      const cacheKey = ['ids', 'ad_plans', ...statuses].join('|');
+      const cached = this.getCache<{
+        ids: number[];
+        statusById: Record<number, string>;
+        nameById: Record<number, string>;
+      }>(cacheKey);
+      if (cached)
+        return {
+          idsCsv: cached.ids.join(','),
+          statusById: cached.statusById,
+          nameById: cached.nameById,
+        };
+      for (const st of statuses) {
+        let offset = 0;
+        let total = Infinity;
+        while (offset < total) {
+          const data = await this.getWithRetry(`/api/v2/ad_plans.json`, {
+            limit,
+            offset,
+            _status: st,
+          });
+          // console.log(data);
+          const items: any[] = (data as any)?.items ?? [];
+          const count: number =
+            typeof (data as any)?.count === 'number'
+              ? (data as any).count
+              : items.length + offset;
+          total = count;
+          for (const it of items) {
+            if (it && typeof it.id === 'number') {
+              ids.push(it.id);
+              statusById[it.id] = st;
+              if (typeof it.name === 'string') nameById[it.id] = it.name;
+            }
+          }
+          if (!items.length) break;
+          offset += items.length;
+        }
+      }
+      this.setCache(cacheKey, {
+        ids: ids.slice(),
+        statusById: { ...statusById },
+        nameById: { ...nameById },
+      });
+      return { idsCsv: ids.join(','), statusById, nameById };
+    } catch (e) {
+      this.handleError(e);
+    }
+  }
+
+  private getCache<T = any>(key: string): T | undefined {
+    const rec = this.cache.get(key);
+    if (!rec) return undefined;
+    if (Date.now() - rec.ts > rec.ttl) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return rec.value as T;
+  }
+
+  private setCache<T = any>(key: string, value: T, ttl = this.DEFAULT_TTL) {
+    this.cache.set(key, { ts: Date.now(), ttl, value });
+  }
+
+  private async getOrJoinInflight<T>(
+    key: string,
+    factory: () => Promise<T>,
+  ): Promise<T> {
+    const existing = this.inflight.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+    const p = (async () => {
+      try {
+        return await factory();
+      } finally {
+        this.inflight.delete(key);
+      }
+    })();
+    this.inflight.set(key, p);
+    return p;
+  }
+
+  private parseStatusesFilter(
+    input?: string,
+    allowed = ['active', 'blocked', 'deleted'],
+  ): string[] | undefined {
+    if (!input || input === 'all') return undefined;
+    const set = new Set<string>();
+    for (const s of String(input)
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)) {
+      if (allowed.includes(s)) set.add(s);
+    }
+    return set.size ? Array.from(set) : undefined;
+  }
+
+  private async mapPool<T, R>(
+    items: T[],
+    limit: number,
+    fn: (item: T, idx: number) => Promise<R>,
+  ): Promise<R[]> {
+    const results: R[] = new Array(items.length);
+    let i = 0;
+    const runner = async (): Promise<void> => {
+      while (true) {
+        const idx = i++;
+        if (idx >= items.length) return;
+        results[idx] = await fn(items[idx], idx);
+      }
+    };
+    const workers = Array.from(
+      { length: Math.min(limit, Math.max(1, items.length)) },
+      () => runner(),
+    );
+    await Promise.all(workers);
+    return results;
   }
 
   private wait(ms: number) {
@@ -52,15 +193,23 @@ export class VkAdsService {
     return undefined;
   }
 
-  private async getWithRetry<T = any>(url: string, params: any, retries = 4): Promise<T> {
+  private async getWithRetry<T = any>(
+    url: string,
+    params: any,
+    retries = 4,
+  ): Promise<T> {
     let attempt = 0;
     while (true) {
       try {
         const { data } = await this.http.get(url, { params });
+        // console.log(url, params);
         return data as T;
       } catch (e: any) {
         const status = e?.response?.status;
-        const retryAfter = this.parseRetryAfter(e?.response?.headers?.['retry-after'] || e?.response?.headers?.['Retry-After']);
+        const retryAfter = this.parseRetryAfter(
+          e?.response?.headers?.['retry-after'] ||
+            e?.response?.headers?.['Retry-After'],
+        );
         const shouldRetry = status === 429 || (status >= 500 && status < 600);
         if (!shouldRetry || attempt >= retries) throw e;
         const base = 300; // ms
@@ -89,6 +238,26 @@ export class VkAdsService {
     const chunkSize = 150; // keep well under any 200-id limits and URL length
     const perPage = 250;
     const allItems: any[] = [];
+    // aggregate top-level total across chunks/items
+    const aggTotal: any = {};
+    const addTotals = (dst: any, src: any) => {
+      if (!src || typeof src !== 'object') return dst;
+      for (const k of Object.keys(src)) {
+        const sv = (src as any)[k];
+        if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
+          dst[k] = addTotals(dst[k] || {}, sv);
+        } else {
+          const n =
+            typeof sv === 'string'
+              ? Number(sv)
+              : typeof sv === 'number'
+                ? sv
+                : Number(sv);
+          if (Number.isFinite(n)) dst[k] = (Number(dst[k]) || 0) + n;
+        }
+      }
+      return dst;
+    };
     const baseParams: any = {
       id_ne: q.id_ne,
       date_from: q.date_from,
@@ -106,25 +275,102 @@ export class VkAdsService {
       sort_by: q.sort_by || 'base.clicks',
       d: q.d || 'desc',
     };
+    // console.log('baseParams: ', baseParams);
 
-    for (let i = 0; i < ids.length; i += chunkSize) {
-      const chunk = ids.slice(i, i + chunkSize);
-      let offset = 0;
-      while (true) {
-        const data = await this.getWithRetry(url, {
-          ...baseParams,
-          id: chunk.join(','),
-          limit: perPage,
-          offset,
+    const chunks: number[][] = [];
+    for (let i = 0; i < ids.length; i += chunkSize)
+      chunks.push(ids.slice(i, i + chunkSize));
+
+    // Cache key for aggregate (without sort/paging)
+    const cacheKey = [
+      'agg',
+      entity,
+      q.date_from ?? '',
+      q.date_to ?? '',
+      q.fields || 'base',
+      q.attribution || 'conversion',
+      q.banner_status || '',
+      q.banner_status_ne || '',
+      q.ad_group_status || '',
+      q.ad_group_status_ne || '',
+      q.ad_group_id || '',
+      q.ad_group_id_ne || '',
+      q.package_id || '',
+      q.package_id_ne || '',
+      `ids:${ids.length}:${ids.slice(0, 50).join(',')}`,
+    ].join('|');
+
+    const cached = this.getCache<{ items: any[]; total: any }>(cacheKey);
+    if (cached) {
+      allItems.push(...cached.items);
+      addTotals(aggTotal, cached.total);
+    } else {
+      // Avoid stampede: only one aggregate build per key at a time
+      await this.getOrJoinInflight(cacheKey, async () => {
+        const pool = Math.max(1, Number(process.env.VK_ADS_AGG_POOL) || 3);
+        const results = await this.mapPool(chunks, pool, async (chunk) => {
+          const data = await this.getWithRetry(
+            url,
+            {
+              ...baseParams,
+              id: chunk.join(','),
+              limit: perPage,
+              offset: 0,
+            },
+            6,
+          );
+          return data as any;
         });
-        const items = (data as any)?.items ?? [];
-        allItems.push(...items);
-        if (!items.length || items.length < perPage) break;
-        offset += items.length;
-      }
+        for (const data of results) {
+          const items = (data as any)?.items ?? [];
+          allItems.push(...items);
+          if ((data as any)?.total) addTotals(aggTotal, (data as any).total);
+        }
+        this.setCache(cacheKey, {
+          items: allItems.slice(),
+          total: { ...aggTotal },
+        });
+        return null;
+      });
     }
 
-    return { count: allItems.length, offset: 0, items: allItems } as StatsDayResponse;
+    // Global sort across aggregated chunks to emulate server-side sorting
+    const sortBy: string = q.sort_by || 'base.clicks';
+    const dir: 'asc' | 'desc' = (q.d || 'desc') === 'asc' ? 'asc' : 'desc';
+    const getVal = (it: any): number => {
+      try {
+        // Expecting metric under total, e.g. total.base.clicks
+        const [group, field] = String(sortBy).split('.', 2);
+        const v = it?.total?.[group]?.[field];
+        const n =
+          typeof v === 'string'
+            ? Number(v)
+            : typeof v === 'number'
+              ? v
+              : Number(v);
+        return Number.isFinite(n) ? n : 0;
+      } catch {
+        return 0;
+      }
+    };
+    allItems.sort((a, b) => {
+      const va = getVal(a);
+      const vb = getVal(b);
+      if (va === vb) return 0;
+      return dir === 'asc' ? va - vb : vb - va;
+    });
+
+    const reqLimit: number = Math.min(Math.max(Number(q.limit || 20), 1), 250);
+    const reqOffset: number = Math.max(Number(q.offset || 0), 0);
+    const sliced = allItems.slice(reqOffset, reqOffset + reqLimit);
+
+    return {
+      items: sliced,
+      count: allItems.length,
+      limit: reqLimit,
+      offset: reqOffset,
+      total: aggTotal,
+    } as StatsDayResponse;
   }
 
   private handleError(e: any): never {
@@ -135,20 +381,6 @@ export class VkAdsService {
       throw new HttpException({ code, message }, VK_ERR_TO_HTTP[code]);
     const status = e?.response?.status ?? 500;
     throw new HttpException({ code: code || 'ERR_INTERNAL', message }, status);
-  }
-
-  private ensureIdLimit(ids?: string) {
-    if (!ids) return;
-    const list = String(ids)
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (list.length > 200) {
-      throw new HttpException(
-        { code: 'ERR_LIMIT_EXCEEDED', message: 'Too many ids: max 200' },
-        400,
-      );
-    }
   }
 
   private ensureDateRange(daysFrom: string, daysTo?: string) {
@@ -168,18 +400,24 @@ export class VkAdsService {
     }
   }
 
-  async getV3Day(q: any): Promise<StatsDayResponse<{ status?: string; name?: string }>> {
-    const url = `/api/v3/statistics/${q.entity}/day.json`;
+  // Specialized version of getV3Day for ad_plans (entity is implicit)
+  async getAdPlansDay(
+    q: StatisticsDayAdPlansDto,
+  ): Promise<
+    StatsDayResponse<{ status?: string; name?: string; spent_nds?: number }>
+  > {
+    const url = `/api/v3/statistics/ad_plans/day.json`;
+    // const { data } = await this.http.get(url, {
+    // });
     try {
-      let idsParam = q.ids as string | undefined;
+      let idsParam: string | undefined;
       let adPlanStatuses: Record<number, string> | undefined;
       let adPlanNames: Record<number, string> | undefined;
-      let bannerStatuses: Record<number, string> | undefined;
-      let adGroupStatuses: Record<number, string> | undefined;
-      let adGroupNames: Record<number, string> | undefined;
-      if (q.entity === 'ad_plans') {
-        // Auto-populate with all ad plan IDs and collect status
-        const meta = await this.getAllAdPlanIdsCsv();
+
+      // Auto-populate with all ad plan IDs and collect status when ids not provided
+      if (!idsParam) {
+        const adPlanStatusesFilter = this.parseStatusesFilter(q.status);
+        const meta = await this.getAllAdPlanIdsCsv(adPlanStatusesFilter);
         idsParam = meta.idsCsv;
         adPlanStatuses = meta.statusById;
         adPlanNames = meta.nameById;
@@ -189,365 +427,450 @@ export class VkAdsService {
             404,
           );
         }
-      } else if (q.entity === 'banners') {
-        const meta = await this.getAllBannerIdsCsv(q.limit);
-        idsParam = meta.idsCsv;
-        bannerStatuses = meta.statusById;
-        if (!idsParam) {
-          throw new HttpException(
-            { code: 'ERR_WRONG_IDS', message: 'Объявления не найдены' },
-            404,
-          );
-        }
-      } else if (q.entity === 'ad_groups') {
-        const meta = await this.getAllAdGroupIdsCsv(q.limit);
-        idsParam = meta.idsCsv;
-        adGroupStatuses = meta.statusById;
-        adGroupNames = meta.nameById;
-        if (!idsParam) {
-          throw new HttpException(
-            { code: 'ERR_WRONG_IDS', message: 'Группы объявлений не найдены' },
-            404,
-          );
-        }
-      } else {
-        this.ensureIdLimit(idsParam);
       }
       this.ensureDateRange(q.date_from, q.date_to);
+
       // If URL risks being too long, or too many ids, fetch in chunks and aggregate
       const idsList = this.splitIdsCsv(idsParam);
-      const needsAggregate = idsList.length > 200 || String(idsParam || '').length > 1500;
+      const needsAggregate =
+        idsList.length > 200 || String(idsParam || '').length > 1500;
       let data: any;
       if (needsAggregate) {
-        data = await this.fetchStatsAggregated(q.entity, idsList, q);
+        const q2: any = {
+          date_from: q.date_from,
+          date_to: q.date_to,
+          fields: 'base',
+          attribution: 'conversion',
+          sort_by: 'base.shows',
+          d: q.d || 'desc',
+          ad_group_status: q.status,
+        };
+        data = await this.fetchStatsAggregated('ad_plans', idsList, q2);
       } else {
         data = await this.getWithRetry(url, {
           id: idsParam,
-          id_ne: q.id_ne,
           date_from: q.date_from,
           date_to: q.date_to,
-          fields: q.fields || 'base',
-          attribution: q.attribution || 'conversion',
-          banner_status: q.banner_status,
-          banner_status_ne: q.banner_status_ne,
-          ad_group_status: q.ad_group_status,
-          ad_group_status_ne: q.ad_group_status_ne,
-          ad_group_id: q.ad_group_id,
-          ad_group_id_ne: q.ad_group_id_ne,
-          package_id: q.package_id,
-          package_id_ne: q.package_id_ne,
-          sort_by: q.sort_by || 'base.clicks',
+          fields: 'base',
+          attribution: 'conversion',
+          ad_group_status: q.status,
+          sort_by: 'base.shows',
           d: q.d || 'desc',
           limit: q.limit || 250,
           offset: q.offset || 0,
         });
       }
-      // Enrich each item with ad plan status and name when applicable
-      if (q.entity === 'ad_plans' && Array.isArray((data as any)?.items)) {
-        for (const it of (data as any).items as Array<{ id: number | string; status?: string; name?: string }>) {
+
+      // Enrich each item with ad plan status, name and computed spent_nds
+      if (Array.isArray((data as any)?.items)) {
+        for (const it of (data as any).items as Array<{
+          id: number | string;
+          status?: string;
+          name?: string;
+          spent_nds?: number;
+        }>) {
           const idNum = typeof it?.id === 'number' ? it.id : Number(it?.id);
           if (!Number.isNaN(idNum)) {
-            if (adPlanStatuses && adPlanStatuses[idNum]) it.status = adPlanStatuses[idNum];
+            if (adPlanStatuses && adPlanStatuses[idNum])
+              it.status = adPlanStatuses[idNum];
             if (adPlanNames && adPlanNames[idNum]) it.name = adPlanNames[idNum];
+            // Calculate spent_nds = spent * 1.2 (fallback to spend)
+            try {
+              const rawSpent =
+                Number((it as any)?.total?.base?.spent ?? (it as any)?.total?.base?.spend ?? 0) || 0;
+              it.spent_nds = Number((rawSpent * 1.2).toFixed(2));
+            } catch {
+              it.spent_nds = 0;
+            }
           }
         }
       }
-      // Enrich with banner status when applicable
-      if (q.entity === 'banners' && Array.isArray((data as any)?.items) && bannerStatuses) {
-        for (const it of (data as any).items as Array<{ id: number | string; status?: string }>) {
-          const idNum = typeof it?.id === 'number' ? it.id : Number(it?.id);
-          if (!Number.isNaN(idNum) && bannerStatuses[idNum]) {
-            it.status = bannerStatuses[idNum];
+      return data as StatsDayResponse<{
+        status?: string;
+        name?: string;
+        spent_nds?: number;
+      }>;
+    } catch (e) {
+      this.handleError(e);
+    }
+  }
+
+  // Fetch ad group meta (name, status) for a given id list, including all statuses
+  private async getAdGroupsMetaByIds(ids: number[]): Promise<{
+    nameById: Record<number, string>;
+  }> {
+    const nameById: Record<number, string> = {};
+    if (!ids.length) return { nameById };
+    const chunkSize = 200;
+    const chunks: number[][] = [];
+    for (let i = 0; i < ids.length; i += chunkSize)
+      chunks.push(ids.slice(i, i + chunkSize));
+    const pool = Math.max(1, Number(process.env.VK_ADS_META_POOL) || 3);
+    const results = await this.mapPool(chunks, pool, async (chunk) => {
+      const params: any = {
+        limit: Math.min(250, chunk.length),
+        offset: 0,
+        _id__in: chunk.join(','),
+        _status__in: 'active,blocked,deleted',
+      };
+      const data = await this.getWithRetry(`/api/v2/ad_groups.json`, params, 5);
+      return data as any;
+    });
+    for (const data of results) {
+      const items: any[] = (data as any)?.items ?? [];
+      for (const it of items) {
+        if (it && typeof it.id === 'number') {
+          if (typeof it.name === 'string') nameById[it.id] = it.name;
+        }
+      }
+    }
+    return { nameById };
+  }
+
+  // Get ad_groups stats for a given ad_plan id: fetch groups, then delegate to v3 stats with explicit ids
+  async getAdPlanGroupsStats(
+    adPlanId: number,
+    q: StatisticsDayGroupsDto,
+  ): Promise<
+    StatsDayResponse<{
+      status?: string;
+      name?: string;
+      budget_limit_day?: string | number;
+      dealsPrice?: number;
+      ref?: string;
+      makets?: number;
+      spent_nds?: number;
+      maketPrice?: number;
+      adExpenses?: number;
+      drr?: number;
+    }>
+  > {
+    try {
+      // Fetch the ad plan with groups list; try both 'groups' and 'ad_groups'
+      const adPlan = await this.getAdPlanGroupsData(adPlanId, q.status);
+      // console.log(adPlan);
+      // console.log(adPlan.ad_groups);
+      const groupsRaw: any = (adPlan as any)?.items;
+      if (!Array.isArray(groupsRaw) || groupsRaw.length === 0) {
+        return {
+          items: [],
+          count: 0,
+          limit: (q as any)?.limit ?? 20,
+          offset: (q as any)?.offset ?? 0,
+        };
+      }
+      const groupIds: number[] = groupsRaw
+        .map((g: any) =>
+          typeof g === 'number'
+            ? g
+            : typeof g?.id === 'number'
+              ? g.id
+              : Number(g?.id),
+        )
+        .filter((n: any) => Number.isFinite(n) && n > 0);
+      if (!groupIds.length) {
+        return {
+          items: [],
+          count: 0,
+          limit: (q as any)?.limit ?? 20,
+          offset: (q as any)?.offset ?? 0,
+        };
+      }
+
+      // Build meta maps from the ad groups detail response (name, budget_limit_day, utm ref)
+      const nameById: Record<number, string | undefined> = {};
+      const budgetLimitDayById: Record<number, string | number | undefined> =
+        {};
+      const refById: Record<number, string | undefined> = {};
+      const uniqueRefs = new Set<string>();
+      for (const g of groupsRaw) {
+        const idNum = typeof g?.id === 'number' ? g.id : Number(g?.id ?? NaN);
+        if (!Number.isFinite(idNum)) continue;
+        if (typeof g?.name === 'string') nameById[idNum] = g.name;
+        if (g?.budget_limit_day !== undefined)
+          budgetLimitDayById[idNum] = g.budget_limit_day;
+        // Extract ref from utm string
+        const utm: string | undefined =
+          typeof g?.utm === 'string' ? g.utm : undefined;
+        const ref = this.extractRefFromUtm(utm);
+        if (ref) {
+          refById[idNum] = ref;
+          uniqueRefs.add(ref);
+        }
+      }
+
+      // Pre-aggregate deals sum by adTag (ref) within date range
+      // Sum per deal: deal.price + sum(dop.price) for that deal
+      const dealsSumByRef: Record<string, number> = {};
+      if (uniqueRefs.size) {
+        const dealsWhere: any = { adTag: { in: Array.from(uniqueRefs) } };
+        // Filter by related Client.firstContact instead of Deal.saleDate
+        const clientWhere: any = {};
+        if (q?.date_from) clientWhere.firstContact = { gte: q.date_from };
+        if (q?.date_to)
+          clientWhere.firstContact = {
+            ...(clientWhere.firstContact || {}),
+            lte: q.date_to,
+          };
+        if (Object.keys(clientWhere).length) dealsWhere.client = clientWhere;
+        // Fetch matching deals with minimal fields
+        const deals = await this.prisma.deal.findMany({
+          where: dealsWhere,
+          select: { id: true, adTag: true, price: true },
+        });
+        if (deals.length) {
+          const dealIds = deals.map((d) => d.id);
+          // Group dops by dealId to get sum(price) per deal
+          const dopSums = await this.prisma.dop.groupBy({
+            by: ['dealId'],
+            where: { dealId: { in: dealIds } },
+            _sum: { price: true },
+          });
+          const dopByDealId: Record<number, number> = {};
+          for (const row of dopSums)
+            dopByDealId[row.dealId] = Number(row._sum?.price || 0);
+          // Accumulate per adTag (ref)
+          for (const d of deals) {
+            const totalForDeal =
+              Number(d.price || 0) + (dopByDealId[d.id] || 0);
+            dealsSumByRef[d.adTag] =
+              (dealsSumByRef[d.adTag] || 0) + totalForDeal;
           }
         }
       }
-      // Enrich ad_groups with status and name
-      if (q.entity === 'ad_groups' && Array.isArray((data as any)?.items)) {
-        for (const it of (data as any).items as Array<{ id: number | string; status?: string; name?: string }>) {
+
+      // Count CRM customers (makets) per ref with filters:
+      // - customer has tag with name == ref
+      // - customer.crmStatusId in allowed statuses (mapped from external ids)
+      // - firstContactDate within [date_from, date_to]
+      const maketsByRef: Record<string, number> = {};
+      if (uniqueRefs.size) {
+        const refs = Array.from(uniqueRefs);
+        const allowedStatusExternalIds = [
+          '9',
+          '51422',
+          '1185',
+          '328',
+          '5879',
+          '1919',
+          '419',
+          '4355',
+          '1721',
+          '4443',
+          '4135',
+          '26',
+          '5761',
+          '1960',
+          '27452',
+          '200',
+        ];
+
+        const statusRows = await this.prisma.crmStatus.findMany({
+          where: { id: { in: allowedStatusExternalIds.map((i) => +i) } },
+          select: { id: true },
+        });
+        const allowedStatusIds = statusRows.map((s) => s.id);
+        const tags = await this.prisma.crmTag.findMany({
+          where: { name: { in: refs } },
+          select: { id: true, name: true },
+        });
+        const tagIdByName: Record<string, number> = {};
+        const tagIds: number[] = [];
+        for (const t of tags) {
+          tagIdByName[t.name] = t.id;
+          tagIds.push(t.id);
+        }
+        if (tagIds.length && allowedStatusIds.length) {
+          // Build raw SQL with proper date conversion (DD.MM.YYYY -> date)
+          const conds: Prisma.Sql[] = [
+            Prisma.sql`t.name IN (${Prisma.join(refs)})`,
+            Prisma.sql`c."crmStatusId" IN (${Prisma.join(allowedStatusIds)})`,
+          ];
+          if (q?.date_from)
+            conds.push(
+              Prisma.sql`to_date(c."firstContactDate", 'DD.MM.YYYY') >= ${q.date_from}::date`,
+            );
+          if (q?.date_to)
+            conds.push(
+              Prisma.sql`to_date(c."firstContactDate", 'DD.MM.YYYY') <= ${q.date_to}::date`,
+            );
+          const whereSql = Prisma.sql`${Prisma.join(conds, ' AND ')}`;
+          const rows = await this.prisma.$queryRaw<
+            Array<{ ref: string; cnt: bigint }>
+          >(
+            Prisma.sql`
+              SELECT t.name AS ref, COUNT(DISTINCT c.id)::bigint AS cnt
+              FROM "CrmCustomer" c
+              JOIN "CrmCustomerTag" ct ON ct."customerId" = c.id
+              JOIN "CrmTag" t ON t.id = ct."tagId"
+              WHERE ${whereSql}
+              GROUP BY t.name
+            `,
+          );
+          const countByRef: Record<string, number> = {};
+          for (const r of rows) countByRef[r.ref] = Number(r.cnt || 0);
+          for (const ref of refs) maketsByRef[ref] = countByRef[ref] || 0;
+        } else {
+          for (const ref of refs) maketsByRef[ref] = 0;
+        }
+      }
+
+      // Calculate ad expenses for the provided date range
+      // Note: date stored as string in format YYYY-MM-DD, lexicographic gte/lte works for range
+      let adExpensesTotal = 0;
+      if (q?.date_from || q?.date_to) {
+        const agg = await this.prisma.adExpense.aggregate({
+          _sum: { price: true },
+          where: {
+            ...(q?.date_from || q?.date_to
+              ? {
+                  date: {
+                    ...(q?.date_from ? { gte: q.date_from } : {}),
+                    ...(q?.date_to ? { lte: q.date_to } : {}),
+                  },
+                }
+              : {}),
+          },
+        });
+        adExpensesTotal = Number(agg._sum?.price || 0);
+      }
+
+      // Fetch stats only for these groups with defaults
+      const idsCsv = groupIds.join(',');
+      const url = `/api/v3/statistics/ad_groups/day.json`;
+      const needsAggregate = groupIds.length > 200 || idsCsv.length > 1500;
+      let data: any;
+      if (needsAggregate) {
+        const q2: any = {
+          date_from: q.date_from,
+          date_to: q.date_to,
+          fields: 'base',
+          attribution: 'conversion',
+          sort_by: 'base.shows',
+          d: q.d || 'desc',
+          ad_group_status: q.status,
+          limit: q.limit || 250,
+          offset: q.offset || 0,
+        };
+        data = await this.fetchStatsAggregated('ad_groups', groupIds, q2);
+      } else {
+        data = await this.getWithRetry(url, {
+          id: idsCsv,
+          date_from: q.date_from,
+          date_to: q.date_to,
+          fields: 'base',
+          attribution: 'conversion',
+          ad_group_status: q.status,
+          sort_by: 'base.shows',
+          d: q.d || 'desc',
+          limit: q.limit || 250,
+          offset: q.offset || 0,
+        });
+      }
+
+      // console.log(data);
+
+      // Enrich with name, budget_limit_day from v2 groups, and deals sum by ref
+      if (Array.isArray((data as any)?.items)) {
+        for (const it of (data as any).items as Array<{
+          id: number | string;
+          status?: string;
+          name?: string;
+          budget_limit_day?: string | number;
+          dealsPrice?: number;
+          ref?: string;
+          makets?: number;
+          spent_nds?: number;
+          maketPrice?: number;
+          adExpenses?: number;
+          drr?: number;
+        }>) {
           const idNum = typeof it?.id === 'number' ? it.id : Number(it?.id);
           if (!Number.isNaN(idNum)) {
-            if (adGroupStatuses && adGroupStatuses[idNum]) it.status = adGroupStatuses[idNum];
-            if (adGroupNames && adGroupNames[idNum]) it.name = adGroupNames[idNum];
-          }
-        }
-      }
-      return data as StatsDayResponse<{ status?: string; name?: string }>;
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  private async getAllAdPlanIdsCsv(): Promise<{ idsCsv: string; statusById: Record<number, string>; nameById: Record<number, string> }> {
-    const limit = 250;
-    const statuses = ['active', 'blocked', 'deleted'];
-    const ids: number[] = [];
-    const statusById: Record<number, string> = {};
-    const nameById: Record<number, string> = {};
-    try {
-      for (const st of statuses) {
-        let offset = 0;
-        let total = Infinity;
-        while (offset < total) {
-          const data = await this.getWithRetry(`/api/v2/ad_plans.json`, { limit, offset, _status: st });
-          const items: any[] = (data as any)?.items ?? [];
-          const count: number = typeof (data as any)?.count === 'number' ? (data as any).count : items.length + offset;
-          total = count;
-          for (const it of items) {
-            if (it && typeof it.id === 'number') {
-              ids.push(it.id);
-              statusById[it.id] = st;
-              if (typeof it.name === 'string') nameById[it.id] = it.name;
+            if (nameById[idNum] !== undefined) it.name = nameById[idNum];
+            if (budgetLimitDayById[idNum] !== undefined)
+              it.budget_limit_day = budgetLimitDayById[idNum];
+            const ref = refById[idNum];
+            if (ref) it.ref = ref;
+            it.dealsPrice = ref ? dealsSumByRef[ref] || 0 : 0;
+            it.makets = ref ? maketsByRef[ref] || 0 : 0;
+            // Compute spent_nds (spent * 1.2) and maketPrice = spent_nds / makets
+            try {
+              const rawSpent =
+                Number((it as any)?.total?.base?.spent ?? (it as any)?.total?.base?.spend ?? 0) || 0;
+              const spentNds = rawSpent * 1.2;
+              it.spent_nds = Number(spentNds.toFixed(2));
+            } catch {
+              it.spent_nds = 0;
             }
+            it.maketPrice = it.makets ? Number(((it.spent_nds || 0) / it.makets).toFixed(2)) : 0;
+            // Attach ad expenses total for the date range and DRR = adExpenses/dealsPrice*100
+            it.adExpenses = adExpensesTotal;
+            it.drr = it.dealsPrice
+              ? Number(((adExpensesTotal / it.dealsPrice) * 100).toFixed(2))
+              : 0;
           }
-          if (!items.length) break;
-          offset += items.length;
         }
       }
-      return { idsCsv: ids.join(','), statusById, nameById };
+      return data as StatsDayResponse<{
+        status?: string;
+        name?: string;
+        budget_limit_day?: string | number;
+        dealsPrice?: number;
+        ref?: string;
+        makets?: number;
+        spent_nds?: number;
+        maketPrice?: number;
+        adExpenses?: number;
+        drr?: number;
+      }>;
     } catch (e) {
       this.handleError(e);
     }
   }
 
-  private async getAllBannerIdsCsv(totalLimit?: number): Promise<{ idsCsv: string; statusById: Record<number, string> }> {
-    const limit = 250;
-    const statuses = ['active', 'blocked', 'deleted'];
-    const ids: number[] = [];
-    const statusById: Record<number, string> = {};
-    try {
-      const target = Number.isFinite(totalLimit as any) && (totalLimit as number) > 0 ? (totalLimit as number) : Infinity;
-      for (const st of statuses) {
-        let offset = 0;
-        let total = Infinity;
-        while (offset < total) {
-          const pageSize = Math.min(limit, Math.max(1, target - ids.length));
-          const data = await this.getWithRetry(`/api/v2/banners.json`, { limit: pageSize, offset, _status: st });
-          const items: any[] = (data as any)?.items ?? [];
-          const count: number = typeof (data as any)?.count === 'number' ? (data as any).count : items.length + offset;
-          total = count;
-          for (const it of items) {
-            if (it && typeof it.id === 'number') {
-              ids.push(it.id);
-              statusById[it.id] = st;
-            }
-          }
-          if (!items.length) break;
-          offset += items.length;
-          if (ids.length >= target) break;
-        }
-        if (ids.length >= target) break;
-      }
-      return { idsCsv: ids.join(','), statusById };
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  private async getAllAdGroupIdsCsv(totalLimit?: number): Promise<{ idsCsv: string; statusById: Record<number, string>; nameById: Record<number, string> }> {
-    const limit = 250;
-    const statuses = ['active', 'blocked', 'deleted'];
-    const ids: number[] = [];
-    const statusById: Record<number, string> = {};
-    const nameById: Record<number, string> = {};
-    try {
-      const target = Number.isFinite(totalLimit as any) && (totalLimit as number) > 0 ? (totalLimit as number) : Infinity;
-      for (const st of statuses) {
-        let offset = 0;
-        let total = Infinity;
-        while (offset < total) {
-          const pageSize = Math.min(limit, Math.max(1, target - ids.length));
-          const data = await this.getWithRetry(`/api/v2/ad_groups.json`, { limit: pageSize, offset, _status: st });
-          const items: any[] = (data as any)?.items ?? [];
-          const count: number = typeof (data as any)?.count === 'number' ? (data as any).count : items.length + offset;
-          total = count;
-          for (const it of items) {
-            if (it && typeof it.id === 'number') {
-              ids.push(it.id);
-              statusById[it.id] = st;
-              if (typeof it.name === 'string') nameById[it.id] = it.name;
-            }
-          }
-          if (!items.length) break;
-          offset += items.length;
-          if (ids.length >= target) break;
-        }
-        if (ids.length >= target) break;
-      }
-      return { idsCsv: ids.join(','), statusById, nameById };
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  async getGoals(q: any) {
-    const url = `/api/v2/statistics/goals/${q.entity}/day.json`;
-    try {
-      this.ensureIdLimit(q.ids);
-      this.ensureDateRange(q.date_from, q.date_to);
-      const { data } = await this.http.get(url, {
-        params: {
-          id: q.ids,
-          date_from: q.date_from,
-          date_to: q.date_to,
-          attribution: q.attribution || 'conversion',
-          conversion_type: q.conversion_type || 'postclick',
-        },
-      });
-      return data;
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  async getAdGroups(q: any): Promise<AdGroupsListResponse> {
-    const url = `/api/v2/ad_groups.json`;
+  async getAdPlanGroupsData(id: number, status: string | undefined) {
+    const url = '/api/v2/ad_groups.json';
     try {
       const { data } = await this.http.get(url, {
         params: {
-          limit: q.limit ?? 20,
-          offset: q.offset ?? 0,
-          _id: q._id,
-          _id__in: q._id__in,
-          _status: q._status,
-          _status__ne: q._status__ne,
-          _status__in: q._status__in,
-          _last_updated__gt: q._last_updated__gt,
-          _last_updated__gte: q._last_updated__gte,
-          _last_updated__lt: q._last_updated__lt,
-          _last_updated__lte: q._last_updated__lte,
-          sorting: q.sorting,
+          fields: 'ad_plan_id,id,name,utm,budget_limit_day', //utm это ref=...
+          _ad_plan_id: id,
+          _status__in: status ?? 'active,blocked,deleted',
         },
       });
-      return data as AdGroupsListResponse;
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  async getInapp(q: any) {
-    const url = `/api/v2/statistics/inapp/${q.entity}/day.json`;
-    try {
-      this.ensureIdLimit(q.ids);
-      this.ensureDateRange(q.date_from, q.date_to);
-      const { data } = await this.http.get(url, {
-        params: {
-          id: q.ids,
-          date_from: q.date_from,
-          date_to: q.date_to,
-          attribution: q.attribution || 'conversion',
-          conversion_type: q.conversion_type || 'postclick',
-        },
-      });
-      return data;
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  async getFaststat(q: any) {
-    const url = `/api/v3/statistics/faststat/${q.entity}.json`;
-    try {
-      this.ensureIdLimit(q.ids);
-      const { data } = await this.http.get(url, { params: { id: q.ids } });
-      return data;
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  async getOfflineConversions(q: any) {
-    const url = `/api/v2/statistics/offline_conversions/${q.entity}/${q.mode}.json`;
-    try {
-      this.ensureIdLimit(q.ids);
-      this.ensureDateRange(q.date_from, q.date_to);
-      const { data } = await this.http.get(url, {
-        params: {
-          id: q.ids,
-          date_from: q.date_from,
-          date_to: q.date_to,
-        },
-      });
-      return data;
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  async getBanners(q: any) {
-    const url = `/api/v2/banners.json`;
-    try {
-      const { data } = await this.http.get(url, {
-        params: {
-          limit: 250,
-          offset: q.offset ?? 0,
-          _id: q._id,
-          _id__in: q._id__in,
-          _ad_group_id: q._ad_group_id,
-          _ad_group_id__in: q._ad_group_id__in,
-          _ad_group_status: 'active',
-          // _ad_group_status__ne: q._ad_group_status__ne,
-          // _ad_group_status__in: q._ad_group_status__in,
-          _status: 'active',
-          // _status__ne: q._status__ne,
-          // _status__in: q._status__in,
-          _updated__gt: q._updated__gt,
-          _updated__gte: q._updated__gte,
-          _updated__lt: q._updated__lt,
-          _updated__lte: q._updated__lte,
-          _url: q._url,
-          _textblock: q._textblock,
-        },
-      });
-      // const { data: b } = await this.http.get('/api/v2/ad_groups/187590465.json?fields=utm', {
-
-      // });
-      // console.log(b);
-      return data;
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  async getAdPlans(q: any): Promise<AdPlansListResponse> {
-    const url = `/api/v2/ad_plans.json`;
-    try {
-      const { data } = await this.http.get(url, {
-        params: {
-          limit: q.limit ?? 20,
-          offset: q.offset ?? 0,
-          _id: q._id,
-          _id__in: q._id__in,
-          _status: q._status,
-          _status__ne: q._status__ne,
-          _status__in: q._status__in,
-          sorting: q.sorting,
-        },
-      });
-      return data as AdPlansListResponse;
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  async createAdPlan(body: any) {
-    const url = `/api/v2/ad_plans.json`;
-    try {
-      const { data } = await this.http.post(url, body);
-      return data;
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  async getAdPlan(id: number, q?: { fields?: string }): Promise<AdPlan> {
-    const url = `/api/v2/ad_plans/${id}.json`;
-    try {
-      const { data } = await this.http.get(url, {
-        params: { fields: q?.fields },
-      });
+      // console.log(data);
       return data as AdPlan;
     } catch (e) {
       this.handleError(e);
     }
+  }
+
+  private extractRefFromUtm(utm?: string): string | undefined {
+    if (!utm || typeof utm !== 'string') return undefined;
+    // try parse as query string like "a=b&ref=xxx&x=y"
+    try {
+      const parts = utm.split('&');
+      for (const p of parts) {
+        const [k, v] = p.split('=');
+        if (!k) continue;
+        if (k.trim().toLowerCase() === 'ref') {
+          return decodeURIComponent((v ?? '').trim());
+        }
+      }
+    } catch {}
+    // fallback: look for 'ref=' substring
+    const idx = utm.indexOf('ref=');
+    if (idx >= 0) {
+      const rest = utm.slice(idx + 4);
+      const amp = rest.indexOf('&');
+      const raw = amp >= 0 ? rest.slice(0, amp) : rest;
+      try {
+        return decodeURIComponent(raw.trim());
+      } catch {
+        return raw.trim();
+      }
+    }
+    return undefined;
   }
 }

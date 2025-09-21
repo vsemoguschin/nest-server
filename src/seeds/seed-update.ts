@@ -419,10 +419,7 @@ async function importMonth(fromYmd: string, tillYmd: string) {
   }
 }
 
-async function importAllCustomers() {
-  const from = process.env.BLUESALES_FULL_FROM || '2023-01-01';
-  const till = process.env.BLUESALES_FULL_TILL || '2025-09-18';
-
+async function importRangeByMonths(from: string, till: string) {
   // идём по месяцам, чтобы не упираться в возможные ограничения offset
   let cur = from.slice(0, 7) + '-01';
   while (cur <= till) {
@@ -438,8 +435,79 @@ async function importAllCustomers() {
   }
 }
 
+function ymdInMoscow(d: Date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+function firstDayOfMonth(ymd: string) {
+  return ymd.slice(0, 7) + '-01';
+}
+
+function addMonthsYmd(ymd: string, months: number) {
+  const [y, m, d] = ymd.split('-').map((v) => parseInt(v, 10));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCMonth(dt.getUTCMonth() + months);
+  const y2 = dt.getUTCFullYear();
+  const m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const d2 = String(dt.getUTCDate()).padStart(2, '0');
+  return `${y2}-${m2}-${d2}`;
+}
+
 async function main() {
-  await importAllCustomers();
+  // Можно явно выбрать фазу одной из опций ниже.
+  // Если не выбрано — выполняется последовательный запуск: recent → full (без перекрытия дат).
+  //   --phase=recent | --phase=full
+  //   BLUESALES_PHASE=recent|full
+  const argPhase = process.argv
+    .find((a) => a.startsWith('--phase='))
+    ?.split('=')[1];
+  const envPhase = process.env.BLUESALES_PHASE;
+  const explicitPhase = (argPhase || envPhase || '').toLowerCase();
+
+  const todayMsk = ymdInMoscow(new Date());
+
+  const runRecent = async () => {
+    const threeMonthsAgo = addMonthsYmd(todayMsk, -3);
+    const from = firstDayOfMonth(threeMonthsAgo);
+    const till = todayMsk;
+    console.log(`\n[PHASE=recent] Importing last 3 months: ${from} .. ${till}`);
+    await importRangeByMonths(from, till);
+    return { from, till };
+  };
+
+  const runFull = async (recentFrom?: string) => {
+    const fullFrom = process.env.BLUESALES_FULL_FROM || '2023-01-01';
+    // Чтобы не дублировать работу, ограничим full до дня перед recentFrom (если он задан)
+    const rawFullTill = process.env.BLUESALES_FULL_TILL || todayMsk;
+    const fullTill = recentFrom ? addDaysYmd(recentFrom, -1) : rawFullTill;
+
+    if (fullTill < fullFrom) {
+      console.log(`\n[PHASE=full] Skipped: fullTill(${fullTill}) < fullFrom(${fullFrom}).`);
+      return { from: fullFrom, till: fullTill, skipped: true } as const;
+    }
+
+    console.log(`\n[PHASE=full] Importing full range: ${fullFrom} .. ${fullTill}`);
+    await importRangeByMonths(fullFrom, fullTill);
+    return { from: fullFrom, till: fullTill } as const;
+  };
+
+  if (explicitPhase === 'recent') {
+    await runRecent();
+    return;
+  }
+  if (explicitPhase === 'full') {
+    await runFull();
+    return;
+  }
+
+  // По умолчанию: сначала последние 3 месяца, затем «всё остальное» с 2023-01-01 до дня перед recent-окном
+  const recent = await runRecent();
+  await runFull(recent.from);
 }
 
 main()

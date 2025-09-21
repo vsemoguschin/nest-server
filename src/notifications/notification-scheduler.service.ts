@@ -204,8 +204,12 @@ export class NotificationSchedulerService {
   // }
 
   // Импорт «только новых клиентов» за прошедший день, с надёжным восстановлением пропущенных дат
-  @Cron('0 59 23 * * *', { timeZone: 'Europe/Moscow' })
+  @Cron('5 0 0 * * *', { timeZone: 'Europe/Moscow' })
   async importNewCustomersDaily() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip importNewCustomersDaily`);
+      return;
+    }
     const key = 'dailyCustomers';
     const ymdInMoscow = (d: Date) =>
       new Intl.DateTimeFormat('en-CA', {
@@ -255,7 +259,9 @@ export class NotificationSchedulerService {
         cur = addDaysYmd(cur, 1);
       }
 
-      this.logger.log(`Daily customers import done. Last date: ${state?.lastDailyImportDate}`);
+      this.logger.log(
+        `Daily customers import done. Last date: ${state?.lastDailyImportDate}`,
+      );
     } catch (e: any) {
       this.logger.error(`Daily customers import failed: ${e?.message || e}`);
     }
