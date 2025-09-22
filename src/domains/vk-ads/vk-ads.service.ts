@@ -701,25 +701,8 @@ export class VkAdsService {
         }
       }
 
-      // Calculate ad expenses for the provided date range
-      // Note: date stored as string in format YYYY-MM-DD, lexicographic gte/lte works for range
-      let adExpensesTotal = 0;
-      if (q?.date_from || q?.date_to) {
-        const agg = await this.prisma.adExpense.aggregate({
-          _sum: { price: true },
-          where: {
-            ...(q?.date_from || q?.date_to
-              ? {
-                  date: {
-                    ...(q?.date_from ? { gte: q.date_from } : {}),
-                    ...(q?.date_to ? { lte: q.date_to } : {}),
-                  },
-                }
-              : {}),
-          },
-        });
-        adExpensesTotal = Number(agg._sum?.price || 0);
-      }
+      // drr теперь считается по spend (из метрик VK) / dealsSales * 100
+      // БД adExpenses больше не запрашиваем здесь
 
       // Fetch stats only for these groups with defaults
       const idsCsv = groupIds.join(',');
@@ -796,11 +779,20 @@ export class VkAdsService {
             it.maketPrice = it.makets
               ? Number(((it.spent_nds || 0) / it.makets).toFixed(2))
               : 0;
-            // Attach ad expenses total for the date range and DRR = adExpenses/dealsPrice*100
-            it.adExpenses = adExpensesTotal;
-            it.drr = it.dealsPrice
-              ? Number(((adExpensesTotal / it.dealsPrice) * 100).toFixed(2))
-              : 0;
+            // DRR = spend / dealsPrice * 100 (округление до сотых)
+            try {
+              const rawSpentForDrr =
+                Number(
+                  (it as any)?.total?.base?.spent ??
+                    (it as any)?.total?.base?.spend ??
+                    0,
+                ) || 0;
+              it.drr = it.dealsPrice
+                ? Number(((rawSpentForDrr / it.dealsPrice) * 100).toFixed(2))
+                : 0;
+            } catch {
+              it.drr = 0;
+            }
           }
         }
       }

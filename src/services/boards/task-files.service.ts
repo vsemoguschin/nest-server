@@ -29,7 +29,7 @@ export class TaskFilesService {
 
   /** Определить категорию и расширение по mime/расширению */
   private resolveCategory(file: Express.Multer.File): {
-    category: 'images' | 'pdf' | 'cdr' | 'video';
+    category: 'images' | 'pdf' | 'cdr' | 'video' | 'docx';
     ext: string;
   } {
     const mime = (file.mimetype || '').toLowerCase();
@@ -52,8 +52,15 @@ export class TaskFilesService {
     )
       return { category: 'cdr', ext: '.cdr' };
 
+    // DOCX (Microsoft Word OpenXML)
+    if (
+      ext === '.docx' ||
+      mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
+      return { category: 'docx', ext: '.docx' };
+
     throw new BadRequestException(
-      'Unsupported file type. Allowed: images, pdf, cdr, video',
+      'Unsupported file type. Allowed: images, pdf, cdr, video, docx',
     );
   }
 
