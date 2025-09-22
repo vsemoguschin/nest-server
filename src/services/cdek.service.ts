@@ -119,7 +119,7 @@ export class CdekService {
   }> {
     const token = await this.getAccessToken();
     const entity = await this.getOrderInfo(cdek_number, token);
-    console.log(entity);
+    // console.log(entity);
     const { status, sendDate, deliveredDate } = this.parseOrderStatus(entity);
 
     const price = entity?.delivery_detail?.total_sum || 0;
@@ -159,7 +159,7 @@ export class CdekService {
             const orders = data.registries.flatMap((r) => r.orders || []); // Защита от undefined
             const tracks = orders.map((o) => o.cdek_number).filter(Boolean); // Фильтрация undefined/null
             const sum = data.registries.reduce((acc, r) => acc + r.sum, 0);
-            console.log(date, 'sum reg', sum);
+            // console.log(date, 'sum reg', sum);
 
             return { date, tracks, orders, sum };
           } catch (error) {

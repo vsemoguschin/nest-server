@@ -50,14 +50,14 @@ export class WebhooksService {
           deliveredDate,
         },
       });
-      console.log(
-        'Updated delivery:',
-        cdek_number,
-        status,
-        sendDate,
-        deliveredDate,
-        del,
-      );
+      // console.log(
+      //   'Updated delivery:',
+      //   cdek_number,
+      //   status,
+      //   sendDate,
+      //   deliveredDate,
+      //   del,
+      // );
     } catch (error) {
       console.error(`Error in webhook processing: ${error.message}`);
     }
@@ -91,7 +91,7 @@ export class WebhooksService {
         },
       });
 
-      console.log(getWebhooks.data);
+      // console.log(getWebhooks.data);
 
       //delete webhook
       // const deleteWebhookResponse = await axios.delete(

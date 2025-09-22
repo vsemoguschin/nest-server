@@ -1372,7 +1372,7 @@ export class DashboardsService {
       return `${year}-${month.toString().padStart(2, '0')}-${day}`;
     });
 
-    console.log(daysInMonth1, allDates);
+    // console.log(daysInMonth1, allDates);
 
     //допы этого месяца за сделки прошлого  месяца
     // const lastDops = await this.prisma.dop.findMany({
