@@ -779,20 +779,11 @@ export class VkAdsService {
             it.maketPrice = it.makets
               ? Number(((it.spent_nds || 0) / it.makets).toFixed(2))
               : 0;
-            // DRR = spend / dealsPrice * 100 (округление до сотых)
-            try {
-              const rawSpentForDrr =
-                Number(
-                  (it as any)?.total?.base?.spent ??
-                    (it as any)?.total?.base?.spend ??
-                    0,
-                ) || 0;
-              it.drr = it.dealsPrice
-                ? Number(((rawSpentForDrr / it.dealsPrice) * 100).toFixed(2))
-                : 0;
-            } catch {
-              it.drr = 0;
-            }
+            // DRR = spent_nds / dealsPrice * 100 (округление до сотых)
+            const spentForDrr = Number(it.spent_nds || 0);
+            it.drr = it.dealsPrice
+              ? Number(((spentForDrr / it.dealsPrice) * 100).toFixed(2))
+              : 0;
           }
         }
       }
