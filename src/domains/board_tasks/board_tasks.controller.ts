@@ -41,6 +41,12 @@ import { ListArchivedDto } from './dto/list-archived.dto';
 import { ApiBody, ApiOperation } from '@nestjs/swagger';
 import { IsBoolean, IsNotEmpty, IsString } from 'class-validator';
 import { CopyTaskToBoardDto } from './dto/copy-to-board.dto';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
+const ONE_GB = 1024 * 1024 * 1024;
+const TMP_DIR = path.join(os.tmpdir(), 'easycrm-uploads');
 
 class UpdateCoverDto {
   @IsString()
@@ -52,8 +58,6 @@ class SetArchivedDto {
   @IsBoolean()
   archived!: boolean;
 }
-
-const ONE_GB = 1024 * 1024 * 1024;
 
 @UseGuards(RolesGuard)
 @Controller('tasks')
@@ -475,7 +479,21 @@ export class TasksController {
   @Post('comments/:commentId/files')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: multer.memoryStorage(), // ← гарантирует file.buffer
+      storage: multer.diskStorage({
+        destination: (req, file, cb) => {
+          try {
+            fs.mkdirSync(TMP_DIR, { recursive: true });
+          } catch (e) {
+            console.log(e);
+          }
+          cb(null, TMP_DIR);
+        },
+        filename: (req, file, cb) => {
+          const ext = path.extname(file.originalname || '');
+          const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+          cb(null, name);
+        },
+      }),
       limits: { fileSize: ONE_GB },
     }),
   )
@@ -489,13 +507,13 @@ export class TasksController {
     file: Express.Multer.File,
     @CurrentUser() user: UserDto,
   ) {
-    if (!file) throw new BadRequestException('File is required'); // ← было NotFoundException
+    if (!file) throw new BadRequestException('File is required');
 
     const comment = await this.comments.ensureComment(commentId);
     const task = await this.tasksService.ensureTask(comment.task.id);
 
     const dbFile = await this.filesService.uploadFile(
-      file,
+      file, // теперь у файла есть file.path (путь на диске)
       user.id,
       task.boardId,
       comment.id,

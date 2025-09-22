@@ -170,10 +170,13 @@ export class BoardsService {
                   tags: t.tags.map((x) => x.name),
                   members: t.members,
                   boardId: t.boardId,
-                  deadline:
-                    t.orders.sort((a, b) =>
-                      a.deadline.localeCompare(b.deadline),
-                    )[0]?.deadline || '',
+                  // берем самую позднюю дату дедлайна среди заказов (если есть)
+                  deadline: (t.orders ?? []).reduce((max, o) => {
+                    const d = o?.deadline || '';
+                    if (!d) return max;
+                    if (!max) return d;
+                    return d.localeCompare(max) > 0 ? d : max;
+                  }, ''),
                   warnings: Array.from(warningsSet),
                 };
               })

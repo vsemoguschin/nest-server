@@ -8,6 +8,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'node:path';
 import axios from 'axios';
+import * as https from 'https';
 
 @Injectable()
 export class TaskFilesService {
@@ -55,7 +56,8 @@ export class TaskFilesService {
     // DOCX (Microsoft Word OpenXML)
     if (
       ext === '.docx' ||
-      mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      mime ===
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     )
       return { category: 'docx', ext: '.docx' };
 
@@ -74,20 +76,40 @@ export class TaskFilesService {
     boardId: number,
     commentId?: number,
   ) {
+    console.log('[files] start uploadFile');
+
     const { category, ext } = this.resolveCategory(file);
     const yaName = `${uuidv4()}${ext}`;
     const directory = `boards/${boardId}/${category}`;
     const absPath = `EasyCRM/${directory}/${yaName}`;
-
-    const axiosMod = (await import('axios')).default;
-    const http = axiosMod.create({
-      timeout: 300_000, // до 5 минут на медленные аплоады
-      maxContentLength: Infinity, // не ограничивать размер ответа
-      maxBodyLength: Infinity, // не ограничивать размер тела запроса
+    console.log('[files] resolved names', {
+      category,
+      ext,
+      yaName,
+      directory,
+      absPath,
     });
 
+    const axiosMod = (await import('axios')).default;
+    const { Agent } = await import('https');
+    const fs = await import('fs');
+    const fsp = fs.promises;
+    const { PassThrough } = await import('stream');
+    console.log('[files] modules imported');
+
+    const http = axiosMod.create({
+      timeout: 1_800_000, // 30 минут
+      maxContentLength: Infinity as any,
+      maxBodyLength: Infinity as any,
+      httpsAgent: new Agent({ keepAlive: true }),
+    });
+    console.log('[files] axios client created with long timeout');
+
     const TOKEN = process.env.YA_TOKEN as string;
-    if (!TOKEN) throw new Error('YA_TOKEN is not set');
+    if (!TOKEN) {
+      console.log('[files] YA_TOKEN missing');
+      throw new Error('YA_TOKEN is not set');
+    }
     const auth = { Authorization: `OAuth ${TOKEN}` };
 
     const YD_UPLOAD = 'https://cloud-api.yandex.net/v1/disk/resources/upload';
@@ -95,35 +117,139 @@ export class TaskFilesService {
 
     // 1) ensure base directory
     const baseDir = `EasyCRM/${directory}`;
+    console.log('[files] ensure base dir', baseDir);
     try {
       await http.put(YD_RES, null, {
         params: { path: baseDir },
         headers: auth,
       });
+      console.log('[files] base dir ensured');
     } catch (e: any) {
-      // 409 Already exists — игнорируем, остальные ошибки не блокируют следующую попытку
-      if (!(e?.response?.status === 409)) throw e;
+      if (e?.response?.status === 409) {
+        console.log('[files] base dir already exists (409)');
+      } else {
+        console.log('[files] base dir ensure failed', e?.message || e);
+        throw e;
+      }
     }
 
     // 2) get upload href
+    console.log('[files] request upload URL', { absPath });
     const up = await http.get(YD_UPLOAD, {
       params: { path: absPath, overwrite: true },
       headers: auth,
     });
-
-    // 3) upload binary (важно: Content-Length и корректный Content-Type)
-    const contentLength = String(file.size ?? file.buffer?.length ?? 0);
-    await http.put(up.data.href, file.buffer, {
-      headers: {
-        'Content-Type': file.mimetype || 'application/octet-stream',
-        'Content-Length': contentLength,
-      },
+    const href: string = up?.data?.href;
+    console.log('[files] upload URL received', {
+      href: href?.slice(0, 80) + '...',
     });
 
-    // 4) fetch metadata with small retry — чтобы успели появиться size/preview
+    // === 3) upload ===
+    const localPath: string | undefined = (file as any).path;
+    console.log('[files] localPath', localPath);
+
+    const formatBytes = (n: number) => {
+      const mb = n / (1024 * 1024);
+      return `${mb.toFixed(1)} MB`;
+    };
+
+    if (localPath) {
+      const stat = await fsp.stat(localPath);
+      const total = stat.size;
+      console.log('[files] upload from disk (stream) start', {
+        size: total,
+        sizeHuman: formatBytes(total),
+        mime: file.mimetype,
+      });
+
+      const readStream = fs.createReadStream(localPath);
+      const progress = new PassThrough();
+
+      let uploaded = 0;
+      let lastLog = 0;
+      const LOG_STEP = 5 * 1024 * 1024; // 5MB
+
+      progress.on('data', (chunk: Buffer) => {
+        uploaded += chunk.length;
+        if (uploaded - lastLog >= LOG_STEP || uploaded === total) {
+          lastLog = uploaded;
+          const percent = ((uploaded / total) * 100).toFixed(1);
+          console.log(
+            `[files] uploading... ${percent}% (${formatBytes(uploaded)} / ${formatBytes(total)})`,
+          );
+        }
+      });
+
+      const startedAt = Date.now();
+      readStream.on('open', () => console.log('[files] readStream opened'));
+      readStream.on('error', (err) =>
+        console.log('[files] readStream error', err?.message || err),
+      );
+      progress.on('error', (err) =>
+        console.log('[files] progress stream error', err?.message || err),
+      );
+
+      readStream.pipe(progress);
+
+      try {
+        console.log('[files] axios PUT start');
+        await http.put(href, progress as any, {
+          headers: {
+            'Content-Type': file.mimetype || 'application/octet-stream',
+            'Content-Length': String(total),
+          },
+          // onUploadProgress не работает в Node-адаптере — прогресс считаем вручную через PassThrough
+        });
+        const ms = Date.now() - startedAt;
+        console.log('[files] axios PUT done', { ms });
+      } catch (e: any) {
+        console.log('[files] axios PUT failed', {
+          status: e?.response?.status,
+          msg: e?.message,
+        });
+        throw e;
+      } finally {
+        try {
+          await fsp.unlink(localPath);
+          console.log('[files] temp file removed', localPath);
+        } catch (e: any) {
+          console.log(
+            '[files] temp file remove failed (non-fatal)',
+            e?.message || e,
+          );
+        }
+      }
+    } else {
+      // Fallback: память (если вдруг не diskStorage)
+      const len = file.size ?? file.buffer?.length ?? 0;
+      console.log('[files] upload from memory fallback start', {
+        size: len,
+        sizeHuman: formatBytes(len),
+        mime: file.mimetype,
+      });
+      try {
+        await http.put(href, file.buffer, {
+          headers: {
+            'Content-Type': file.mimetype || 'application/octet-stream',
+            'Content-Length': String(len),
+          },
+        });
+        console.log('[files] upload from memory done');
+      } catch (e: any) {
+        console.log('[files] upload from memory failed', {
+          status: e?.response?.status,
+          msg: e?.message,
+        });
+        throw e;
+      }
+    }
+
+    // 4) fetch metadata with small retry
+    console.log('[files] fetch metadata start');
     let md: any | null = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
+        console.log(`[files] metadata attempt ${attempt + 1}`);
         md = await http.get(YD_RES, {
           params: {
             path: absPath,
@@ -131,17 +257,25 @@ export class TaskFilesService {
           },
           headers: auth,
         });
-        if (md?.data?.size) break;
-      } catch (_) {
-        // noop — повторим
+        if (md?.data?.size) {
+          console.log('[files] metadata received', {
+            size: md.data.size,
+            mime: md.data.mime_type,
+          });
+          break;
+        }
+      } catch (e: any) {
+        console.log('[files] metadata request failed', e?.message || e);
       }
       await new Promise((res) => setTimeout(res, 300 * (attempt + 1)));
     }
 
     const safeName =
       this.decodeOriginalName(file.originalname) || md?.data?.name || yaName;
+    console.log('[files] safeName resolved', safeName);
 
     // 5) запись в БД
+    console.log('[files] DB insert start');
     const dbFile = await this.prisma.kanbanFile.create({
       data: {
         name: safeName,
@@ -167,8 +301,9 @@ export class TaskFilesService {
         file: true,
       },
     });
+    console.log('[files] DB insert done', { id: dbFile.id });
 
-    return {
+    const result = {
       id: dbFile.id,
       name: dbFile.name,
       preview: dbFile.preview,
@@ -178,6 +313,8 @@ export class TaskFilesService {
       createdAt: dbFile.createdAt,
       file: dbFile.file,
     };
+    console.log('[files] uploadFile done', { id: result.id });
+    return result;
   }
 
   /**
