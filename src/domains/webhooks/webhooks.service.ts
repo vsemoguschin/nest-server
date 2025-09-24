@@ -50,8 +50,8 @@ export class WebhooksService {
           deliveredDate,
         },
       });
-      // console.log(
-      //   'Updated delivery:',
+      // console.log( 
+      //   'Updated delivery:', 
       //   cdek_number,
       //   status,
       //   sendDate,
