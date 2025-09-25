@@ -316,4 +316,32 @@ export class NotificationSchedulerService {
       await this.notifyAdmins(`🔥 Ежедневный импорт упал: ${e?.message || e}`);
     }
   }
+
+  // Автоматическая архивация задач старше 5 дней на заданных досках
+  // Сейчас — только для boardId=3
+  @Cron('0 10 3 * * *', { timeZone: 'Europe/Moscow' })
+  async autoArchiveOldTasks() {
+    try {
+      const BOARD_IDS = [3];
+      const DAYS = 5;
+      const cutoff = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000);
+
+      const res = await this.prisma.kanbanTask.updateMany({
+        where: {
+          deletedAt: null,
+          archived: false,
+          createdAt: { lt: cutoff },
+          boardId: { in: BOARD_IDS },
+        },
+        data: { archived: true },
+      });
+      this.logger.log(
+        `[autoArchiveOldTasks] cutoff=${cutoff.toISOString()} archived=${res.count} on boards=${BOARD_IDS.join(',')}`,
+      );
+    } catch (e: any) {
+      this.logger.error(
+        `[autoArchiveOldTasks] failed: ${e?.message || String(e)}`,
+      );
+    }
+  }
 }

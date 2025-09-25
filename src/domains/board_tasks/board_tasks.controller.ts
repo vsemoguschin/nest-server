@@ -512,6 +512,46 @@ export class TasksController {
     const comment = await this.comments.ensureComment(commentId);
     const task = await this.tasksService.ensureTask(comment.task.id);
 
+    // Попробуем сжать изображения перед загрузкой на Я.Диск
+    // Сжимаем только jpg/jpeg/png/webp, сохраняем тот же формат и имя расширения
+    try {
+      const supported = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      if ((file.mimetype && supported.includes(file.mimetype)) && (file as any).path) {
+        const sharp = await import('sharp').then((m) => m.default || (m as any));
+        const origPath = (file as any).path as string;
+        const basename = path.basename(origPath);
+        const compressedPath = path.join(TMP_DIR, `min-${basename}`);
+
+        const img = sharp(origPath).rotate();
+        // унифицированное ограничение размеров (уменьшаем большие картинки)
+        img.resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true });
+
+        if (file.mimetype === 'image/jpeg' || file.mimetype === 'image/jpg') {
+          img.jpeg({ quality: 80, mozjpeg: true });
+        } else if (file.mimetype === 'image/png') {
+          img.png({ compressionLevel: 9, palette: true, progressive: true });
+        } else if (file.mimetype === 'image/webp') {
+          img.webp({ quality: 80 });
+        }
+
+        await img.toFile(compressedPath);
+
+        // заменяем путь файла на сжатый и удаляем оригинал
+        try {
+          fs.unlinkSync(origPath);
+        } catch {}
+
+        (file as any).path = compressedPath;
+        try {
+          const st = fs.statSync(compressedPath);
+          (file as any).size = st.size;
+        } catch {}
+      }
+    } catch (e) {
+      // Если sharp не установлен или сжатие не удалось — просто загружаем оригинал
+      console.log('[upload] image compress skipped:', (e as any)?.message || e);
+    }
+
     const dbFile = await this.filesService.uploadFile(
       file, // теперь у файла есть file.path (путь на диске)
       user.id,

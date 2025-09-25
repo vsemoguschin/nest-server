@@ -24,6 +24,7 @@
     "seed:months": "ts-node src/seeds/seed-import-months.ts",
     "seed:crm:reset": "ts-node src/seeds/seed-crm-reset.ts",
     "seed:rename-board": "ts-node src/seeds/seed-rename-board.ts",
+    "seed:archive-board-3": "ts-node src/seeds/seed-archive-board-3.ts",
     "prisma:deploy": "prisma db push && prisma generate"
   },
   "dependencies": {
@@ -56,6 +57,7 @@
     "rxjs": "^7.8.1",
     "socks-proxy-agent": "^8.0.5",
     "swagger-ui-express": "^5.0.1",
+    "sharp": "^0.33.4",
     "uuid": "^11.1.0",
     "winston": "^3.17.0"
   },

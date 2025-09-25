@@ -343,16 +343,23 @@ export class TaskFilesService {
     return absPath;
   }
 
-  /** Вернёт только preview (без sizes) или null */
-  async getPreviewOnly(path: string): Promise<string | null> {
+  /** Вернёт URL превью (от Yandex Disk). Можно указать размер и crop. */
+  async getPreviewUrl(
+    path: string,
+    opts?: { size?: string; crop?: boolean },
+  ): Promise<string | null> {
+    const params: Record<string, any> = {
+      path,
+      fields: 'preview',
+    };
+    if (opts?.size) params.preview_size = opts.size;
+    if (typeof opts?.crop === 'boolean') params.preview_crop = opts.crop;
+
     const { data } = await axios.get(`${this.API}/resources`, {
-      params: { path, fields: 'sizes' },
+      params,
       headers: this.headers,
     });
-    if (data.sizes) {
-      return data?.sizes[0].url;
-    }
-    return null;
+    return data?.preview ?? null;
   }
 
   // async deleteFile(att: { filePath: string; fileId: number }) {

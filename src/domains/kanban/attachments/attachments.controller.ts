@@ -42,6 +42,20 @@ class PreviewFileQueryDto {
   format?: 'webp' | 'jpeg' | 'png';
 }
 
+class PreviewQueryRedirectDto {
+  @IsString()
+  path!: string;
+
+  // Формат Yandex: S, M, L, XL, XXL, XXXL, 1280x720, 1920x1080, 2048x2048, и т.п.
+  @IsOptional()
+  @IsString()
+  size?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === '1' || value === 'true')
+  crop?: boolean;
+}
+
 /** DTO для скачивания */
 class DownloadFileQueryDto {
   @IsString()
@@ -59,10 +73,11 @@ export class AttachmentsController {
 
   @Get('preview')
   // @Redirect(undefined, 302)
-  async preview(@Query('path') path: string) {
-    // console.log(path);
-    // return
-    const url = await this.filesService.getPreviewOnly(path);
+  async preview(@Query() q: PreviewQueryRedirectDto) {
+    const url = await this.filesService.getPreviewUrl(q.path, {
+      size: q.size,
+      crop: q.crop,
+    });
     if (!url) throw new NotFoundException('No preview');
     return { url, statusCode: 302 }; // динамический редирект
   }
