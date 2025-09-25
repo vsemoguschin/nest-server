@@ -15,6 +15,19 @@ export class NotificationSchedulerService {
     private readonly bluesalesImport: BluesalesImportService,
   ) {}
 
+  private async notifyAdmins(text: string) {
+    // Send only in production to avoid spam in dev
+    if (this.env !== 'production') return;
+    const adminIds = [317401874];
+    for (const id of adminIds) {
+      try {
+        await this.telegramService.sendToChat(id, text);
+      } catch (e: any) {
+        this.logger.error(`Failed to notify ${id}: ${e?.message || e}`);
+      }
+    }
+  }
+
   // Метод, который будет запускаться по расписанию
   // @Cron('0 0 15,18,21,23 * * *')
   @Cron('0 59 14,17,20,23 * * *')
@@ -229,12 +242,21 @@ export class NotificationSchedulerService {
     };
 
     try {
+      this.logger.log('[dailyCustomers] Start daily customers import');
+      await this.notifyAdmins('▶️ Старт ежедневного импорта клиентов');
       // вчера по Москве
       const now = new Date();
       const todayMsk = ymdInMoscow(now);
       const yesterdayMsk = addDaysYmd(todayMsk, -1);
+      const header = `[dailyCustomers] Today MSK=${todayMsk}, yesterday MSK=${yesterdayMsk}`;
+      this.logger.log(header);
+      await this.notifyAdmins(
+        `🕒 Даты: сегодня ${todayMsk}, вчера ${yesterdayMsk}`,
+      );
 
       let state = await this.prisma.crmSyncState.findUnique({ where: { key } });
+      const stateMsg = `[dailyCustomers] Current state: lastDailyImportDate=${state?.lastDailyImportDate || 'none'}`;
+      this.logger.log(stateMsg);
 
       // Если нет состояния — импортируем только вчерашний день
       let startDate = state?.lastDailyImportDate
@@ -242,12 +264,36 @@ export class NotificationSchedulerService {
         : yesterdayMsk;
 
       // Нечего импортировать
-      if (startDate > yesterdayMsk) return;
+      if (startDate > yesterdayMsk) {
+        this.logger.log(
+          `[dailyCustomers] Nothing to import: startDate=${startDate} > yesterday=${yesterdayMsk}`,
+        );
+        await this.notifyAdmins(
+          `ℹ️ Нет данных для импорта: старт ${startDate} > вчера ${yesterdayMsk}`,
+        );
+        return;
+      }
 
       // Идём по дням до вчера включительно
       let cur = startDate;
       while (cur <= yesterdayMsk) {
-        await this.bluesalesImport.importDay(cur);
+        this.logger.log(`[dailyCustomers] Importing day ${cur}...`);
+        await this.notifyAdmins(`⬇️ Импорт дня ${cur}...`);
+        try {
+          await this.bluesalesImport.importDay(cur);
+          this.logger.log(
+            `[dailyCustomers] Day ${cur} import complete, updating sync state...`,
+          );
+          await this.notifyAdmins(`✅ Импорт дня ${cur} завершён`);
+        } catch (e: any) {
+          this.logger.error(
+            `[dailyCustomers] Failed to import day ${cur}: ${e?.message || e}`,
+          );
+          await this.notifyAdmins(
+            `❌ Ошибка импорта ${cur}: ${e?.message || e}`,
+          );
+          throw e;
+        }
 
         // Обновляем прогресс после каждого дня
         state = await this.prisma.crmSyncState.upsert({
@@ -255,15 +301,19 @@ export class NotificationSchedulerService {
           update: { lastDailyImportDate: cur },
           create: { key, lastDailyImportDate: cur },
         });
+        const savedMsg = `[dailyCustomers] Sync state saved: lastDailyImportDate=${state.lastDailyImportDate}`;
+        this.logger.log(savedMsg);
+        await this.notifyAdmins(`💾 Обновлено состояние: ${state.lastDailyImportDate}`);
 
         cur = addDaysYmd(cur, 1);
       }
 
-      this.logger.log(
-        `Daily customers import done. Last date: ${state?.lastDailyImportDate}`,
-      );
+      const doneMsg = `Daily customers import done. Last date: ${state?.lastDailyImportDate}`;
+      this.logger.log(doneMsg);
+      await this.notifyAdmins(`🏁 Импорт завершён. Последняя дата: ${state?.lastDailyImportDate}`);
     } catch (e: any) {
       this.logger.error(`Daily customers import failed: ${e?.message || e}`);
+      await this.notifyAdmins(`🔥 Ежедневный импорт упал: ${e?.message || e}`);
     }
   }
 }

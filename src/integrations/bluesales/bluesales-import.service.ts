@@ -76,6 +76,21 @@ export class BluesalesImportService {
     return `${y2}-${m2}-${d2}`;
   }
 
+  // Convert 'DD.MM.YYYY' -> 'YYYY-MM-DD'; leave 'YYYY-MM-DD' as is; otherwise return '' on falsy
+  private normalizeDotDateToIso(s?: string | null): string {
+    if (!s) return '';
+    const str = String(s).trim();
+    // already ISO-like
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    // dot format
+    const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (m) {
+      const [, dd, mm, yyyy] = m;
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    return '';
+  }
+
   async importRange(fromYmd: string, tillYmd: string) {
     let cur = fromYmd;
     const yesterday = tillYmd;
@@ -246,6 +261,9 @@ export class BluesalesImportService {
 
   private async upsertCustomer(c: ApiCustomer) {
     const refs = await this.upsertReferenceData(c);
+    const firstContact = this.normalizeDotDateToIso(c.firstContactDate);
+    const lastContact = this.normalizeDotDateToIso(c.lastContactDate);
+    const nextContact = this.normalizeDotDateToIso(c.nextContactDate);
     const customer = await this.prisma.crmCustomer.upsert({
       where: { externalId: String(c.id) },
       update: {
@@ -257,9 +275,9 @@ export class BluesalesImportService {
         email: c.email || '',
         address: c.address || '',
         otherContacts: c.otherContacts || '',
-        firstContactDate: c.firstContactDate || '',
-        lastContactDate: c.lastContactDate || '',
-        nextContactDate: c.nextContactDate || '',
+        firstContactDate: firstContact,
+        lastContactDate: lastContact,
+        nextContactDate: nextContact,
         shortNotes: c.shortNotes || '',
         comments: c.comments || '',
         countryId: refs.countryId,
@@ -281,9 +299,9 @@ export class BluesalesImportService {
         email: c.email || '',
         address: c.address || '',
         otherContacts: c.otherContacts || '',
-        firstContactDate: c.firstContactDate || '',
-        lastContactDate: c.lastContactDate || '',
-        nextContactDate: c.nextContactDate || '',
+        firstContactDate: firstContact,
+        lastContactDate: lastContact,
+        nextContactDate: nextContact,
         shortNotes: c.shortNotes || '',
         comments: c.comments || '',
         countryId: refs.countryId ?? undefined,
@@ -313,4 +331,3 @@ export class BluesalesImportService {
     }
   }
 }
-

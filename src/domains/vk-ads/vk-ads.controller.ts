@@ -1,8 +1,9 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { VkAdsService } from './vk-ads.service';
 import {
-  StatisticsDayGroupsDto,
   StatisticsDayAdPlansDto,
+  StatisticsDayGroupsDto,
+  StatisticsDayBannersDto,
 } from './dto/statistics-day.dto';
 import {
   AdPlanIdParamDto,
@@ -27,4 +28,19 @@ export class VkAdsController {
   ) {
     return this.svc.getAdPlanGroupsStats(params.id, q);
   }
+
+  // Ad Groups statistics (day) – entity fixed to ad_groups
+  // GET /vk-ads/ad_groups/statistics/day
+  @Get('ad_groups/statistics/day')
+  getAdGroupsDay(@Query() q: StatisticsDayGroupsDto) {
+    return this.svc.getAdGroupsDay(q);
+  }
+
+  // Banners statistics (day) – entity fixed to banners
+  // GET /vk-ads/banners/statistics/day
+  @Get('banners/statistics/day')
+  getBannersDay(@Query() q: StatisticsDayBannersDto) {
+    return this.svc.getBannersDay(q);
+  }
+
 }

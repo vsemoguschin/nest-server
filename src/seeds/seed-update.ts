@@ -66,6 +66,18 @@ type ApiCustomer = {
   customFields: any[];
 };
 
+function normalizeDotDateToIso(s?: string | null): string {
+  if (!s) return '';
+  const str = String(s).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str; // already ISO
+  const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (m) {
+    const [, dd, mm, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return '';
+}
+
 async function getCustomersPage(
   startRowNumber: number,
   pageSize: number,
@@ -105,163 +117,130 @@ async function getCustomersPage(
 }
 
 async function upsertReferenceData(c: ApiCustomer) {
-  // Reference tables: if a row exists by externalId — reuse id without updating; otherwise create
-  const getOrCreate = async <T extends { id: number }>(
-    find: () => Promise<T | null>,
-    create: () => Promise<T>,
-  ) => {
-    const existing = await find();
-    if (existing) return existing.id;
-    const created = await create();
-    return created.id;
-  };
-
+  // Upsert reference tables and return their IDs (overwrite fields if exist)
   const countryId = c.country
-    ? await getOrCreate(
-        () =>
-          prisma.crmCountry.findUnique({
-            where: { externalId: String(c.country!.id) },
-            select: { id: true },
-          }),
-        () =>
-          prisma.crmCountry.create({
-            data: { externalId: String(c.country!.id), name: c.country!.name },
-            select: { id: true },
-          }),
-      )
+    ? (
+        await prisma.crmCountry.upsert({
+          where: { externalId: String(c.country.id) },
+          update: { name: c.country.name },
+          create: { externalId: String(c.country.id), name: c.country.name },
+        })
+      ).id
     : null;
 
   const cityId = c.city
-    ? await getOrCreate(
-        () =>
-          prisma.crmCity.findUnique({
-            where: { externalId: String(c.city!.id) },
-            select: { id: true },
-          }),
-        () =>
-          prisma.crmCity.create({
-            data: { externalId: String(c.city!.id), name: c.city!.name },
-            select: { id: true },
-          }),
-      )
+    ? (
+        await prisma.crmCity.upsert({
+          where: { externalId: String(c.city.id) },
+          update: { name: c.city.name },
+          create: { externalId: String(c.city.id), name: c.city.name },
+        })
+      ).id
     : null;
 
   const crmStatusId = c.crmStatus
-    ? await getOrCreate(
-        () =>
-          prisma.crmStatus.findUnique({
-            where: { externalId: String(c.crmStatus!.id) },
-            select: { id: true },
-          }),
-        () =>
-          prisma.crmStatus.create({
-            data: {
-              externalId: String(c.crmStatus!.id),
-              name: c.crmStatus!.name,
-              color: c.crmStatus!.color,
-              type: c.crmStatus!.type,
-            },
-            select: { id: true },
-          }),
-      )
+    ? (
+        await prisma.crmStatus.upsert({
+          where: { externalId: String(c.crmStatus.id) },
+          update: {
+            name: c.crmStatus.name,
+            color: c.crmStatus.color,
+            type: c.crmStatus.type,
+          },
+          create: {
+            externalId: String(c.crmStatus.id),
+            name: c.crmStatus.name,
+            color: c.crmStatus.color,
+            type: c.crmStatus.type,
+          },
+        })
+      ).id
     : null;
 
   const sourceId = c.source
-    ? await getOrCreate(
-        () =>
-          prisma.crmSource.findUnique({
-            where: { externalId: String(c.source!.id) },
-            select: { id: true },
-          }),
-        () =>
-          prisma.crmSource.create({
-            data: { externalId: String(c.source!.id), name: c.source!.name },
-            select: { id: true },
-          }),
-      )
+    ? (
+        await prisma.crmSource.upsert({
+          where: { externalId: String(c.source.id) },
+          update: { name: c.source.name },
+          create: { externalId: String(c.source.id), name: c.source.name },
+        })
+      ).id
     : null;
 
   const salesChannelId = c.salesChannel
-    ? await getOrCreate(
-        () =>
-          prisma.crmSalesChannel.findUnique({
-            where: { externalId: String(c.salesChannel!.id) },
-            select: { id: true },
-          }),
-        () =>
-          prisma.crmSalesChannel.create({
-            data: {
-              externalId: String(c.salesChannel!.id),
-              name: c.salesChannel!.name,
-              code: c.salesChannel!.code,
-            },
-            select: { id: true },
-          }),
-      )
+    ? (
+        await prisma.crmSalesChannel.upsert({
+          where: { externalId: String(c.salesChannel.id) },
+          update: {
+            name: c.salesChannel.name,
+            code: c.salesChannel.code,
+          },
+          create: {
+            externalId: String(c.salesChannel.id),
+            name: c.salesChannel.name,
+            code: c.salesChannel.code,
+          },
+        })
+      ).id
     : null;
 
   const managerId = c.manager
-    ? await getOrCreate(
-        () =>
-          prisma.crmManager.findUnique({
-            where: { externalId: String(c.manager!.id) },
-            select: { id: true },
-          }),
-        () =>
-          prisma.crmManager.create({
-            data: {
-              externalId: String(c.manager!.id),
-              fullName: c.manager!.fullName,
-              email: c.manager!.email || '',
-              login: c.manager!.login || '',
-              phone: c.manager!.phone || '',
-              vk: c.manager!.vk || null,
-              lastLoginDate: c.manager!.lastLoginDate || '',
-              lastActivityDate: c.manager!.lastActivityDate || '',
-              isActive: Boolean(c.manager!.isActive),
-              permissions: c.manager!.permissionsSettings ?? undefined,
-            },
-            select: { id: true },
-          }),
-      )
+    ? (
+        await prisma.crmManager.upsert({
+          where: { externalId: String(c.manager.id) },
+          update: {
+            fullName: c.manager.fullName,
+            email: c.manager.email || '',
+            login: c.manager.login || '',
+            phone: c.manager.phone || '',
+            vk: c.manager.vk || null,
+            lastLoginDate: c.manager.lastLoginDate || '',
+            lastActivityDate: c.manager.lastActivityDate || '',
+            isActive: Boolean(c.manager.isActive),
+            permissions: c.manager.permissionsSettings ?? undefined,
+          },
+          create: {
+            externalId: String(c.manager.id),
+            fullName: c.manager.fullName,
+            email: c.manager.email || '',
+            login: c.manager.login || '',
+            phone: c.manager.phone || '',
+            vk: c.manager.vk || null,
+            lastLoginDate: c.manager.lastLoginDate || '',
+            lastActivityDate: c.manager.lastActivityDate || '',
+            isActive: Boolean(c.manager.isActive),
+            permissions: c.manager.permissionsSettings ?? undefined,
+          },
+        })
+      ).id
     : null;
 
   const vkId = c.vk
-    ? await getOrCreate(
-        () =>
-          prisma.crmVk.findUnique({
-            where: { externalId: String(c.vk!.id) },
-            select: { id: true },
-          }),
-        () =>
-          prisma.crmVk.create({
-            data: {
-              externalId: String(c.vk!.id),
-              name: c.vk!.name,
-              messagesGroupId: c.vk!.messagesGroupId || '',
-            },
-            select: { id: true },
-          }),
-      )
+    ? (
+        await prisma.crmVk.upsert({
+          where: { externalId: String(c.vk.id) },
+          update: { name: c.vk.name, messagesGroupId: c.vk.messagesGroupId || '' },
+          create: {
+            externalId: String(c.vk.id),
+            name: c.vk.name,
+            messagesGroupId: c.vk.messagesGroupId || '',
+          },
+        })
+      ).id
     : null;
 
   const avitoId = c.avito
-    ? await getOrCreate(
-        () =>
-          prisma.crmAvito.findUnique({
-            where: { externalId: String(c.avito!.id) },
-            select: { id: true },
-          }),
-        () =>
-          prisma.crmAvito.create({
-            data: {
-              externalId: String(c.avito!.id),
-              name: c.avito!.name,
-              chatId: c.avito!.chatId || '',
-            },
-            select: { id: true },
-          }),
-      )
+    ? (
+        await prisma.crmAvito.upsert({
+          where: { externalId: String(c.avito.id) },
+          update: { name: c.avito.name, chatId: c.avito.chatId || '' },
+          create: {
+            externalId: String(c.avito.id),
+            name: c.avito.name,
+            chatId: c.avito.chatId || '',
+          },
+        })
+      ).id
     : null;
 
   return {
@@ -278,72 +257,86 @@ async function upsertReferenceData(c: ApiCustomer) {
 
 async function upsertCustomer(c: ApiCustomer) {
   const refs = await upsertReferenceData(c);
+  const firstContact = normalizeDotDateToIso(c.firstContactDate);
+  const lastContact = normalizeDotDateToIso(c.lastContactDate);
+  const nextContact = normalizeDotDateToIso(c.nextContactDate);
 
-  // If customer exists by externalId — reuse and skip updating fields
-  const existing = await prisma.crmCustomer.findUnique({
+  const customer = await prisma.crmCustomer.upsert({
     where: { externalId: String(c.id) },
+    update: {
+      fullName: c.fullName,
+      photoUrl: c.photoUrl || '',
+      birthday: c.birthday || '',
+      sex: c.sex || '',
+      phone: c.phone || '',
+      email: c.email || '',
+      address: c.address || '',
+      otherContacts: c.otherContacts || '',
+      firstContactDate: firstContact,
+      lastContactDate: lastContact,
+      nextContactDate: nextContact,
+      shortNotes: c.shortNotes || '',
+      comments: c.comments || '',
+      countryId: refs.countryId,
+      cityId: refs.cityId,
+      crmStatusId: refs.crmStatusId,
+      sourceId: refs.sourceId,
+      salesChannelId: refs.salesChannelId,
+      managerId: refs.managerId,
+      vkId: refs.vkId,
+      avitoId: refs.avitoId,
+    },
+    create: {
+      externalId: String(c.id),
+      fullName: c.fullName,
+      photoUrl: c.photoUrl || '',
+      birthday: c.birthday || '',
+      sex: c.sex || '',
+      phone: c.phone || '',
+      email: c.email || '',
+      address: c.address || '',
+      otherContacts: c.otherContacts || '',
+      firstContactDate: firstContact,
+      lastContactDate: lastContact,
+      nextContactDate: nextContact,
+      shortNotes: c.shortNotes || '',
+      comments: c.comments || '',
+      countryId: refs.countryId ?? undefined,
+      cityId: refs.cityId ?? undefined,
+      crmStatusId: refs.crmStatusId ?? undefined,
+      sourceId: refs.sourceId ?? undefined,
+      salesChannelId: refs.salesChannelId ?? undefined,
+      managerId: refs.managerId ?? undefined,
+      vkId: refs.vkId ?? undefined,
+      avitoId: refs.avitoId ?? undefined,
+    },
     select: { id: true },
   });
 
-  const customer = existing
-    ? { id: existing.id }
-    : await prisma.crmCustomer.create({
-        data: {
-          externalId: String(c.id),
-          fullName: c.fullName,
-          photoUrl: c.photoUrl || '',
-          birthday: c.birthday || '',
-          sex: c.sex || '',
-          phone: c.phone || '',
-          email: c.email || '',
-          address: c.address || '',
-          otherContacts: c.otherContacts || '',
-          firstContactDate: c.firstContactDate || '',
-          lastContactDate: c.lastContactDate || '',
-          nextContactDate: c.nextContactDate || '',
-          shortNotes: c.shortNotes || '',
-          comments: c.comments || '',
-          countryId: refs.countryId ?? undefined,
-          cityId: refs.cityId ?? undefined,
-          crmStatusId: refs.crmStatusId ?? undefined,
-          sourceId: refs.sourceId ?? undefined,
-          salesChannelId: refs.salesChannelId ?? undefined,
-          managerId: refs.managerId ?? undefined,
-          vkId: refs.vkId ?? undefined,
-          avitoId: refs.avitoId ?? undefined,
+  // Tags: ensure tag exists (upsert) and ensure link exists (upsert)
+  if (Array.isArray(c.tags) && c.tags.length) {
+    for (const t of c.tags) {
+      const tag = await prisma.crmTag.upsert({
+        where: { externalId: String(t.id) },
+        update: {
+          name: t.name,
+          color: t.color || '',
+          textColor: t.textColor || '',
+        },
+        create: {
+          externalId: String(t.id),
+          name: t.name,
+          color: t.color || '',
+          textColor: t.textColor || '',
         },
         select: { id: true },
       });
 
-  // Tags: ensure tag exists (no update if exists) and ensure link exists
-  if (Array.isArray(c.tags) && c.tags.length) {
-    for (const t of c.tags) {
-      const tagExisting = await prisma.crmTag.findUnique({
-        where: { externalId: String(t.id) },
-        select: { id: true },
+      await prisma.crmCustomerTag.upsert({
+        where: { customerId_tagId: { customerId: customer.id, tagId: tag.id } },
+        update: {},
+        create: { customerId: customer.id, tagId: tag.id },
       });
-      const tagId = tagExisting
-        ? tagExisting.id
-        : (
-            await prisma.crmTag.create({
-              data: {
-                externalId: String(t.id),
-                name: t.name,
-                color: t.color || '',
-                textColor: t.textColor || '',
-              },
-              select: { id: true },
-            })
-          ).id;
-
-      const link = await prisma.crmCustomerTag.findUnique({
-        where: { customerId_tagId: { customerId: customer.id, tagId } },
-        select: { customerId: true, tagId: true },
-      });
-      if (!link)
-        await prisma.crmCustomerTag.create({
-          data: { customerId: customer.id, tagId },
-        });
     }
   }
 }
