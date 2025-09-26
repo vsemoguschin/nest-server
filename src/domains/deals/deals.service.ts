@@ -148,14 +148,14 @@ export class DealsService {
     const deals = await this.prisma.deal.findMany({
       where: {
         // deletedAt: null,
-        // saleDate: {
-        //   startsWith: period,
-        // },
-        client: {
-          firstContact: {
-            startsWith: period
-          }
+        saleDate: {
+          startsWith: period,
         },
+        // client: {
+        //   firstContact: {
+        //     startsWith: period
+        //   }
+        // },
         workSpaceId: workspacesSearch,
       },
 
