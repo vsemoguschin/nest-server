@@ -174,7 +174,7 @@ export class TasksService {
           title: srcTask.title,
           description: '',
           chatLink: srcTask.chatLink,
-          cover: null,
+          cover: srcTask.cover,
           position,
           boardId: targetColumn.boardId,
           columnId: targetColumn.id,
@@ -327,7 +327,10 @@ export class TasksService {
     if (!targetColumn)
       throw new NotFoundException('Target column not found on board');
 
-    const position = await this.nextPosition(targetColumn.boardId, targetColumn.id);
+    const position = await this.nextPosition(
+      targetColumn.boardId,
+      targetColumn.id,
+    );
 
     const updated = await this.prisma.kanbanTask.update({
       where: { id: taskId },
@@ -336,7 +339,13 @@ export class TasksService {
         columnId: targetColumn.id,
         position,
       },
-      select: { id: true, title: true, boardId: true, columnId: true, position: true },
+      select: {
+        id: true,
+        title: true,
+        boardId: true,
+        columnId: true,
+        position: true,
+      },
     });
 
     return updated;
@@ -564,7 +573,10 @@ export class TasksService {
     if (hasMore) {
       const last = slice[slice.length - 1] as any;
       nextCursor = Buffer.from(
-        JSON.stringify({ id: last.id, updatedAt: last.updatedAt.toISOString() }),
+        JSON.stringify({
+          id: last.id,
+          updatedAt: last.updatedAt.toISOString(),
+        }),
       ).toString('base64');
     }
 

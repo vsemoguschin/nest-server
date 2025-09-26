@@ -26,6 +26,27 @@ const VK_ERR_TO_HTTP: Record<string, number> = {
   ERR_INTERNAL: 500,
 };
 
+// Разрешенные CRM‑статусы для подсчета "макетов" (используются в нескольких местах)
+const ALLOWED_CRM_STATUSES = [
+  'Макет нарисован',
+  'ХОЧЕТ КУПИТЬ',
+  'Бизнес макет',
+  'Личный контакт',
+  'Ожидаем предоплату',
+  'Бронь цены',
+  'Предоплата получена',
+  'Заказ оплачен полностью',
+  'Заказ отправлен',
+  'Не оплачивает',
+  'Ждем отзыв',
+  'Постоянник',
+  'Постоянник (начало)',
+  'Постоянник (макет)',
+  'Постоянник (хочет)',
+  'Проблемный клиент',
+  'Заказ доставлен',
+];
+
 /**
  * VkAdsService
  * Сервис-обертка над VK Ads API и нашей БД (Prisma).
@@ -38,6 +59,7 @@ export class VkAdsService {
   private http: AxiosInstance;
   private host: string;
   private readonly VK_ADS_TOKEN = process.env.VK_ADS_TOKEN;
+  private readonly VK_ADS_BOOK_TOKEN = process.env.VK_ADS_BOOK_TOKEN;
 
   private readonly VK_ADS_API_HOST = process.env.VK_ADS_API_HOST;
 
@@ -53,8 +75,31 @@ export class VkAdsService {
     this.http = axios.create({
       baseURL: this.VK_ADS_API_HOST,
       headers: { Authorization: `Bearer ${this.VK_ADS_TOKEN}` },
-      timeout: 20000,
+      // Увеличенный таймаут для тяжелых агрегирующих запросов и сидов
+      timeout: 60000,
     });
+  }
+
+  /** Получить токен по проекту (жестко требует project). Бросает 500, если env не настроен. */
+  private getTokenForProject(project?: 'neon' | 'book'): string {
+    if (!project) {
+      throw new HttpException(
+        { code: 'ERR_WRONG_PARAMETER', message: 'project is required' },
+        400,
+      );
+    }
+    const token =
+      project === 'book' ? this.VK_ADS_BOOK_TOKEN : this.VK_ADS_TOKEN;
+    if (!token) {
+      throw new HttpException(
+        {
+          code: 'ERR_INTERNAL',
+          message: `VK ADS token for project ${project} is not configured`,
+        },
+        500,
+      );
+    }
+    return token;
   }
   /**
    * Возвращает список id всех рекламных кампаний (ad_plans) + служебные мапы.
@@ -63,7 +108,11 @@ export class VkAdsService {
    * Вход: необязательный фильтр статусов.
    * Выход: CSV со всеми id и карты: статус/имя/лимиты/идентификаторы групп/refs по плану.
    */
-  private async getAllAdPlanIdsCsv(statusesFilter?: string[]): Promise<{
+  private async getAllAdPlanIdsCsv(
+    project: 'neon' | 'book',
+    statusesFilter?: string[],
+    authToken?: string,
+  ): Promise<{
     idsCsv: string;
     statusById: Record<number, string>;
     nameById: Record<number, string>;
@@ -80,7 +129,7 @@ export class VkAdsService {
     const statusById: Record<number, string> = {};
     const nameById: Record<number, string> = {};
     try {
-      const cacheKey = ['ids', 'ad_plans', ...statuses].join('|');
+      const cacheKey = ['ids', 'ad_plans', project, ...statuses].join('|');
       const cached = this.getCache<{
         ids: number[];
         statusById: Record<number, string>;
@@ -111,6 +160,8 @@ export class VkAdsService {
               offset,
               _status: st,
             },
+            4,
+            authToken,
           );
 
           const items: any[] = (data as any)?.items ?? [];
@@ -133,24 +184,10 @@ export class VkAdsService {
         }
       }
       // After ad plans collected, fetch groups per plan via v2/ad_groups.json (fields=id,utm)
-      if (ids.length) {
-        const map = await this.fetchGroupIdsByAdPlanIds(ids);
-        for (const k of Object.keys(map))
-          adGroupsById[Number(k)] = map[Number(k)];
-      }
-      this.setCache(cacheKey, {
-        ids: ids.slice(),
-        statusById: { ...statusById },
-        nameById: { ...nameById },
-        budgetLimitDayById: { ...budgetLimitDayById },
-        adGroupsById: { ...adGroupsById },
-        refsByPlan: {},
-      });
-      // After ad plans collected, fetch groups per plan via v2/ad_groups.json (fields=id,utm)
       let refsByPlan: Record<number, string[]> = {};
       if (ids.length) {
         const { groupsByPlan, refsByPlan: rByPlan } =
-          await this.fetchGroupIdsByAdPlanIds(ids, 'all');
+          await this.fetchGroupIdsByAdPlanIds(project, ids, 'all', authToken);
         for (const k of Object.keys(groupsByPlan))
           adGroupsById[Number(k)] = groupsByPlan[Number(k)];
         refsByPlan = rByPlan;
@@ -223,7 +260,11 @@ export class VkAdsService {
    * Возвращает все id групп и их метаданные: name, budget_limit_day, ref (из utm), status.
    * Обходит VK v2 ad_groups (пагинация) для набора статусов.
    */
-  private async getAllAdGroupIdsMeta(statusesFilter?: string[]): Promise<{
+  private async getAllAdGroupIdsMeta(
+    _project: 'neon' | 'book',
+    statusesFilter?: string[],
+    authToken?: string,
+  ): Promise<{
     ids: number[];
     nameById: Record<number, string>;
     budgetLimitDayById: Record<number, string | number>;
@@ -248,6 +289,7 @@ export class VkAdsService {
           '/api/v2/ad_groups.json?fields=id,name,utm,budget_limit_day,status',
           { limit, offset, _status: st },
           5,
+          authToken,
         );
         const items: any[] = (data as any)?.items ?? [];
         const count: number =
@@ -279,7 +321,11 @@ export class VkAdsService {
    * Возвращает все id баннеров и их метаданные: status, name, ad_group_id.
    * Обходит VK v2 banners (пагинация) для набора статусов.
    */
-  private async getAllBannerIdsMeta(statusesFilter?: string[]): Promise<{
+  private async getAllBannerIdsMeta(
+    _project: 'neon' | 'book',
+    statusesFilter?: string[],
+    authToken?: string,
+  ): Promise<{
     ids: number[];
     statusById: Record<number, string | undefined>;
     nameById: Record<number, string | undefined>;
@@ -302,6 +348,7 @@ export class VkAdsService {
           '/api/v2/banners.json?fields=id,ad_group_id,name,status',
           { limit, offset, _status: st },
           5,
+          authToken,
         );
         const items: any[] = (data as any)?.items ?? [];
         const count: number =
@@ -342,62 +389,77 @@ export class VkAdsService {
   ): Promise<{ dealsPrice: number; makets: number }> {
     if (!refs || !refs.length) return { dealsPrice: 0, makets: 0 };
     const uniqRefs = Array.from(new Set(refs.map((r) => String(r))));
+    const { dealsByRef, maketsByRef } = await this.computeDealsAndMaketsByRefs(
+      uniqRefs,
+      dateFrom,
+      dateTo,
+    );
+    const dealsPrice = uniqRefs.reduce(
+      (sum, r) => sum + (dealsByRef[r] || 0),
+      0,
+    );
+    const makets = uniqRefs.reduce((sum, r) => sum + (maketsByRef[r] || 0), 0);
+    return { dealsPrice, makets };
+  }
 
-    // Deals sum by refs
-    let dealsPrice = 0;
-    const dealsWhere: any = { adTag: { in: uniqRefs } };
-    const clientWhere: any = {};
-    if (dateFrom) clientWhere.firstContact = { gte: dateFrom };
-    if (dateTo)
-      clientWhere.firstContact = {
-        ...(clientWhere.firstContact || {}),
-        lte: dateTo,
-      };
-    if (Object.keys(clientWhere).length) dealsWhere.client = clientWhere;
+  /** Построить where для Prisma клиента по дате первого контакта */
+  private buildClientDateWhere(dateFrom?: string, dateTo?: string) {
+    if (!dateFrom && !dateTo) return undefined;
+    const firstContact: any = {};
+    if (dateFrom) firstContact.gte = dateFrom;
+    if (dateTo) firstContact.lte = dateTo;
+    return { firstContact };
+  }
+
+  /**
+   * Единый расчет карт по refs: сумма сделок (+допы) и число макетов.
+   * Используется для всех сущностей.
+   */
+  private async computeDealsAndMaketsByRefs(
+    refs: string[],
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<{
+    dealsByRef: Record<string, number>;
+    maketsByRef: Record<string, number>;
+  }> {
+    const uniqRefs = Array.from(new Set(refs.map(String)));
+    const dealsByRef: Record<string, number> = {};
+    const maketsByRef: Record<string, number> = {};
+
+    if (!uniqRefs.length) return { dealsByRef, maketsByRef };
+
+    // Deals sum by ref
+    const clientWhere = this.buildClientDateWhere(dateFrom, dateTo);
     const deals = await this.prisma.deal.findMany({
-      where: dealsWhere,
-      select: { id: true, price: true },
+      where: {
+        adTag: { in: uniqRefs },
+        ...(clientWhere ? { client: clientWhere } : {}),
+      },
+      select: { id: true, adTag: true, price: true },
     });
-    if (deals.length) {
-      const dealIds = deals.map((d) => d.id);
-      const dopSums = await this.prisma.dop.groupBy({
-        by: ['dealId'],
-        where: { dealId: { in: dealIds } },
-        _sum: { price: true },
-      });
-      const dopByDealId: Record<number, number> = {};
-      for (const row of dopSums)
-        dopByDealId[row.dealId] = Number(row._sum?.price || 0);
-      for (const d of deals)
-        dealsPrice += Number(d.price || 0) + (dopByDealId[d.id] || 0);
+    const dealIds = deals.map((d) => d.id);
+    const dopSums = dealIds.length
+      ? await this.prisma.dop.groupBy({
+          by: ['dealId'],
+          where: { dealId: { in: dealIds } },
+          _sum: { price: true },
+        })
+      : [];
+    const dopByDealId: Record<number, number> = {};
+    for (const row of dopSums)
+      dopByDealId[row.dealId] = Number(row._sum?.price || 0);
+    for (const d of deals) {
+      const totalForDeal = Number(d.price || 0) + (dopByDealId[d.id] || 0);
+      dealsByRef[d.adTag] = (dealsByRef[d.adTag] || 0) + totalForDeal;
     }
 
-    // Makets count: distinct customers having tag name IN refs and allowed statuses
-    const allowedStatusExternalIds = [
-      'Макет нарисован',
-      'ХОЧЕТ КУПИТЬ',
-      'Бизнес макет',
-      'Личный контакт',
-      'Ожидаем предоплату',
-      'Бронь цены',
-      'Предоплата получена',
-      'Заказ оплачен полностью',
-      'Заказ отправлен',
-      'Не оплачивает',
-      'Ждем отзыв',
-      'Постоянник',
-      'Постоянник (начало)',
-      'Постоянник (макет)',
-      'Постоянник (хочет)',
-      'Проблемный клиент',
-      'Заказ доставлен',
-    ];
+    // Makets per ref: фильтр по статусам + датам
     const statusRows = await this.prisma.crmStatus.findMany({
-      where: { name: { in: allowedStatusExternalIds } },
+      where: { name: { in: ALLOWED_CRM_STATUSES } },
       select: { id: true },
     });
     const allowedStatusIds = statusRows.map((s) => s.id);
-    let makets = 0;
     if (allowedStatusIds.length) {
       const conds: Prisma.Sql[] = [
         Prisma.sql`t.name IN (${Prisma.join(uniqRefs)})`,
@@ -413,18 +475,25 @@ export class VkAdsService {
         );
       const whereSql = Prisma.sql`${Prisma.join(conds, ' AND ')}`;
       const rows = await this.prisma.$queryRaw<
-        Array<{ cnt: bigint }>
-      >(Prisma.sql`
-        SELECT COUNT(DISTINCT c.id)::bigint AS cnt
-        FROM "CrmCustomer" c
-        JOIN "CrmCustomerTag" ct ON ct."customerId" = c.id
-        JOIN "CrmTag" t ON t.id = ct."tagId"
-        WHERE ${whereSql}
-      `);
-      makets = Number(rows?.[0]?.cnt || 0);
+        Array<{ ref: string; cnt: bigint }>
+      >(
+        Prisma.sql`
+          SELECT t.name AS ref, COUNT(DISTINCT c.id)::bigint AS cnt
+          FROM "CrmCustomer" c
+          JOIN "CrmCustomerTag" ct ON ct."customerId" = c.id
+          JOIN "CrmTag" t ON t.id = ct."tagId"
+          WHERE ${whereSql}
+          GROUP BY t.name
+        `,
+      );
+      const countByRef: Record<string, number> = {};
+      for (const r of rows) countByRef[r.ref] = Number(r.cnt || 0);
+      for (const ref of uniqRefs) maketsByRef[ref] = countByRef[ref] || 0;
+    } else {
+      for (const ref of uniqRefs) maketsByRef[ref] = 0;
     }
 
-    return { dealsPrice, makets };
+    return { dealsByRef, maketsByRef };
   }
 
   /**
@@ -497,11 +566,15 @@ export class VkAdsService {
     url: string,
     params: any,
     retries = 4,
+    authToken?: string,
   ): Promise<T> {
     let attempt = 0;
     while (true) {
       try {
-        const { data } = await this.http.get(url, { params });
+        const config: any = { params };
+        if (authToken)
+          config.headers = { Authorization: `Bearer ${authToken}` };
+        const { data } = await this.http.get(url, config);
         // console.log(url, params);
         return data as T;
       } catch (e: any) {
@@ -510,9 +583,13 @@ export class VkAdsService {
           e?.response?.headers?.['retry-after'] ||
             e?.response?.headers?.['Retry-After'],
         );
-        const shouldRetry = status === 429 || (status >= 500 && status < 600);
+        // Ретрай также при сетевом таймауте Axios (ECONNABORTED)
+        const isTimeout = e?.code === 'ECONNABORTED';
+        const shouldRetry =
+          status === 429 || (status >= 500 && status < 600) || isTimeout;
         if (!shouldRetry || attempt >= retries) throw e;
-        const base = 300; // ms
+        // Для 429 используем более агрессивный backoff, если нет Retry-After
+        const base = status === 429 ? 1000 : 300; // ms
         const backoff = retryAfter ?? base * Math.pow(2, attempt);
         const jitter = Math.floor(Math.random() * 100);
         await this.wait(backoff + jitter);
@@ -536,8 +613,10 @@ export class VkAdsService {
    * Если у группы нет ref в utm, в refs ничего не добавляем.
    */
   private async fetchGroupIdsByAdPlanIds(
+    project: 'neon' | 'book',
     adPlanIds: number[],
     status?: string,
+    authToken?: string,
   ): Promise<{
     groupsByPlan: Record<number, number[]>;
     refsByPlan: Record<number, string[]>;
@@ -548,57 +627,53 @@ export class VkAdsService {
     // Process plans with small concurrency
     const pool = Math.max(1, Number(process.env.VK_ADS_META_POOL) || 3);
     const planIds = Array.from(new Set(adPlanIds));
-    let idx = 0;
-    const worker = async () => {
-      while (idx < planIds.length) {
-        const i = idx++;
-        const planId = planIds[i];
-        let offset = 0;
-        const limit = 250;
-        const ids: number[] = [];
-        const refs: string[] = [];
-        while (true) {
-          const params: any = {
-            fields: 'id,utm',
-            limit,
-            offset,
-            _ad_plan_id: planId,
-          };
-          if (status)
-            params._status__in =
-              status === 'all' ? 'active,blocked,deleted' : status;
-          const data = await this.getWithRetry<any>(
-            '/api/v2/ad_groups.json',
-            params,
-            5,
-          );
-          const items: any[] = (data as any)?.items ?? [];
-          if (!items.length) break;
-          for (const g of items) {
-            const gid =
-              typeof (g as any)?.id === 'number'
-                ? (g as any).id
-                : Number((g as any)?.id);
-            if (Number.isFinite(gid)) {
-              ids.push(gid);
-              const utm: string | null | undefined = (g as any)?.utm;
-              const refFromUtm = utm
-                ? this.extractRefFromUtm(String(utm))
-                : undefined;
-              if (refFromUtm && String(refFromUtm).length) {
-                refs.push(String(refFromUtm));
-              }
+    await this.mapPool(planIds, pool, async (planId) => {
+      let offset = 0;
+      const limit = 250;
+      const ids: number[] = [];
+      const refs: string[] = [];
+      while (true) {
+        const params: any = {
+          fields: 'id,utm',
+          limit,
+          offset,
+          _ad_plan_id: planId,
+        };
+        if (status)
+          params._status__in =
+            status === 'all' ? 'active,blocked,deleted' : status;
+        const data = await this.getWithRetry<any>(
+          '/api/v2/ad_groups.json',
+          params,
+          5,
+          authToken,
+        );
+        const items: any[] = (data as any)?.items ?? [];
+        if (!items.length) break;
+        for (const g of items) {
+          const gid =
+            typeof (g as any)?.id === 'number'
+              ? (g as any).id
+              : Number((g as any)?.id);
+          if (Number.isFinite(gid)) {
+            ids.push(gid);
+            const utm: string | null | undefined = (g as any)?.utm;
+            const refFromUtm = utm
+              ? this.extractRefFromUtm(String(utm))
+              : undefined;
+            if (refFromUtm && String(refFromUtm).length) {
+              refs.push(String(refFromUtm));
             }
           }
-          offset += items.length;
-          const count: number = (data as any)?.count ?? 0;
-          if (!count || offset >= count) break;
         }
-        groupsByPlan[planId] = Array.from(new Set(ids));
-        refsByPlan[planId] = Array.from(new Set(refs));
+        offset += items.length;
+        const count: number = (data as any)?.count ?? 0;
+        if (!count || offset >= count) break;
       }
-    };
-    await Promise.all(Array.from({ length: pool }, () => worker()));
+      groupsByPlan[planId] = Array.from(new Set(ids));
+      refsByPlan[planId] = Array.from(new Set(refs));
+      return null as any;
+    });
     return { groupsByPlan, refsByPlan };
   }
 
@@ -607,8 +682,10 @@ export class VkAdsService {
    * Возвращает карту: groupId → массив id баннеров (через VK v2 banners, пагинация).
    */
   private async fetchBannersByGroupIds(
+    project: 'neon' | 'book',
     groupIds: number[],
     status?: string,
+    authToken?: string,
   ): Promise<Record<number, number[]>> {
     const out: Record<number, number[]> = {};
     if (!groupIds?.length) return out;
@@ -631,6 +708,7 @@ export class VkAdsService {
           '/api/v2/banners.json',
           params,
           5,
+          authToken,
         );
         const items: any[] = (data as any)?.items ?? [];
         if (!items.length) break;
@@ -661,9 +739,11 @@ export class VkAdsService {
    * объединением результатов и суммированием total.
    */
   private async fetchStatsAggregated(
+    project: 'neon' | 'book',
     entity: string,
     ids: number[],
     q: any,
+    authToken?: string,
   ): Promise<StatsDayResponse> {
     const url = `/api/v3/statistics/${entity}/day.json`;
     const chunkSize = 150; // keep well under any 200-id limits and URL length
@@ -716,6 +796,7 @@ export class VkAdsService {
     const cacheKey = [
       'agg',
       entity,
+      project,
       q.date_from ?? '',
       q.date_to ?? '',
       q.fields || 'base',
@@ -749,6 +830,7 @@ export class VkAdsService {
               offset: 0,
             },
             6,
+            authToken,
           );
           return data as any;
         });
@@ -857,6 +939,7 @@ export class VkAdsService {
     const url = `/api/v3/statistics/ad_plans/day.json`;
 
     try {
+      const token = this.getTokenForProject(q.project);
       // 1) Подготовка: список id кампаний + служебные мапы (кэшируемые)
       let idsParam: string | undefined;
       let adPlanStatuses: Record<number, string> | undefined;
@@ -868,7 +951,12 @@ export class VkAdsService {
       // Auto-populate with all ad plan IDs and collect status when ids not provided
       if (!idsParam) {
         const adPlanStatusesFilter = this.parseStatusesFilter(q.status);
-        const meta = await this.getAllAdPlanIdsCsv(adPlanStatusesFilter);
+        const meta = await this.getAllAdPlanIdsCsv(
+          q.project,
+          adPlanStatusesFilter,
+          token,
+        );
+        // console.log(meta);
         idsParam = meta.idsCsv;
         adPlanStatuses = meta.statusById;
         adPlanNames = meta.nameById;
@@ -900,23 +988,34 @@ export class VkAdsService {
           attribution: 'conversion',
           sort_by: 'base.shows',
           d: q.d || 'desc',
-          ad_group_status: q.status,
+          // ad_group_status: q.status,
         };
-        data = await this.fetchStatsAggregated('ad_plans', idsList, q2);
+        data = await this.fetchStatsAggregated(
+          q.project,
+          'ad_plans',
+          idsList,
+          q2,
+          token,
+        );
       } else {
         // 3б) Немного id — запрашиваем напрямую v3
-        data = await this.getWithRetry(url, {
-          id: idsParam,
-          date_from: q.date_from,
-          date_to: q.date_to,
-          fields: 'base',
-          attribution: 'conversion',
-          ad_group_status: q.status,
-          sort_by: 'base.shows',
-          d: q.d || 'desc',
-          limit: q.limit || 250,
-          offset: q.offset || 0,
-        });
+        data = await this.getWithRetry(
+          url,
+          {
+            id: idsParam,
+            date_from: q.date_from,
+            date_to: q.date_to,
+            fields: 'base',
+            attribution: 'conversion',
+            // ad_group_status: q.status,
+            sort_by: 'base.shows',
+            d: q.d || 'desc',
+            limit: q.limit || 250,
+            offset: q.offset || 0,
+          },
+          4,
+          token,
+        );
       }
 
       // 4) Обогащение items: статусы/имена/лимиты, списки групп и refs
@@ -955,8 +1054,10 @@ export class VkAdsService {
         }
         if (allGroupIds.length) {
           const bannersByGroup = await this.fetchBannersByGroupIds(
+            q.project,
             Array.from(new Set(allGroupIds)),
             q.status && q.status !== 'all' ? q.status : undefined,
+            token,
           );
           for (const it of itemsArr) {
             const gids = Array.isArray(it.ad_groups) ? it.ad_groups : [];
@@ -966,9 +1067,10 @@ export class VkAdsService {
               if (bs.length) acc.push(...bs);
             }
             it.banners = Array.from(new Set(acc));
-            if (!it.refs?.length) {
-              it.refs = it.banners.map((b) => b.toString());
-            }
+            const bannerRefs = it.banners.map((b) => String(b));
+            const utmRefs = Array.isArray(it.refs) ? it.refs : [];
+            const combined = Array.from(new Set([...utmRefs, ...bannerRefs]));
+            it.refs = combined;
           }
         } else {
           for (const it of itemsArr) {
@@ -987,7 +1089,6 @@ export class VkAdsService {
         }
         (data as any).ad_group_count = allGroups.size;
         (data as any).banners_count = allBanners.size;
-
         // 7) Посчитать бизнес‑метрики per plan по refs и датам
         const metrics = await Promise.all(
           itemsArr.map((it) =>
@@ -1011,7 +1112,7 @@ export class VkAdsService {
                   (it as any)?.total?.base?.spend ??
                   0,
               ) || 0;
-            spentNds = rawSpent * 1.2;
+            spentNds = Number((rawSpent * 1.2).toFixed(2));
           } catch {}
           it.maketPrice = it.makets
             ? Number((spentNds / it.makets).toFixed(2))
@@ -1019,8 +1120,22 @@ export class VkAdsService {
           it.drr = it.dealsPrice
             ? Number(((spentNds / it.dealsPrice) * 100).toFixed(2))
             : 0;
+          (it as any).spent_nds = spentNds;
         });
+        try {
+          const dealsPrice_total = itemsArr.reduce((s: number, x: any) => s + Number((x as any).dealsPrice || 0), 0);
+          const makets_total = itemsArr.reduce((s: number, x: any) => s + Number((x as any).makets || 0), 0);
+          const rawSpentTotal = Number(((data as any)?.total?.base?.spent ?? (data as any)?.total?.base?.spend ?? 0) as number) || 0;
+          const spentNds_total = Number((rawSpentTotal * 1.2).toFixed(2));
+          const maketPrice_total = makets_total ? Number((spentNds_total / makets_total).toFixed(2)) : 0;
+          const drr_total = dealsPrice_total ? Number(((spentNds_total / dealsPrice_total) * 100).toFixed(2)) : 0;
+          (data as any).dealsPrice_total = dealsPrice_total;
+          (data as any).makets_total = makets_total;
+          (data as any).maketPrice_total = maketPrice_total;
+          (data as any).drr_total = drr_total;
+        } catch {}
       }
+      // no noisy logs in production
       return data as StatsDayResponse<{
         status?: string;
         name?: string;
@@ -1032,319 +1147,8 @@ export class VkAdsService {
         makets?: number;
         drr?: number;
         maketPrice?: number;
-      }> & { ad_group_count: number; banners_count: number };
-    } catch (e) {
-      this.handleError(e);
-    }
-  }
-
-  // Get ad_groups stats for a given ad_plan id: fetch groups, then delegate to v3 stats with explicit ids
-  /**
-   * Статистика по дням для групп конкретной кампании.
-   * Шаги: получить группы кампании (v2), собрать мета, посчитать бизнес‑метрики,
-   * запросить v3 по этим группам, обогатить результат.
-   */
-  async getAdPlanGroupsStats(
-    adPlanId: number,
-    q: StatisticsDayGroupsDto,
-  ): Promise<
-    StatsDayResponse<{
-      status?: string;
-      name?: string;
-      budget_limit_day?: string | number;
-      dealsPrice?: number;
-      ref?: string;
-      makets?: number;
-      spent_nds?: number;
-      maketPrice?: number;
-      adExpenses?: number;
-      drr?: number;
-    }> & { ad_groups: number[] }
-  > {
-    try {
-      // 1) Получение групп по кампании (v2) с учетом статуса
-      // console.log(q);
-      // Fetch the ad plan with groups list; try both 'groups' and 'ad_groups'
-      // Treat status=all as all statuses
-      const statusForGroups =
-        q.status && q.status !== 'all' ? q.status : undefined;
-      const adPlan = await this.getAdPlanGroupsData(adPlanId, statusForGroups);
-      // console.log(adPlan);
-      // console.log(adPlan.ad_groups);
-      const groupsRaw: any = (adPlan as any)?.items;
-      if (!Array.isArray(groupsRaw) || groupsRaw.length === 0) {
-        return {
-          items: [],
-          count: 0,
-          limit: (q as any)?.limit ?? 20,
-          offset: (q as any)?.offset ?? 0,
-          ad_groups: [],
-        };
-      }
-      const groupIds: number[] = groupsRaw
-        .map((g: any) =>
-          typeof g === 'number'
-            ? g
-            : typeof g?.id === 'number'
-              ? g.id
-              : Number(g?.id),
-        )
-        .filter((n: any) => Number.isFinite(n) && n > 0);
-      if (!groupIds.length) {
-        return {
-          items: [],
-          count: 0,
-          limit: (q as any)?.limit ?? 20,
-          offset: (q as any)?.offset ?? 0,
-          ad_groups: [],
-        };
-      }
-
-      // 2) Собрать мета по группам: name, budget_limit_day, ref
-      const nameById: Record<number, string | undefined> = {};
-      const budgetLimitDayById: Record<number, string | number | undefined> =
-        {};
-      const refById: Record<number, string[]> = {};
-      const uniqueRefs = new Set<string>();
-      for (const g of groupsRaw) {
-        const idNum = typeof g?.id === 'number' ? g.id : Number(g?.id ?? NaN);
-        if (!Number.isFinite(idNum)) continue;
-        if (typeof g?.name === 'string') nameById[idNum] = g.name;
-        if (g?.budget_limit_day !== undefined)
-          budgetLimitDayById[idNum] = g.budget_limit_day;
-        // Extract ref from utm string
-        const utm: string | undefined =
-          typeof g?.utm === 'string' ? g.utm : undefined;
-        const ref = this.extractRefFromUtm(utm);
-        refById[idNum] = ref ? [ref] : [];
-        if (ref) uniqueRefs.add(ref);
-      }
-
-      // 3) dealsPrice по ref (deal.price + Σdop.price) в пределах дат
-      // Sum per deal: deal.price + sum(dop.price) for that deal
-      const dealsSumByRef: Record<string, number> = {};
-      if (uniqueRefs.size) {
-        const dealsWhere: any = { adTag: { in: Array.from(uniqueRefs) } };
-        // Filter by related Client.firstContact instead of Deal.saleDate
-        const clientWhere: any = {};
-        if (q?.date_from) clientWhere.firstContact = { gte: q.date_from };
-        if (q?.date_to)
-          clientWhere.firstContact = {
-            ...(clientWhere.firstContact || {}),
-            lte: q.date_to,
-          };
-        if (Object.keys(clientWhere).length) dealsWhere.client = clientWhere;
-        // Fetch matching deals with minimal fields
-        const deals = await this.prisma.deal.findMany({
-          where: dealsWhere,
-          select: { id: true, adTag: true, price: true },
-        });
-        if (deals.length) {
-          const dealIds = deals.map((d) => d.id);
-          // Group dops by dealId to get sum(price) per deal
-          const dopSums = await this.prisma.dop.groupBy({
-            by: ['dealId'],
-            where: { dealId: { in: dealIds } },
-            _sum: { price: true },
-          });
-          const dopByDealId: Record<number, number> = {};
-          for (const row of dopSums)
-            dopByDealId[row.dealId] = Number(row._sum?.price || 0);
-          // Accumulate per adTag (ref)
-          for (const d of deals) {
-            const totalForDeal =
-              Number(d.price || 0) + (dopByDealId[d.id] || 0);
-            dealsSumByRef[d.adTag] =
-              (dealsSumByRef[d.adTag] || 0) + totalForDeal;
-          }
-        }
-      }
-
-      // 4) makets (клиенты) по ref с фильтрами по статусам и датам
-      // - customer has tag with name == ref
-      // - customer.crmStatusId in allowed statuses (mapped from external ids)
-      // - firstContactDate within [date_from, date_to]
-      const maketsByRef: Record<string, number> = {};
-      if (uniqueRefs.size) {
-        const refs = Array.from(uniqueRefs);
-        const allowedStatusExternalIds = [
-          'Макет нарисован', //9
-          'ХОЧЕТ КУПИТЬ', //51422
-          'Бизнес макет', //1185
-          'Личный контакт', //328
-          'Ожидаем предоплату', //5879
-          'Бронь цены', //1919
-          'Предоплата получена', //419
-          'Заказ оплачен полностью', //4355
-          'Заказ отправлен', //1721
-          'Не оплачивает', //4443
-          'Ждем отзыв', //4135
-          'Постоянник', //26
-          'Постоянник (начало)', //5761
-          'Постоянник (макет)', //1960
-          'Постоянник (хочет)', //27452
-          'Проблемный клиент', //200
-          'Заказ доставлен',
-        ];
-
-        const statusRows = await this.prisma.crmStatus.findMany({
-          where: { name: { in: allowedStatusExternalIds } },
-          select: { id: true },
-        });
-        const allowedStatusIds = statusRows.map((s) => s.id);
-        const tags = await this.prisma.crmTag.findMany({
-          where: { name: { in: refs } },
-          select: { id: true, name: true },
-        });
-        const tagIdByName: Record<string, number> = {};
-        const tagIds: number[] = [];
-        for (const t of tags) {
-          tagIdByName[t.name] = t.id;
-          tagIds.push(t.id);
-        }
-        if (tagIds.length && allowedStatusIds.length) {
-          // Build raw SQL with proper date conversion (DD.MM.YYYY -> date)
-          const conds: Prisma.Sql[] = [
-            Prisma.sql`t.name IN (${Prisma.join(refs)})`,
-            Prisma.sql`c."crmStatusId" IN (${Prisma.join(allowedStatusIds)})`,
-          ];
-          if (q?.date_from)
-            conds.push(
-              Prisma.sql`to_date(c."firstContactDate", 'YYYY-MM-DD') >= ${q.date_from}::date`,
-            );
-          if (q?.date_to)
-            conds.push(
-              Prisma.sql`to_date(c."firstContactDate", 'YYYY-MM-DD') <= ${q.date_to}::date`,
-            );
-          const whereSql = Prisma.sql`${Prisma.join(conds, ' AND ')}`;
-          const rows = await this.prisma.$queryRaw<
-            Array<{ ref: string; cnt: bigint }>
-          >(
-            Prisma.sql`
-              SELECT t.name AS ref, COUNT(DISTINCT c.id)::bigint AS cnt
-              FROM "CrmCustomer" c
-              JOIN "CrmCustomerTag" ct ON ct."customerId" = c.id
-              JOIN "CrmTag" t ON t.id = ct."tagId"
-              WHERE ${whereSql}
-              GROUP BY t.name
-            `,
-          );
-          const countByRef: Record<string, number> = {};
-          for (const r of rows) countByRef[r.ref] = Number(r.cnt || 0);
-          for (const ref of refs) maketsByRef[ref] = countByRef[ref] || 0;
-        } else {
-          for (const ref of refs) maketsByRef[ref] = 0;
-        }
-      }
-
-      // drr теперь считается по spend (из метрик VK) / dealsSales * 100
-      // БД adExpenses больше не запрашиваем здесь
-
-      // 5) Запросить статистику v3 по выбранным группам (агрегатор/прямой)
-      const idsCsv = groupIds.join(',');
-      const url = `/api/v3/statistics/ad_groups/day.json`;
-      const needsAggregate = groupIds.length > 200 || idsCsv.length > 1500;
-      let data: any;
-      const adGroupStatusParam =
-        q.status && q.status !== 'all' ? q.status : undefined;
-      if (needsAggregate) {
-        const q2: any = {
-          date_from: q.date_from,
-          date_to: q.date_to,
-          fields: 'base',
-          attribution: 'conversion',
-          sort_by: 'base.shows',
-          d: q.d || 'desc',
-          ad_group_status: adGroupStatusParam,
-          limit: q.limit || 250,
-          offset: q.offset || 0,
-        };
-        data = await this.fetchStatsAggregated('ad_groups', groupIds, q2);
-      } else {
-        data = await this.getWithRetry(url, {
-          id: idsCsv,
-          date_from: q.date_from,
-          date_to: q.date_to,
-          fields: 'base',
-          attribution: 'conversion',
-          ad_group_status: adGroupStatusParam,
-          sort_by: 'base.shows',
-          d: q.d || 'desc',
-          limit: q.limit || 250,
-          offset: q.offset || 0,
-        });
-      }
-
-      // console.log(data);
-
-      // 6) Обогатить items: name/budget_limit_day/ref/dealsPrice/makets/spent_nds/maketPrice/DRR
-      if (Array.isArray((data as any)?.items)) {
-        for (const it of (data as any).items as Array<{
-          id: number | string;
-          status?: string;
-          name?: string;
-          budget_limit_day?: string | number;
-          dealsPrice?: number;
-          ref?: string;
-          makets?: number;
-          spent_nds?: number;
-          maketPrice?: number;
-          adExpenses?: number;
-          drr?: number;
-        }>) {
-          const idNum = typeof it?.id === 'number' ? it.id : Number(it?.id);
-          if (!Number.isNaN(idNum)) {
-            if (nameById[idNum] !== undefined) it.name = nameById[idNum];
-            if (budgetLimitDayById[idNum] !== undefined)
-              it.budget_limit_day = budgetLimitDayById[idNum];
-            const refsArr = Array.isArray(refById[idNum]) ? refById[idNum] : [];
-            if (refsArr.length) it.ref = refsArr[0];
-            it.dealsPrice = refsArr.reduce(
-              (sum, r) => sum + (dealsSumByRef[r] || 0),
-              0,
-            );
-            it.makets = refsArr.reduce(
-              (sum, r) => sum + (maketsByRef[r] || 0),
-              0,
-            );
-            // Compute spent_nds (spent * 1.2) and maketPrice = spent_nds / makets
-            try {
-              const rawSpent =
-                Number(
-                  (it as any)?.total?.base?.spent ??
-                    (it as any)?.total?.base?.spend ??
-                    0,
-                ) || 0;
-              const spentNds = rawSpent * 1.2;
-              it.spent_nds = Number(spentNds.toFixed(2));
-            } catch {
-              it.spent_nds = 0;
-            }
-            it.maketPrice = it.makets
-              ? Number(((it.spent_nds || 0) / it.makets).toFixed(2))
-              : 0;
-            // DRR = spent_nds / dealsPrice * 100 (округление до сотых)
-            const spentForDrr = Number(it.spent_nds || 0);
-            it.drr = it.dealsPrice
-              ? Number(((spentForDrr / it.dealsPrice) * 100).toFixed(2))
-              : 0;
-          }
-        }
-      }
-      const resp = data as StatsDayResponse<{
-        status?: string;
-        name?: string;
-        budget_limit_day?: string | number;
-        dealsPrice?: number;
-        ref?: string;
-        makets?: number;
         spent_nds?: number;
-        maketPrice?: number;
-        adExpenses?: number;
-        drr?: number;
-      }> & { ad_groups: number[] };
-      (resp as any).ad_groups = groupIds;
-      return resp;
+      }> & { ad_group_count: number; banners_count: number };
     } catch (e) {
       this.handleError(e);
     }
@@ -1367,13 +1171,13 @@ export class VkAdsService {
       makets?: number;
       spent_nds?: number;
       maketPrice?: number;
-      adExpenses?: number;
       drr?: number;
       banners_count?: number;
       banners?: number[];
     }>
   > {
     try {
+      const token = this.getTokenForProject(q.project);
       // 1) Валидация дат и разбор ids/status
       this.ensureDateRange(q.date_from, q.date_to);
 
@@ -1393,7 +1197,11 @@ export class VkAdsService {
       if (!groupIds.length) {
         // 2а) ids не заданы — собрать все группы (v2) и метаданные
         // Fetch all groups ids/meta when ids are not provided
-        const meta = await this.getAllAdGroupIdsMeta(statusesFilter);
+        const meta = await this.getAllAdGroupIdsMeta(
+          q.project,
+          statusesFilter,
+          token,
+        );
 
         groupIds = meta.ids.slice();
         nameById = meta.nameById;
@@ -1403,7 +1211,11 @@ export class VkAdsService {
       } else {
         // 2б) ids заданы — все равно подгрузим метаданные для обогащения
         // For provided ids, still need meta for enrichment
-        const meta = await this.getAllAdGroupIdsMeta(statusesFilter);
+        const meta = await this.getAllAdGroupIdsMeta(
+          q.project,
+          statusesFilter,
+          token,
+        );
         nameById = meta.nameById;
         budgetLimitDayById = meta.budgetLimitDayById as any;
         refById = meta.refById;
@@ -1423,132 +1235,34 @@ export class VkAdsService {
       const idsCsv = groupIds.join(',');
       const url = `/api/v3/statistics/ad_groups/day.json`;
       const needsAggregate = groupIds.length > 200 || idsCsv.length > 1500;
-      const adGroupStatusParam =
-        q.status && q.status !== 'all' ? q.status : undefined;
       // Fetch banners per group to compute counts
       const bannersByGroup = await this.fetchBannersByGroupIds(
+        q.project,
         Array.from(new Set(groupIds)),
-        adGroupStatusParam,
+        undefined, // не фильтруем по статусу на этом слое
+        token,
       );
 
-      // 3) Подготовить агрегаторы по ref: dealsPrice и makets
+      // 3) Подготовить агрегаторы по ref: utm группы + id всех баннеров этих групп
       const uniqueRefs = new Set<string>();
       for (const gid of groupIds) {
-        const refs = refById[gid] || [];
-        for (const ref of refs)
-          if (ref && String(ref).length) uniqueRefs.add(String(ref));
-      }
-      // Fallback: when there are no refs, use banner IDs as refs
-      if (uniqueRefs.size === 0) {
-        for (const [gidStr, bs] of Object.entries(bannersByGroup)) {
-          const list = Array.isArray(bs) ? bs : [];
-          for (const b of list) uniqueRefs.add(String(b));
-        }
+        const utmRefs = refById[gid] || [];
+        for (const r of utmRefs) if (r && String(r).length) uniqueRefs.add(String(r));
+        const bs = bannersByGroup[gid] || [];
+        for (const b of bs) if (Number.isFinite(b)) uniqueRefs.add(String(b));
       }
 
       const dealsSumByRef: Record<string, number> = {};
       const maketsByRef: Record<string, number> = {};
-      if (uniqueRefs.size) { 
-        // 3а) dealsPrice: сумма по сделкам и допам, сгруппировано по ref
-        // Deals sum + makets per ref via DB
+      if (uniqueRefs.size) {
         const refs = Array.from(uniqueRefs);
-        // Deals sum by ref
-        const deals = await this.prisma.deal.findMany({
-          where: {
-            adTag: { in: refs },
-            ...(q?.date_from || q?.date_to
-              ? {
-                  client: {
-                    ...(q?.date_from
-                      ? { firstContact: { gte: q.date_from } }
-                      : {}),
-                    ...(q?.date_to
-                      ? {
-                          firstContact: {
-                            lte: q.date_to,
-                            ...(q?.date_from ? { gte: q.date_from } : {}),
-                          },
-                        }
-                      : {}),
-                  },
-                }
-              : {}),
-          },
-          select: { id: true, adTag: true, price: true },
-        });
-        const dealIds = deals.map((d) => d.id);
-        const dopSums = dealIds.length
-          ? await this.prisma.dop.groupBy({
-              by: ['dealId'],
-              where: { dealId: { in: dealIds } },
-              _sum: { price: true },
-            })
-          : [];
-        const dopByDealId: Record<number, number> = {};
-        for (const row of dopSums)
-          dopByDealId[row.dealId] = Number(row._sum?.price || 0);
-        for (const d of deals) {
-          const totalForDeal = Number(d.price || 0) + (dopByDealId[d.id] || 0);
-          dealsSumByRef[d.adTag] = (dealsSumByRef[d.adTag] || 0) + totalForDeal;
-        }
-
-        // 3б) makets: клиенты по ref с разрешенными статусами и датами
-        const allowedStatusExternalIds = [
-          'Макет нарисован',
-          'ХОЧЕТ КУПИТЬ',
-          'Бизнес макет',
-          'Личный контакт',
-          'Ожидаем предоплату',
-          'Бронь цены',
-          'Предоплата получена',
-          'Заказ оплачен полностью',
-          'Заказ отправлен',
-          'Не оплачивает',
-          'Ждем отзыв',
-          'Постоянник',
-          'Постоянник (начало)',
-          'Постоянник (макет)',
-          'Постоянник (хочет)',
-          'Проблемный клиент',
-          'Заказ доставлен',
-        ];
-        const statusRows = await this.prisma.crmStatus.findMany({
-          where: { name: { in: allowedStatusExternalIds } },
-          select: { id: true },
-        });
-        const allowedStatusIds = statusRows.map((s) => s.id);
-        if (allowedStatusIds.length) {
-          const conds: Prisma.Sql[] = [
-            Prisma.sql`t.name IN (${Prisma.join(refs)})`,
-            Prisma.sql`c."crmStatusId" IN (${Prisma.join(allowedStatusIds)})`,
-          ];
-          if (q?.date_from)
-            conds.push(
-              Prisma.sql`to_date(c."firstContactDate", 'YYYY-MM-DD') >= ${q.date_from}::date`,
-            );
-          if (q?.date_to)
-            conds.push(
-              Prisma.sql`to_date(c."firstContactDate", 'YYYY-MM-DD') <= ${q.date_to}::date`,
-            );
-          const whereSql = Prisma.sql`${Prisma.join(conds, ' AND ')}`;
-          const rows = await this.prisma.$queryRaw<
-            Array<{ ref: string; cnt: bigint }>
-          >(
-            Prisma.sql`
-              SELECT t.name AS ref, COUNT(DISTINCT c.id)::bigint AS cnt
-              FROM "CrmCustomer" c
-              JOIN "CrmCustomerTag" ct ON ct."customerId" = c.id
-              JOIN "CrmTag" t ON t.id = ct."tagId"
-              WHERE ${whereSql}
-              GROUP BY t.name
-            `,
-          );
-          const countByRef: Record<string, number> = {};
-          for (const r of rows) countByRef[r.ref] = Number(r.cnt || 0);
-          for (const ref of refs) maketsByRef[ref] = countByRef[ref] || 0;
-        } else {
-          for (const ref of refs) maketsByRef[ref] = 0;
-        }
+        const maps = await this.computeDealsAndMaketsByRefs(
+          refs,
+          q.date_from,
+          q.date_to,
+        );
+        Object.assign(dealsSumByRef, maps.dealsByRef);
+        Object.assign(maketsByRef, maps.maketsByRef);
       }
 
       let data: any;
@@ -1560,24 +1274,35 @@ export class VkAdsService {
           attribution: 'conversion',
           sort_by: 'base.shows',
           d: q.d || 'desc',
-          ad_group_status: adGroupStatusParam,
+          // без фильтра статуса на v3
           limit: q.limit || 250,
           offset: q.offset || 0,
         };
-        data = await this.fetchStatsAggregated('ad_groups', groupIds, q2);
+        data = await this.fetchStatsAggregated(
+          q.project,
+          'ad_groups',
+          groupIds,
+          q2,
+          token,
+        );
       } else {
-        data = await this.getWithRetry(url, {
-          id: idsCsv,
-          date_from: q.date_from,
-          date_to: q.date_to,
-          fields: 'base',
-          attribution: 'conversion',
-          ad_group_status: adGroupStatusParam,
-          sort_by: 'base.shows',
-          d: q.d || 'desc',
-          limit: q.limit || 250,
-          offset: q.offset || 0,
-        });
+        data = await this.getWithRetry(
+          url,
+          {
+            id: idsCsv,
+            date_from: q.date_from,
+            date_to: q.date_to,
+            fields: 'base',
+            attribution: 'conversion',
+            // без фильтра статуса на v3
+            sort_by: 'base.shows',
+            d: q.d || 'desc',
+            limit: q.limit || 250,
+            offset: q.offset || 0,
+          },
+          4,
+          token,
+        );
       }
 
       // 5) Обогатить items и нормализовать counters как в getAdPlansDay
@@ -1593,10 +1318,9 @@ export class VkAdsService {
           makets?: number;
           spent_nds?: number;
           maketPrice?: number;
-          adExpenses?: number;
           drr?: number;
           banners_count?: number;
-          banners?: number[]; 
+          banners?: number[];
         }>) {
           const idNum = typeof it?.id === 'number' ? it.id : Number(it?.id);
           if (!Number.isNaN(idNum)) {
@@ -1604,26 +1328,29 @@ export class VkAdsService {
             if (nameById[idNum] !== undefined) it.name = nameById[idNum];
             if (budgetLimitDayById[idNum] !== undefined)
               it.budget_limit_day = budgetLimitDayById[idNum];
-            const refsArr = Array.isArray(refById[idNum]) ? refById[idNum] : [];
-            if (refsArr.length) it.ref = refsArr[0];
-            it.refs = refsArr.slice();
+            const utmRefsArr = Array.isArray(refById[idNum]) ? refById[idNum] : [];
+            if (utmRefsArr.length) it.ref = utmRefsArr[0];
+            it.refs = utmRefsArr.slice();
             // banners count per group
             try {
               const bs = bannersByGroup[idNum] || [];
               it.banners_count = Array.isArray(bs) ? bs.length : 0;
               it.banners = Array.isArray(bs) ? Array.from(new Set(bs)) : [];
-              // Fallback: when refs are empty, use banner ids as refs
-              if (!it.refs?.length) {
-                it.refs = it.banners.map((b) => b.toString());
-              }
+              const bannerRefs = Array.isArray(it.banners)
+                ? it.banners.map((b) => String(b))
+                : [];
+              const combined = Array.from(
+                new Set([...(utmRefsArr || []), ...bannerRefs]),
+              );
+              it.refs = combined;
+              if (utmRefsArr?.length) it.ref = utmRefsArr[0];
+              else if (combined.length) it.ref = combined[0];
             } catch {
               it.banners_count = 0;
               it.banners = [];
             }
-            // Compute dealsPrice and makets AFTER refs fallback to banners
-            const refsForMetrics = Array.isArray(it.refs) && it.refs.length
-              ? it.refs
-              : refsArr;
+            // Compute dealsPrice and makets по объединенным refs
+            const refsForMetrics = Array.isArray(it.refs) ? it.refs : [];
             it.dealsPrice = refsForMetrics.reduce(
               (sum, r) => sum + (dealsSumByRef[r] || 0),
               0,
@@ -1653,15 +1380,18 @@ export class VkAdsService {
               : 0;
           }
         }
-        // Normalize top-level counts similar to getAdPlansDay
+        // Normalize top-level counts: считаем уникальные
         const itemsArr = (data as any).items as Array<any>;
-        let bannersTotal = 0;
+        const groupsSet = new Set<number>();
+        const bannersSet = new Set<number>();
         for (const it of itemsArr) {
+          const gid = Number(it.id);
+          if (Number.isFinite(gid)) groupsSet.add(gid);
           const bs = Array.isArray(it.banners) ? it.banners : [];
-          bannersTotal += bs.length;
+          for (const b of bs) if (Number.isFinite(b)) bannersSet.add(b);
         }
-        (data as any).ad_group_count = itemsArr.length; // число групп в выдаче
-        (data as any).banners_count = bannersTotal; // сумма баннеров по всем группам
+        (data as any).ad_group_count = groupsSet.size;
+        (data as any).banners_count = bannersSet.size;
       }
 
       return data as StatsDayResponse<{
@@ -1674,7 +1404,6 @@ export class VkAdsService {
         makets?: number;
         spent_nds?: number;
         maketPrice?: number;
-        adExpenses?: number;
         drr?: number;
         banners_count?: number;
         banners?: number[];
@@ -1694,6 +1423,8 @@ export class VkAdsService {
       status?: string;
       name?: string;
       ad_group_id?: number;
+      ad_groups?: number[];
+      banners?: number[];
       ref?: string;
       refs?: string[];
       dealsPrice?: number;
@@ -1704,6 +1435,8 @@ export class VkAdsService {
     }> & { ad_group_count: number; banners_count: number }
   > {
     try {
+      const token =
+        q.project === 'book' ? this.VK_ADS_BOOK_TOKEN : this.VK_ADS_TOKEN;
       this.ensureDateRange(q.date_from, q.date_to);
 
       // Resolve banner ids
@@ -1716,17 +1449,24 @@ export class VkAdsService {
       let statusByBannerId: Record<number, string | undefined> = {};
       let nameByBannerId: Record<number, string | undefined> = {};
       let adGroupByBannerId: Record<number, number | undefined> = {};
-
       if (!bannerIds.length) {
         // Enumerate all banners by status via v2
-        const meta = await this.getAllBannerIdsMeta(statusesFilter);
+        const meta = await this.getAllBannerIdsMeta(
+          q.project,
+          statusesFilter,
+          token,
+        );
         bannerIds = meta.ids.slice();
         statusByBannerId = meta.statusById;
         nameByBannerId = meta.nameById;
         adGroupByBannerId = meta.adGroupIdByBannerId;
       } else {
         // Even with explicit ids, fetch meta to enrich
-        const meta = await this.getAllBannerIdsMeta(undefined);
+        const meta = await this.getAllBannerIdsMeta(
+          q.project,
+          undefined,
+          token,
+        );
         statusByBannerId = meta.statusById;
         nameByBannerId = meta.nameById;
         adGroupByBannerId = meta.adGroupIdByBannerId;
@@ -1744,163 +1484,107 @@ export class VkAdsService {
         };
       }
 
-      // Prepare refs by group for banners enrichment
-      const groupMeta = await this.getAllAdGroupIdsMeta(undefined);
-      const refsByGroupId: Record<number, string[]> = groupMeta.refById || {};
+      // Подсчет бизнес-метрик одним батчем для всех баннеров (adTag = id баннера)
+      const idRefs = bannerIds.map((b) => String(b));
+      const metricsMaps = await this.computeDealsAndMaketsByRefs(
+        idRefs,
+        q.date_from,
+        q.date_to,
+      );
+      const dealsSumByRef = metricsMaps.dealsByRef || {};
+      const maketsByRef = metricsMaps.maketsByRef || {};
 
-      // Build refs set to pre-compute business metrics
-      const uniqueRefs = new Set<string>();
-      for (const bid of bannerIds) {
-        const gid = adGroupByBannerId[bid];
-        const refs = (gid && refsByGroupId[gid]) || [];
-        for (const r of refs) if (r && String(r).length) uniqueRefs.add(String(r));
-      }
-      // Fallback: use banner IDs as refs when no refs available
-      if (uniqueRefs.size === 0)
-        for (const bid of bannerIds) uniqueRefs.add(String(bid));
-
-      const dealsSumByRef: Record<string, number> = {};
-      const maketsByRef: Record<string, number> = {};
-      if (uniqueRefs.size) {
-        const refs = Array.from(uniqueRefs);
-        // Deals sum by ref
-        const deals = await this.prisma.deal.findMany({
-          where: {
-            adTag: { in: refs },
-            ...(q?.date_from || q?.date_to
-              ? {
-                  client: {
-                    ...(q?.date_from
-                      ? { firstContact: { gte: q.date_from } }
-                      : {}),
-                    ...(q?.date_to
-                      ? {
-                          firstContact: {
-                            lte: q.date_to,
-                            ...(q?.date_from ? { gte: q.date_from } : {}),
-                          },
-                        }
-                      : {}),
-                  },
-                }
-              : {}),
-          },
-          select: { id: true, adTag: true, price: true },
-        });
-        const dealIds = deals.map((d) => d.id);
-        const dopSums = dealIds.length
-          ? await this.prisma.dop.groupBy({
-              by: ['dealId'],
-              where: { dealId: { in: dealIds } },
-              _sum: { price: true },
-            })
-          : [];
-        const dopByDealId: Record<number, number> = {};
-        for (const row of dopSums)
-          dopByDealId[row.dealId] = Number(row._sum?.price || 0);
-        for (const d of deals) {
-          const totalForDeal = Number(d.price || 0) + (dopByDealId[d.id] || 0);
-          dealsSumByRef[d.adTag] = (dealsSumByRef[d.adTag] || 0) + totalForDeal;
-        }
-
-        // Makets per ref
-        const allowedStatusExternalIds = [
-          'Макет нарисован',
-          'ХОЧЕТ КУПИТЬ',
-          'Бизнес макет',
-          'Личный контакт',
-          'Ожидаем предоплату',
-          'Бронь цены',
-          'Предоплата получена',
-          'Заказ оплачен полностью',
-          'Заказ отправлен',
-          'Не оплачивает',
-          'Ждем отзыв',
-          'Постоянник',
-          'Постоянник (начало)',
-          'Постоянник (макет)',
-          'Постоянник (хочет)',
-          'Проблемный клиент',
-          'Заказ доставлен',
-        ];
-        const statusRows = await this.prisma.crmStatus.findMany({
-          where: { name: { in: allowedStatusExternalIds } },
-          select: { id: true },
-        });
-        const allowedStatusIds = statusRows.map((s) => s.id);
-        if (allowedStatusIds.length) {
-          const conds: Prisma.Sql[] = [
-            Prisma.sql`t.name IN (${Prisma.join(refs)})`,
-            Prisma.sql`c."crmStatusId" IN (${Prisma.join(allowedStatusIds)})`,
-          ];
-          if (q?.date_from)
-            conds.push(
-              Prisma.sql`to_date(c."firstContactDate", 'YYYY-MM-DD') >= ${q.date_from}::date`,
-            );
-          if (q?.date_to)
-            conds.push(
-              Prisma.sql`to_date(c."firstContactDate", 'YYYY-MM-DD') <= ${q.date_to}::date`,
-            );
-          const whereSql = Prisma.sql`${Prisma.join(conds, ' AND ')}`;
-          const rows = await this.prisma.$queryRaw<
-            Array<{ ref: string; cnt: bigint }>
-          >(
-            Prisma.sql`
-              SELECT t.name AS ref, COUNT(DISTINCT c.id)::bigint AS cnt
-              FROM "CrmCustomer" c
-              JOIN "CrmCustomerTag" ct ON ct."customerId" = c.id
-              JOIN "CrmTag" t ON t.id = ct."tagId"
-              WHERE ${whereSql}
-              GROUP BY t.name
-            `,
-          );
-          const countByRef: Record<string, number> = {};
-          for (const r of rows) countByRef[r.ref] = Number(r.cnt || 0);
-          for (const ref of refs) maketsByRef[ref] = countByRef[ref] || 0;
+      // Агрегированный путь (до оптимизаций): один v3-запрос по всем id (или через fetchStatsAggregated)
+      {
+        const url = `/api/v3/statistics/banners/day.json`;
+        const idsCsv = bannerIds.join(',');
+        const needsAggregate = bannerIds.length > 200 || idsCsv.length > 1500;
+        let data: any;
+        if (needsAggregate) {
+          const q2: any = {
+            date_from: q.date_from,
+            date_to: q.date_to,
+            fields: 'base',
+            attribution: 'conversion',
+            sort_by: q.sort_by || 'base.shows',
+            d: q.d || 'desc',
+            limit: q.limit || 250,
+            offset: q.offset || 0,
+          };
+          data = await this.fetchStatsAggregated(q.project, 'banners', bannerIds, q2, token);
         } else {
-          for (const ref of refs) maketsByRef[ref] = 0;
+          data = await this.getWithRetry(
+            url,
+            {
+              id: idsCsv,
+              date_from: q.date_from,
+              date_to: q.date_to,
+              fields: 'base',
+              attribution: 'conversion',
+              sort_by: q.sort_by || 'base.shows',
+              d: q.d || 'desc',
+              limit: q.limit || 250,
+              offset: q.offset || 0,
+            },
+            4,
+            token,
+          );
         }
-      }
 
-      // Query v3 banners stats
-      const idsCsv = bannerIds.join(',');
-      const url = `/api/v3/statistics/banners/day.json`;
-      const needsAggregate = bannerIds.length > 200 || idsCsv.length > 1500;
-      const bannerStatusParam =
-        q.status && q.status !== 'all' ? q.status : undefined;
-      let data: any;
-      if (needsAggregate) {
-        const q2: any = {
-          date_from: q.date_from,
-          date_to: q.date_to,
-          fields: 'base',
-          attribution: 'conversion',
-          sort_by: q.sort_by || 'base.shows',
-          d: q.d || 'desc',
-          banner_status: bannerStatusParam,
-          limit: q.limit || 250,
-          offset: q.offset || 0,
-        };
-        data = await this.fetchStatsAggregated('banners', bannerIds, q2);
-      } else {
-        data = await this.getWithRetry(url, {
-          id: idsCsv,
-          date_from: q.date_from,
-          date_to: q.date_to,
-          fields: 'base',
-          attribution: 'conversion',
-          banner_status: bannerStatusParam,
-          sort_by: q.sort_by || 'base.shows',
-          d: q.d || 'desc',
-          limit: q.limit || 250,
-          offset: q.offset || 0,
-        });
-      }
+        if (Array.isArray((data as any)?.items)) {
+          const items = (data as any).items as Array<{
+            id: number | string;
+            status?: string;
+            name?: string;
+            ad_group_id?: number;
+            ad_groups?: number[];
+            banners?: number[];
+            ref?: string;
+            refs?: string[];
+            dealsPrice?: number;
+            makets?: number;
+            spent_nds?: number;
+            maketPrice?: number;
+            drr?: number;
+          }>;
 
-      // Enrich items
-      if (Array.isArray((data as any)?.items)) {
-        const items = (data as any).items as Array<{
-          id: number | string;
+          for (const it of items) {
+            const idNum = typeof it?.id === 'number' ? it.id : Number(it?.id);
+            if (!Number.isFinite(idNum)) continue;
+            if (statusByBannerId[idNum] !== undefined) it.status = statusByBannerId[idNum];
+            if (nameByBannerId[idNum] !== undefined) it.name = nameByBannerId[idNum];
+            const gid = adGroupByBannerId[idNum];
+            if (Number.isFinite(gid as any)) it.ad_group_id = gid as number;
+            // Требуемый формат: пустые массивы и refs строго по id баннера
+            const idStr = String(idNum);
+            it.ad_groups = [];
+            it.banners = [];
+            it.ref = idStr;
+            it.refs = [idStr];
+            // Метрики из батч-карт
+            it.dealsPrice = dealsSumByRef[idStr] || 0;
+            it.makets = maketsByRef[idStr] || 0;
+            // spent_nds
+            try {
+              const rawSpent = Number((it as any)?.total?.base?.spent ?? (it as any)?.total?.base?.spend ?? 0) || 0;
+              it.spent_nds = Number((rawSpent * 1.2).toFixed(2));
+            } catch { it.spent_nds = 0; }
+            it.maketPrice = it.makets ? Number(((it.spent_nds || 0) / it.makets).toFixed(2)) : 0;
+            const spentForDrr = Number(it.spent_nds || 0);
+            it.drr = it.dealsPrice ? Number(((spentForDrr / it.dealsPrice) * 100).toFixed(2)) : 0;
+          }
+
+          // Counters
+          const adGroupSet = new Set<number>();
+          for (const it of items) {
+            const gid = Number((it as any)?.ad_group_id);
+            if (Number.isFinite(gid)) adGroupSet.add(gid);
+          }
+          (data as any).ad_group_count = adGroupSet.size;
+          (data as any).banners_count = new Set(items.map((i) => Number(i.id))).size;
+        }
+
+        return data as StatsDayResponse<{
           status?: string;
           name?: string;
           ad_group_id?: number;
@@ -1911,65 +1595,133 @@ export class VkAdsService {
           spent_nds?: number;
           maketPrice?: number;
           drr?: number;
-        }>;
-
-        for (const it of items) {
-          const idNum = typeof it?.id === 'number' ? it.id : Number(it?.id);
-          if (!Number.isFinite(idNum)) continue;
-          if (statusByBannerId[idNum] !== undefined)
-            it.status = statusByBannerId[idNum];
-          if (nameByBannerId[idNum] !== undefined)
-            it.name = nameByBannerId[idNum];
-          const gid = adGroupByBannerId[idNum];
-          if (Number.isFinite(gid as any)) it.ad_group_id = gid as number;
-          const refs = (gid && refsByGroupId[gid]) || [];
-          if (refs.length) it.ref = refs[0];
-          it.refs = refs.slice();
-
-          // Fallback refs to banner id
-          const refsForMetrics = it.refs && it.refs.length
-            ? it.refs
-            : [String(idNum)];
-
-          it.dealsPrice = refsForMetrics.reduce(
-            (sum, r) => sum + (dealsSumByRef[r] || 0),
-            0,
-          );
-          it.makets = refsForMetrics.reduce(
-            (sum, r) => sum + (maketsByRef[r] || 0),
-            0,
-          );
-
-          // spent_nds from v3 totals
-          try {
-            const rawSpent =
-              Number(
-                (it as any)?.total?.base?.spent ??
-                  (it as any)?.total?.base?.spend ??
-                  0,
-              ) || 0;
-            it.spent_nds = Number((rawSpent * 1.2).toFixed(2));
-          } catch {
-            it.spent_nds = 0;
-          }
-          it.maketPrice = it.makets
-            ? Number(((it.spent_nds || 0) / it.makets).toFixed(2))
-            : 0;
-          const spentForDrr = Number(it.spent_nds || 0);
-          it.drr = it.dealsPrice
-            ? Number(((spentForDrr / it.dealsPrice) * 100).toFixed(2))
-            : 0;
-        }
-
-        // Top-level counters
-        const adGroupSet = new Set<number>();
-        for (const it of items) {
-          const gid = Number((it as any)?.ad_group_id);
-          if (Number.isFinite(gid)) adGroupSet.add(gid);
-        }
-        (data as any).ad_group_count = adGroupSet.size;
-        (data as any).banners_count = items.length;
+        }> & { ad_group_count: number; banners_count: number };
       }
+
+      // Метрики батчем + персонифицированный v3 с пулом параллелизма
+      const url = `/api/v3/statistics/banners/day.json`;
+      const pool = Math.max(1, Number(process.env.VK_ADS_BANNERS_POOL) || 1);
+      const paceMs = Math.max(0, Number(process.env.VK_ADS_BANNERS_PACE_MS) || 500);
+      const results = await this.mapPool(bannerIds, pool, async (bid) => {
+        const resp = await this.getWithRetry(
+          url,
+          {
+            id: String(bid),
+            date_from: q.date_from,
+            date_to: q.date_to,
+            fields: 'base',
+            attribution: 'conversion',
+          },
+          8,
+          token,
+        );
+        const v3item =
+          Array.isArray(resp?.items) && resp.items.length
+            ? resp.items[0]
+            : { id: bid, total: { base: {} } };
+        const idNum =
+          typeof v3item?.id === 'number'
+            ? v3item.id
+            : Number(v3item?.id ?? bid);
+        if (!Number.isFinite(idNum)) return null;
+        const idStr = String(idNum);
+        const it: any = {
+          id: idNum,
+          status: statusByBannerId[idNum],
+          name: nameByBannerId[idNum],
+          ad_group_id: adGroupByBannerId[idNum],
+          ad_groups: [],
+          banners: [],
+          ref: idStr,
+          refs: [idStr],
+          total: v3item?.total || { base: {} },
+        };
+        it.dealsPrice = dealsSumByRef[idStr] || 0;
+        it.makets = maketsByRef[idStr] || 0;
+        try {
+          const rawSpent =
+            Number(it?.total?.base?.spent ?? it?.total?.base?.spend ?? 0) || 0;
+          it.spent_nds = Number((rawSpent * 1.2).toFixed(2));
+        } catch {
+          it.spent_nds = 0;
+        }
+        it.maketPrice = it.makets
+          ? Number(((it.spent_nds || 0) / it.makets).toFixed(2))
+          : 0;
+        const spentForDrr = Number(it.spent_nds || 0);
+        it.drr = it.dealsPrice
+          ? Number(((spentForDrr / it.dealsPrice) * 100).toFixed(2))
+          : 0;
+        if (pool === 1 && paceMs) await this.wait(paceMs);
+        return it;
+      });
+
+      const items = results.filter((x) => !!x) as any[];
+
+      // Батчевый upsert в одну транзакцию
+      const upserts: Prisma.PrismaPromise<any>[] = [];
+      for (const it of items) {
+        const idStr = String(it.id);
+        upserts.push(
+          this.prisma.vkAdsDailyStat.upsert({
+            where: {
+              project_entity_entityId_date: {
+                project: q.project,
+                entity: 'banners',
+                entityId: Number(it.id),
+                date: q.date_from,
+              },
+            },
+            create: {
+              project: q.project,
+              entity: 'banners',
+              entityId: Number(it.id),
+              date: q.date_from,
+              total: it.total,
+              status: it.status ?? null,
+              name: it.name ?? null,
+              budgetLimitDay: null,
+              adGroupId: it.ad_group_id ?? null,
+              adGroups: [],
+              banners: [],
+              refs: [idStr],
+              dealsPrice: it.dealsPrice || 0,
+              makets: it.makets || 0,
+              spentNds: it.spent_nds || 0,
+              maketPrice: it.maketPrice || 0,
+              drr: it.drr || 0,
+            },
+            update: {
+              total: it.total,
+              status: it.status ?? null,
+              name: it.name ?? null,
+              adGroupId: it.ad_group_id ?? null,
+              refs: [idStr],
+              dealsPrice: it.dealsPrice || 0,
+              makets: it.makets || 0,
+              spentNds: it.spent_nds || 0,
+              maketPrice: it.maketPrice || 0,
+              drr: it.drr || 0,
+            },
+          }),
+        );
+      }
+      if (upserts.length) await this.prisma.$transaction(upserts);
+
+      const adGroupSet = new Set<number>();
+      for (const it of items) {
+        const gid = Number((it as any)?.ad_group_id);
+        if (Number.isFinite(gid)) adGroupSet.add(gid);
+      }
+      const data = {
+        items,
+        ad_group_count: adGroupSet.size,
+        banners_count: new Set(items.map((i) => Number(i.id))).size,
+        count: items.length,
+        limit: q.limit || 250,
+        offset: q.offset || 0,
+        total: {},
+      } as any;
 
       return data as StatsDayResponse<{
         status?: string;
@@ -1988,18 +1740,24 @@ export class VkAdsService {
     }
   }
 
-  async getAdPlanGroupsData(id: number, status: string | undefined) {
+  async getAdPlanGroupsData(
+    id: number,
+    status: string | undefined,
+    authToken?: string,
+  ) {
     const url = '/api/v2/ad_groups.json';
     try {
-      const { data } = await this.http.get(url, {
-        params: {
-          fields: 'ad_plan_id,id,name,utm,budget_limit_day', //utm это ref=...
+      const data = await this.getWithRetry(
+        url,
+        {
+          fields: 'ad_plan_id,id,name,utm,budget_limit_day', // utm — ref=...
           _ad_plan_id: id,
           _status__in:
             status && status !== 'all' ? status : 'active,blocked,deleted',
         },
-      });
-      // console.log(data);
+        4,
+        authToken,
+      );
       return data as AdPlan;
     } catch (e) {
       this.handleError(e);

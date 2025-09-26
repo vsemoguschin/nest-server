@@ -51,6 +51,11 @@ export interface StatsDayResponse<TExtra = {}> {
 // Query DTO for: GET /vk-ads/ad_plans/:id/groups/statistics/day
 // Same as StatisticsDayDto but without `entity` and without `ids`
 export class StatisticsDayGroupsDto {
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['neon', 'book'])
+  project!: 'neon' | 'book';
+
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsNotFutureYmd({ message: 'Дата начала не может быть будущей' })
   date_from!: string;
@@ -74,6 +79,11 @@ export class StatisticsDayGroupsDto {
 // Query DTO for: GET /vk-ads/ad_plans/statistics/day
 // Same filters as StatisticsDayDto, but without `entity`.
 export class StatisticsDayAdPlansDto {
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['neon', 'book'])
+  project!: 'neon' | 'book';
+
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsNotFutureYmd({ message: 'Дата начала не может быть будущей' })
   date_from!: string;
@@ -87,6 +97,11 @@ export class StatisticsDayAdPlansDto {
 // Query DTO for: GET /vk-ads/banners/statistics/day
 // Similar to groups DTO, but ids correspond to banners and `status` applies to banner status.
 export class StatisticsDayBannersDto {
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['neon', 'book'])
+  project!: 'neon' | 'book';
+
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsNotFutureYmd({ message: 'Дата начала не может быть будущей' })
   date_from!: string;

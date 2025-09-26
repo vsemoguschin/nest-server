@@ -239,7 +239,7 @@ export class ProductionController {
   }
 
   @Post('master-repair')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER')
   async createRepairReport(
     @Body() createMasterRepairReportDto: CreateMasterRepairReportDto,
   ) {
@@ -249,7 +249,7 @@ export class ProductionController {
   }
 
   @Patch('master-repair/:id')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER')
   async updateRepairReport(
     @CurrentUser() user: UserDto,
     @Param('id') id: string,

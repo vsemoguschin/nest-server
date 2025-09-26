@@ -95,6 +95,8 @@ export class BoardsService {
                 orders: {
                   select: {
                     deadline: true,
+                    boardHeight: true,
+                    boardWidth: true,
                     type: true,
                     holeType: true,
                     fitting: true,
@@ -156,7 +158,19 @@ export class BoardsService {
                   // lightings
                   for (const l of o.lightings ?? []) {
                     const color = (l.color || '').toLowerCase();
-                    if (color === 'rgb') warningsSet.add('РГБ подсветка');
+                    if (color === 'rgb') {
+                      warningsSet.add('РГБ подсветка');
+                    }
+                    if (color && color !== 'rgb') {
+                      warningsSet.add('Подсветка');
+                    }
+                  }
+                  if (
+                    o.boardHeight > 200 ||
+                    o.boardWidth > 200 ||
+                    (o.boardHeight > 150 && o.boardWidth > 150)
+                  ) {
+                    warningsSet.add('Большой размер подложки');
                   }
                 }
 

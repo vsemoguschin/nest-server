@@ -25,6 +25,7 @@
     "seed:crm:reset": "ts-node src/seeds/seed-crm-reset.ts",
     "seed:rename-board": "ts-node src/seeds/seed-rename-board.ts",
     "seed:archive-board-3": "ts-node src/seeds/seed-archive-board-3.ts",
+    "seed:vkads": "ts-node -r tsconfig-paths/register src/seeds/seed-vkads.ts",
     "prisma:deploy": "prisma db push && prisma generate"
   },
   "dependencies": {

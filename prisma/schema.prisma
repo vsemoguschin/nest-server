@@ -1193,3 +1193,37 @@ model CrmSyncState {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
+
+
+/// Ежедневная статистика VK Ads (агрегированная и бизнес-поля), хранится по дням
+model VkAdsDailyStat {
+  id        Int      @id @default(autoincrement())
+  project   String   // 'neon' | 'book'
+  entity    String   // 'ad_plans' | 'ad_groups' | 'banners'
+  entityId  Int
+  date      String   // YYYY-MM-DD
+
+  // Метаданные и связи
+  status            String?
+  name              String?
+  budgetLimitDay    String?
+  adGroupId         Int?
+  adGroups          Int[]
+  banners           Int[]
+  refs              String[]
+
+  // Сырые тоталы из v3 (например, total.base.*)
+  total     Json?
+
+  // Бизнес-метрики и расчетные поля
+  dealsPrice  Float  @default(0)
+  makets      Int    @default(0)
+  spentNds    Float  @default(0)
+  maketPrice  Float  @default(0)
+  drr         Float  @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([project, entity, date])
+  @@unique([project, entity, entityId, date], map: "vkads_unique_entity_per_day")
+}
