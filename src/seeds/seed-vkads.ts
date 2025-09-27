@@ -13,7 +13,7 @@ async function bootstrap() {
     console.log('reset done');
     const stats = app.get(VkAdsStatsService);
     // Диапазон для сбора: 2025-01-01 .. 2025-10-01
-    const from = '2025-01-01';
+    const from = '2025-08-01';
     const to = '2025-09-27';
     for (const project of ['neon', 'book'] as const) {
       console.log(project + ' start');
