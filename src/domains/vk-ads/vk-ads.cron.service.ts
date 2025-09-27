@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { format, startOfMonth, endOfMonth, subMonths, min as dfMin } from 'date-fns';
+import { format, startOfMonth, endOfMonth, subMonths, min as dfMin, subDays } from 'date-fns';
 import { VkAdsStatsService } from './vk-ads.stats.service';
 
 @Injectable()
@@ -27,15 +27,22 @@ export class VkAdsCronService {
     await this.stats.collectRange(project, 'banners', from, to);
   }
 
-  // Каждый день в 01:00 по Москве собираем текущий и предыдущий месяцы
+  private lastDaysRange(days: number): { from: string; to: string } {
+    const now = new Date();
+    const from = subDays(now, Math.max(0, days - 1));
+    return { from: format(from, 'yyyy-MM-dd'), to: format(now, 'yyyy-MM-dd') };
+  }
+
+  // Каждый день в 01:00 по Москве собираем последние 5 дней
   @Cron('0 0 1 * * *', { timeZone: 'Europe/Moscow' })
   async nightlyCollector() {
     try {
-      const now = new Date();
-      const prev = subMonths(now, 1);
+      const range = this.lastDaysRange(5);
       for (const project of ['neon', 'book'] as const) {
-        await this.collectMonth(project, prev);
-        await this.collectMonth(project, now);
+        this.logger.log(`[VK Ads] Collect last5 ${project} ${range.from}..${range.to}`);
+        await this.stats.collectRange(project, 'ad_plans', range.from, range.to);
+        await this.stats.collectRange(project, 'ad_groups', range.from, range.to);
+        await this.stats.collectRange(project, 'banners', range.from, range.to);
       }
     } catch (e: any) {
       this.logger.error(`VK Ads nightly collector failed: ${e?.message || e}`);

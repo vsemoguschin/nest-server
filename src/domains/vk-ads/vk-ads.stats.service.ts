@@ -108,47 +108,47 @@ export class VkAdsStatsService {
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
     const start = parse(date_from);
     const end = date_to ? parse(date_to) : start;
-    for (
-      let cur = new Date(start);
-      cur <= end;
-      cur.setUTCDate(cur.getUTCDate() + 1)
-    ) {
+    const paceMs = Math.max(0, Number(process.env.VK_ADS_SEED_PACE_MS) || 600);
+    const dayRetries = Math.max(1, Number(process.env.VK_ADS_SEED_DAY_RETRIES) || 4);
+    for (let cur = new Date(start); cur <= end; cur.setUTCDate(cur.getUTCDate() + 1)) {
       const day = fmt(cur);
       const limit = 250;
       let offset = 0;
-      while (true) {
-        let resp: any;
-        console.log(entity, day);
-        if (entity === 'ad_plans') {
-          resp = await this.vk.getAdPlansDay({
-            project,
-            date_from: day,
-            date_to: day,
-            limit,
-            offset,
-          } as any);
-        } else if (entity === 'ad_groups') {
-          resp = await this.vk.getAdGroupsDay({
-            project,
-            date_from: day,
-            date_to: day,
-            limit,
-            offset,
-          } as any);
-        } else {
-          resp = await this.vk.getBannersDay({
-            project,
-            date_from: day,
-            date_to: day,
-            limit,
-            offset,
-          } as any);
+      let pageDone = false;
+      while (!pageDone) {
+        let attempt = 0;
+        while (attempt < dayRetries) {
+          try {
+            let resp: any;
+            if (entity === 'ad_plans') {
+              resp = await this.vk.getAdPlansDay({ project, date_from: day, date_to: day, limit, offset } as any);
+            } else if (entity === 'ad_groups') {
+              resp = await this.vk.getAdGroupsDay({ project, date_from: day, date_to: day, limit, offset } as any);
+            } else {
+              resp = await this.vk.getBannersDay({ project, date_from: day, date_to: day, limit, offset } as any);
+            }
+            const items = Array.isArray(resp?.items) ? resp.items : [];
+            await this.persistStats(project, entity, day, day, items);
+            const count: number = Number(resp?.count || items.length);
+            offset += limit;
+            if (paceMs) await new Promise((r) => setTimeout(r, paceMs));
+            if (offset >= count || !items.length) pageDone = true;
+            break;
+          } catch (e: any) {
+            const status = typeof e?.getStatus === 'function' ? e.getStatus() : e?.status;
+            if (status === 429) {
+              const backoff = Math.min(5000, 1000 * Math.pow(2, attempt));
+              await new Promise((r) => setTimeout(r, backoff));
+              attempt++;
+              continue;
+            }
+            throw e;
+          }
         }
-        const items = Array.isArray(resp?.items) ? resp.items : [];
-        await this.persistStats(project, entity, day, day, items);
-        const count: number = Number(resp?.count || items.length);
-        offset += limit;
-        if (offset >= count || !items.length) break;
+        if (attempt >= dayRetries) {
+          this.logger.warn(`Skip ${entity} ${project} ${day} after ${dayRetries} retries (429)`);
+          break;
+        }
       }
     }
   }
