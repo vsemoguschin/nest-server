@@ -19,11 +19,24 @@ async function bootstrap() {
       console.log(project + ' start');
       for (const entity of [
         'ad_plans',
-        'ad_groups',
         'banners',
+        'ad_groups',
       ] as const) {
         console.log(entity + ' start');
         await stats.collectRange(project, entity, from, to);
+      }
+    }
+    const from2 = '2025-01-01';
+    const to2 = '2025-08-01';
+    for (const project of ['neon', 'book'] as const) {
+      console.log(project + ' start');
+      for (const entity of [
+        'ad_plans',
+        'banners',
+        'ad_groups',
+      ] as const) {
+        console.log(entity + ' start');
+        await stats.collectRange(project, entity, from2, to2);
       }
     }
   } finally {

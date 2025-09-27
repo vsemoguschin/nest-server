@@ -28,6 +28,8 @@ export class VkAdsStatsService {
     items: any[],
   ) {
     const upserts: Prisma.PrismaPromise<any>[] = [];
+    const bulkMode = String(process.env.VK_ADS_BULK_INSERT || '') === '1';
+    const bulkRows: any[] = [];
 
     for (const it of items) {
       const entityId = Number(it?.id);
@@ -70,19 +72,33 @@ export class VkAdsStatsService {
       // поэтому не полагаемся на items.days и всегда используем date_from как дату записи.
       const date = date_from;
       const total = it?.total ?? null;
-      upserts.push(
-        this.prisma.vkAdsDailyStat.upsert({
-          where: {
-            project_entity_entityId_date: { project, entity, entityId, date },
-          },
-          create: { project, entity, entityId, date, total, ...baseMeta },
-          update: { total, ...baseMeta },
-        }),
-      );
+      if (bulkMode) {
+        bulkRows.push({ project, entity, entityId, date, total, ...baseMeta });
+      } else {
+        upserts.push(
+          this.prisma.vkAdsDailyStat.upsert({
+            where: {
+              project_entity_entityId_date: { project, entity, entityId, date },
+            },
+            create: { project, entity, entityId, date, total, ...baseMeta },
+            update: { total, ...baseMeta },
+          }),
+        );
+      }
     }
 
     // Примечание: для массива промисов Prisma не принимает опции timeout/maxWait в этой версии
-    if (upserts.length) await this.prisma.$transaction(upserts);
+    if (bulkMode) {
+      // Быстрый путь: очищаем срез дня и вставляем пачкой
+      await this.prisma.$transaction([
+        this.prisma.vkAdsDailyStat.deleteMany({ where: { project, entity, date: date_from } }),
+      ]);
+      if (bulkRows.length) {
+        await this.prisma.vkAdsDailyStat.createMany({ data: bulkRows });
+      }
+    } else {
+      if (upserts.length) await this.prisma.$transaction(upserts);
+    }
   }
 
   /** Загрузить и сохранить статистику для сущности в указанном диапазоне дат (с пагинацией). */
@@ -153,6 +169,7 @@ export class VkAdsStatsService {
       const limit = 250;
       let offset = 0;
       this.logger.log(`[day:start] project=${project} entity=${entity} day=${day}`);
+      await this.notify(`VK ADS: day start ${project} ${entity} ${day}`);
       let pageDone = false;
       while (!pageDone) {
         let attempt = 0;
@@ -203,6 +220,7 @@ export class VkAdsStatsService {
         }
       }
       this.logger.log(`[day:done] project=${project} entity=${entity} day=${day}`);
+      await this.notify(`VK ADS: day done ${project} ${entity} ${day}`);
     }
     this.logger.log(`[collectRange:done] project=${project} entity=${entity} from=${date_from} to=${date_to || date_from}`);
     await this.notify(`VK ADS: done ${project} ${entity} ${date_from}..${date_to || date_from}`);

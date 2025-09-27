@@ -969,6 +969,19 @@ export class VkAdsService {
             404,
           );
         }
+      } else {
+        // ids переданы извне — всё равно подтянем метаданные для обогащения (name/status/limits/groups/refs)
+        const adPlanStatusesFilter = this.parseStatusesFilter(q.status);
+        const meta = await this.getAllAdPlanIdsCsv(
+          q.project,
+          adPlanStatusesFilter,
+          token,
+        );
+        adPlanStatuses = meta.statusById;
+        adPlanNames = meta.nameById;
+        budgetLimitDayById = meta.budgetLimitDayById;
+        adGroupsById = meta.adGroupsById;
+        refsByPlan = meta.refsByPlan;
       }
 
       // 2) Валидация диапазона дат
