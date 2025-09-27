@@ -113,6 +113,41 @@ export class VkAdsStatsService {
     const dayRetries = Math.max(1, Number(process.env.VK_ADS_SEED_DAY_RETRIES) || 4);
     this.logger.log(`[collectRange] project=${project} entity=${entity} from=${date_from} to=${date_to || date_from}`);
     await this.notify(`VK ADS: start ${project} ${entity} ${date_from}..${date_to || date_from}`);
+
+    // Prefetch: собрать один раз список IDs для сущности и подставлять его в DTO
+    let idsCsv: string | undefined;
+    const enumerateIds = async (refDay: string): Promise<string | undefined> => {
+      try {
+        const limitEnum = 250;
+        let off = 0;
+        const acc = new Set<number>();
+        while (true) {
+          let resp: any;
+          if (entity === 'ad_plans') {
+            resp = await this.vk.getAdPlansDay({ project, date_from: refDay, date_to: refDay, limit: limitEnum, offset: off } as any);
+          } else if (entity === 'ad_groups') {
+            resp = await this.vk.getAdGroupsDay({ project, date_from: refDay, date_to: refDay, limit: limitEnum, offset: off } as any);
+          } else {
+            resp = await this.vk.getBannersDay({ project, date_from: refDay, date_to: refDay, limit: limitEnum, offset: off } as any);
+          }
+          const items = Array.isArray(resp?.items) ? resp.items : [];
+          for (const it of items) {
+            const idNum = typeof (it as any)?.id === 'number' ? (it as any).id : Number((it as any)?.id);
+            if (Number.isFinite(idNum)) acc.add(idNum);
+          }
+          const cnt: number = Number(resp?.count || items.length);
+          off += limitEnum;
+          if (off >= cnt || !items.length) break;
+          if (paceMs) await new Promise((r) => setTimeout(r, paceMs));
+        }
+        const list = Array.from(acc.values());
+        return list.length ? list.join(',') : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    // Соберем ids по первой дате диапазона
+    idsCsv = await enumerateIds(fmt(start));
     for (let cur = new Date(start); cur <= end; cur.setUTCDate(cur.getUTCDate() + 1)) {
       const day = fmt(cur);
       const limit = 250;
@@ -126,11 +161,17 @@ export class VkAdsStatsService {
             this.logger.log(`[page:fetch] project=${project} entity=${entity} day=${day} offset=${offset} limit=${limit}`);
             let resp: any;
             if (entity === 'ad_plans') {
-              resp = await this.vk.getAdPlansDay({ project, date_from: day, date_to: day, limit, offset } as any);
+              const dto: any = { project, date_from: day, date_to: day, limit, offset };
+              if (idsCsv) dto.ids = idsCsv;
+              resp = await this.vk.getAdPlansDay(dto);
             } else if (entity === 'ad_groups') {
-              resp = await this.vk.getAdGroupsDay({ project, date_from: day, date_to: day, limit, offset } as any);
+              const dto: any = { project, date_from: day, date_to: day, limit, offset };
+              if (idsCsv) dto.ids = idsCsv;
+              resp = await this.vk.getAdGroupsDay(dto);
             } else {
-              resp = await this.vk.getBannersDay({ project, date_from: day, date_to: day, limit, offset } as any);
+              const dto: any = { project, date_from: day, date_to: day, limit, offset };
+              if (idsCsv) dto.ids = idsCsv;
+              resp = await this.vk.getBannersDay(dto);
             }
             const items = Array.isArray(resp?.items) ? resp.items : [];
             this.logger.log(`[page:resp] project=${project} entity=${entity} day=${day} items=${items.length} count=${resp?.count ?? items.length}`);

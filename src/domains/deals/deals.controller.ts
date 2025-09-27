@@ -53,7 +53,7 @@ export class DealsController {
     @Body() createDealDto: CreateDealDto,
     @CurrentUser() user: UserDto,
   ): Promise<CreateDealDto> {
-    console.log(createDealDto);
+    // console.log(createDealDto);
     return this.dealsService.create(createDealDto, user);
   }
 

@@ -122,7 +122,7 @@ export class ReportsService {
     const report = await this.prisma.ropReport.findUnique({
       where: { id },
     });
-    console.log(report, id);
+    // console.log(report, id);
 
     if (!report) {
       throw new NotFoundException(`Отчет с ID ${id} не найден`);
@@ -139,7 +139,7 @@ export class ReportsService {
     const report = await this.prisma.managerReport.findUnique({
       where: { id },
     });
-    console.log(report, id);
+    // console.log(report, id);
 
     if (!report) {
       throw new NotFoundException(`Отчет с ID ${id} не найден`);
@@ -184,7 +184,6 @@ export class ReportsService {
         client: true,
       },
     });
-    console.log(deals[0]?.dealers);
 
     const dops = await this.prisma.dop.findMany({
       where: {
@@ -309,13 +308,6 @@ export class ReportsService {
       const dealsDayToDayCount = dateDeals.filter(
         (d) => d.deal.saleDate === d.deal.client.firstContact,
       ).length;
-      console.log(
-        dateDeals
-          .filter((d) => d.deal.saleDate === d.deal.client.firstContact)
-          .map((d) => {
-            return [d.deal.saleDate, d.deal.client.firstContact];
-          }),
-      );
 
       const drr = totalSales
         ? +((calls * callCost) / totalSales).toFixed(2)

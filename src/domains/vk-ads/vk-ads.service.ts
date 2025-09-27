@@ -941,7 +941,7 @@ export class VkAdsService {
     try {
       const token = this.getTokenForProject(q.project);
       // 1) Подготовка: список id кампаний + служебные мапы (кэшируемые)
-      let idsParam: string | undefined;
+      let idsParam: string | undefined = ((q as any)?.ids && String((q as any).ids).trim()) || undefined;
       let adPlanStatuses: Record<number, string> | undefined;
       let adPlanNames: Record<number, string> | undefined;
       let budgetLimitDayById: Record<number, string | number> | undefined;

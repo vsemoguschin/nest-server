@@ -562,7 +562,7 @@ export class DealsService {
     if (reviews.length > 0) {
       await Promise.all(
         reviews.map(async (review, i) => {
-          console.log(review.file);
+          // console.log(review.file);
           if (review.file[0]?.path) {
             const filePath = review.file[0].path;
             const md = await axios.get(
@@ -574,8 +574,8 @@ export class DealsService {
                 headers: { Authorization: `OAuth ${process.env.YA_TOKEN}` },
               },
             );
-            console.log(md.data);
-            console.log(filePath);
+            // console.log(md.data);
+            // console.log(filePath);
             // console.log(reviews[i].file[0].path);
 
             reviews[i].file[0].preview = md.data.sizes[0].url || '';
