@@ -17,7 +17,11 @@ async function bootstrap() {
     const to = '2025-09-27';
     for (const project of ['neon', 'book'] as const) {
       console.log(project + ' start');
-      for (const entity of ['banners', 'ad_groups', 'ad_plans'] as const) {
+      for (const entity of [
+        'ad_plans',
+        'ad_groups',
+        'banners',
+      ] as const) {
         console.log(entity + ' start');
         await stats.collectRange(project, entity, from, to);
       }

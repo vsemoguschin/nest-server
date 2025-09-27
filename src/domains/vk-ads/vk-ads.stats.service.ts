@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VkAdsService } from './vk-ads.service';
 import { Prisma } from '@prisma/client';
+import axios from 'axios';
 
 type Project = 'neon' | 'book';
 type Entity = 'ad_plans' | 'ad_groups' | 'banners';
@@ -110,15 +111,19 @@ export class VkAdsStatsService {
     const end = date_to ? parse(date_to) : start;
     const paceMs = Math.max(0, Number(process.env.VK_ADS_SEED_PACE_MS) || 600);
     const dayRetries = Math.max(1, Number(process.env.VK_ADS_SEED_DAY_RETRIES) || 4);
+    this.logger.log(`[collectRange] project=${project} entity=${entity} from=${date_from} to=${date_to || date_from}`);
+    await this.notify(`VK ADS: start ${project} ${entity} ${date_from}..${date_to || date_from}`);
     for (let cur = new Date(start); cur <= end; cur.setUTCDate(cur.getUTCDate() + 1)) {
       const day = fmt(cur);
       const limit = 250;
       let offset = 0;
+      this.logger.log(`[day:start] project=${project} entity=${entity} day=${day}`);
       let pageDone = false;
       while (!pageDone) {
         let attempt = 0;
         while (attempt < dayRetries) {
           try {
+            this.logger.log(`[page:fetch] project=${project} entity=${entity} day=${day} offset=${offset} limit=${limit}`);
             let resp: any;
             if (entity === 'ad_plans') {
               resp = await this.vk.getAdPlansDay({ project, date_from: day, date_to: day, limit, offset } as any);
@@ -128,7 +133,9 @@ export class VkAdsStatsService {
               resp = await this.vk.getBannersDay({ project, date_from: day, date_to: day, limit, offset } as any);
             }
             const items = Array.isArray(resp?.items) ? resp.items : [];
+            this.logger.log(`[page:resp] project=${project} entity=${entity} day=${day} items=${items.length} count=${resp?.count ?? items.length}`);
             await this.persistStats(project, entity, day, day, items);
+            this.logger.log(`[persist:done] project=${project} entity=${entity} day=${day} saved=${items.length}`);
             const count: number = Number(resp?.count || items.length);
             offset += limit;
             if (paceMs) await new Promise((r) => setTimeout(r, paceMs));
@@ -138,18 +145,43 @@ export class VkAdsStatsService {
             const status = typeof e?.getStatus === 'function' ? e.getStatus() : e?.status;
             if (status === 429) {
               const backoff = Math.min(5000, 1000 * Math.pow(2, attempt));
+              this.logger.warn(`[429] project=${project} entity=${entity} day=${day} offset=${offset} attempt=${attempt + 1}/${dayRetries} backoffMs=${backoff}`);
               await new Promise((r) => setTimeout(r, backoff));
               attempt++;
               continue;
             }
+            this.logger.error(`[error] project=${project} entity=${entity} day=${day} offset=${offset} msg=${e?.message || e}`);
+            await this.notify(`VK ADS: ERROR ${project} ${entity} ${day}\n${e?.message || e}`);
             throw e;
           }
         }
         if (attempt >= dayRetries) {
           this.logger.warn(`Skip ${entity} ${project} ${day} after ${dayRetries} retries (429)`);
+          await this.notify(`VK ADS: WARN skip ${project} ${entity} ${day} after ${dayRetries} retries (429)`);
           break;
         }
       }
+      this.logger.log(`[day:done] project=${project} entity=${entity} day=${day}`);
+    }
+    this.logger.log(`[collectRange:done] project=${project} entity=${entity} from=${date_from} to=${date_to || date_from}`);
+    await this.notify(`VK ADS: done ${project} ${entity} ${date_from}..${date_to || date_from}`);
+  }
+
+  private async notify(text: string) {
+    try {
+      const chatIdRaw = 317401874;
+      const token = process.env.TELEGRAM_BOT_TOKEN || process.env.TG_BOT_TOKEN;
+      if (!chatIdRaw || !token) return;
+      const chat_id = Number(chatIdRaw);
+      if (!Number.isFinite(chat_id)) return;
+      await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+        chat_id,
+        text,
+        parse_mode: 'HTML',
+        disable_notification: true,
+      });
+    } catch (e) {
+      // silent fail for notifications
     }
   }
 }
