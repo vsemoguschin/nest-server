@@ -22,6 +22,8 @@ const statuses = [
   'Отправлена',
   'Вручена',
 ];
+const bookSizes = ['20х20', '20х30', '25х25', '30х30', ''];
+
 const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная'];
 const maketTypes = [
   'Дизайнерский',
@@ -180,4 +182,12 @@ export class DealDto {
 
   @IsInt({ message: 'clientId должен быть целым числом (ID клиента).' })
   clientId: number;
+
+  @IsOptional()
+  @IsIn(bookSizes, { message: 'Не верный размер' })
+  bookSize?: string;
+
+  @IsInt()
+  @IsOptional()
+  pages?: number;
 }

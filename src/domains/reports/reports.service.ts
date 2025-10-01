@@ -30,6 +30,9 @@ export class ReportsService {
       where: {
         id: userId,
       },
+      include: {
+        role: true,
+      }
     });
 
     if (!existingUser) {
@@ -41,12 +44,21 @@ export class ReportsService {
         userId,
         date,
       },
+      
     });
 
     if (existingReport) {
       throw new ConflictException(
         `Отчет для пользователя с ID ${userId} и датой ${date} уже существует`,
       );
+    }
+
+    let shiftCost = existingUser.isIntern ? 800 : 666.67;
+    if (existingUser.groupId === 19 && existingUser.role.shortName == 'MOP') {
+      shiftCost = 800;
+    }
+    if (existingUser.groupId === 19 && existingUser.role.shortName == 'MOV') {
+      shiftCost = 1333;
     }
 
     const report = await this.prisma.managerReport.create({
@@ -58,7 +70,7 @@ export class ReportsService {
         date,
         period: date.slice(0, 7),
         redirectToMSG,
-        shiftCost: existingUser.isIntern ? 800 : 666.67,
+        shiftCost,
       },
     });
 

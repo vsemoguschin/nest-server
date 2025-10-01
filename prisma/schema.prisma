@@ -223,7 +223,7 @@ model salaryCorrection {
 model Client {
   id           Int       @id @default(autoincrement())
   fullName     String // Имя клиента
-  phone        String // Номер телефона
+  phone        String    @default("")// Номер телефона
   chatLink     String    @unique // Ссылка на чат
   adLink       String    @default("") // Ссылка на объявление
   gender       String // Пол
@@ -256,7 +256,7 @@ model Client {
 model Deal {
   id                Int        @id @default(autoincrement())
   saleDate          String     // Дата продажи (обязательное поле)
-  card_id           String      // ID карточки дизайна
+  card_id           String     @default("") // ID карточки дизайна
   title             String     // Название сделки
   price             Int        // Стоимость
   status            String     @default("Создана") // Допустимые значения: "Создана", "Изготовление", "Готов", "Готов к отправке", "Отправлена", "Вручена"
@@ -271,11 +271,13 @@ model Deal {
   paid              Boolean    @default(false) // Оплачена?
   maketType         String     @default("") // Тип макета. Допустимые значения: "Дизайнерский", "Заготовка из базы", "Рекламный", "Визуализатор", "Из рассылки"
   category          String     @default("")
-  maketPresentation String     // Дата презентации макета
+  maketPresentation String     @default("")// Дата презентации макета
   period            String     @default("") // Период, например "2025-02"; значение можно вычислять на уровне приложения
   deletedAt         DateTime?  // Поле для мягкого удаления
   createdAt         DateTime   @default(now())
   reservation       Boolean    @default(false) // Бронь
+  bookSize          String     @default("")
+  pages             Int        @default(0)
 
   courseType        String     @default("")
   discontAmount     Int        @default(0)

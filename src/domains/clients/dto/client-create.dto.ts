@@ -17,12 +17,13 @@ export class CreateClientDto {
   @IsString({ message: 'fullName должно быть строкой (имя клиента).' })
   fullName: string;
 
+  @IsOptional()
   @IsString()
   // @Matches(/^8\d{10}$/, {
   //   message:
   //     'Номер телефона должен быть корректным номером в формате 89991234567.',
   // })
-  phone: string;
+  phone?: string;
 
   // @IsOptional()
   @IsUrl(

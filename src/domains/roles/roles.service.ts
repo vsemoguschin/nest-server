@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { UserDto } from '../users/dto/user.dto';
 
 @Injectable()
 export class RolesService {
@@ -37,26 +38,35 @@ export class RolesService {
     });
     return role;
   }
-  async findAll() {
+  async findAll(user: UserDto) {
+    const roless = {
+      ['ADMINS']: [
+        'ROP',
+        'MOP',
+        'DIZ',
+        'MTZ',
+        'FRZ',
+        'LAM',
+        'MASTER',
+        'PACKER',
+        'MARKETER',
+        'BUKH',
+        'ROV',
+        'MOV',
+        'FINANCIER',
+      ],
+      ['ROD']: ['DIZ'],
+      ['ROV']: ['MOV'],
+      ['DO']: ['MOP', 'MOV'],
+      ['RP']: ['FRZ', 'LAM', 'MASTER', 'PACKER'],
+    };
     const roles = await this.prisma.role.findMany({
       where: {
         deletedAt: null, // выбираем только активные роли
         shortName: {
-          in: [
-            'ROP',
-            'MOP',
-            'DIZ',
-            'MTZ',
-            'FRZ',
-            'LAM',
-            'MASTER',
-            'PACKER',
-            'MARKETER',
-            'BUKH',
-            'ROV',
-            'MOV',
-            'FINANCIER'
-          ],
+          in: ['ADMIN', 'G', 'KD'].includes(user.role.shortName)
+            ? roless['ADMINS']
+            : roless[user.role.shortName],
         }, // Фильтруем по списку shortName
       },
     });

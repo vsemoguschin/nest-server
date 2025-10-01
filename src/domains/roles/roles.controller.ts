@@ -12,6 +12,8 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { UserDto } from '../users/dto/user.dto';
 
 @ApiTags('roles')
 @Controller('roles')
@@ -33,8 +35,8 @@ export class RolesController {
     summary: 'Получить список ролей',
     description: 'Endpoint: GET /roles. Возвращает список всех активных ролей.',
   })
-  async getRoles() {
-    return this.rolesService.findAll();
+  async getRoles(@CurrentUser() user: UserDto,) {
+    return this.rolesService.findAll(user);
   }
 
   @Patch(':id')
@@ -56,7 +58,10 @@ export class RolesController {
     description:
       'Endpoint: DELETE /roles/:id. Выполняет мягкое удаление роли, устанавливая значение deletedAt, чтобы роль не удалялась полностью из базы.',
   })
-  async deleteRole(@Param('id', ParseIntPipe) id: number) {
+  async deleteRole(
+    
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return this.rolesService.softDelete(id);
   }
 }

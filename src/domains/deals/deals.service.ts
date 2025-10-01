@@ -143,7 +143,6 @@ export class DealsService {
     if (user.id === 86 || user.id === 88) {
       workspacesSearch = 3;
     }
-    // console.log(user);
     // Запрашиваем сделки, у которых saleDate попадает в диапазон
     const deals = await this.prisma.deal.findMany({
       where: {
@@ -156,6 +155,7 @@ export class DealsService {
         //     startsWith: period
         //   }
         // },
+        groupId: user.groupId === 19 ? 19 : { gt: 0 },
         workSpaceId: workspacesSearch,
       },
 
@@ -231,6 +231,9 @@ export class DealsService {
 
       let status = 'Создана';
 
+      const boxsize = el.bookSize;
+      const pages = el.pages;
+
       const deliveryStatus = el.deliveries
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 1)[0]?.status;
@@ -280,6 +283,8 @@ export class DealsService {
         isRegular,
         courseType,
         discontAmount,
+        boxsize,
+        pages,
       };
     });
 
@@ -620,6 +625,8 @@ export class DealsService {
       reservation: 'Бронь',
       discontAmount: 'Размер скидки',
       courseType: 'Тип курса',
+      bookSize: 'Размер книги',
+      pages: 'Количество страниц',
     };
 
     // Сравниваем поля updateDealDto с dealExists

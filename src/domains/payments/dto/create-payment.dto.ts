@@ -73,8 +73,11 @@ export class CreatePaymentDto {
   @IsNotEmpty()
   period?: string;
 
-  @IsInt({ message: 'userId должен быть целым числом (ID пользователя).' })
+  @IsInt({ message: 'dealId должен быть целым числом (ID сделки).' })
   dealId: number;
+
+  @IsInt({ message: 'userId должен быть целым числом (ID пользователя).' })
+  userId: number;
 
   @IsBoolean({ message: 'isConfirmed должно быть true или false (подтвержден?).' })
   @IsOptional()

@@ -11,6 +11,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -30,6 +31,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { TaskFilesService } from 'src/services/boards/task-files.service';
+import { Response } from 'express';
 
 @UseGuards(RolesGuard)
 @ApiTags('users')
@@ -77,8 +79,16 @@ export class UsersController {
   @Patch(':id')
   // @UseGuards(AuthGuard) // при необходимости
   @Roles('ADMIN', 'G', 'KD', 'DO', 'DP', 'RP', 'ROD')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+  @ApiOperation({ summary: 'Частичное обновление пользователя' })
+  @ApiNoContentResponse({ description: 'Нет изменений (204)' })
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateUserDto,
+    @Res() res: Response,
+  ) {
+    const updated = await this.usersService.update(id, dto);
+    if (updated === null) return res.status(204).send();
+    return res.status(200).json(updated);
   }
 
   @Patch(':id/new-pass')

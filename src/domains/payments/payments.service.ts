@@ -30,7 +30,7 @@ export class PaymentsService {
     const newPayment = await this.prisma.payment.create({
       data: {
         ...createPaymentDto,
-        userId: user.id,
+        userId: createPaymentDto.userId,
         period: createPaymentDto.date.slice(0, 7),
         workSpaceId: existingDeal.workSpaceId,
         groupId: existingDeal.groupId,

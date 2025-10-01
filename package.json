@@ -26,6 +26,7 @@
     "seed:rename-board": "ts-node src/seeds/seed-rename-board.ts",
     "seed:archive-board-3": "ts-node src/seeds/seed-archive-board-3.ts",
     "seed:vkads": "ts-node -r tsconfig-paths/register src/seeds/seed-vkads.ts",
+    "seed:workspace:izibuk": "ts-node src/seeds/seed-workspace-izibuk.ts",
     "prisma:deploy": "prisma db push && prisma generate"
   },
   "dependencies": {

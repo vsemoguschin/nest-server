@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserDto } from '../users/dto/user.dto';
+import { group } from 'node:console';
 
 const formatDate = (dateString: string): string => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
@@ -136,6 +137,7 @@ export class DashboardsService {
           include: {
             users: {
               where: { deletedAt: null },
+              orderBy: { fullName: 'asc' },
               select: {
                 fullName: true,
                 role: true,
@@ -229,6 +231,7 @@ export class DashboardsService {
             },
           },
           include: {
+            group: true,
             role: true,
             managersPlans: {
               where: {
@@ -415,6 +418,7 @@ export class DashboardsService {
             },
           },
           include: {
+            role: true,
             dealSales: {
               where: {
                 deal: {
@@ -527,6 +531,13 @@ export class DashboardsService {
           if (m.groupId === 19) {
             bonusPercentage = 0.07;
           }
+          if (
+            m.groupId === 19 &&
+            m.role.shortName === 'MOV' &&
+            per >= '2025-10'
+          ) {
+            bonusPercentage = 0;
+          }
 
           // console.log('bonusPercentage', bonusPercentage);
 
@@ -559,7 +570,15 @@ export class DashboardsService {
       include: {
         payments: true,
         dealers: true,
-        dops: true,
+        dops: {
+          include: {
+            user: {
+              include: {
+                role: true,
+              },
+            },
+          },
+        },
         workSpace: true,
       },
     });
@@ -610,9 +629,7 @@ export class DashboardsService {
           // console.log(dop);
           const dealerPart = dop.price / dealDopsPrice;
           let bonusPercentage = 0;
-          if (deal.groupId === 19) {
-            bonusPercentage = 0.07;
-          } else if (deal.workSpace.title === 'B2B') {
+          if (deal.workSpace.title === 'B2B') {
             bonusPercentage = 0.1;
           } else {
             bonusPercentage =
@@ -621,6 +638,16 @@ export class DashboardsService {
                   p.period === dop.saleDate.slice(0, 7) &&
                   p.userId === dop.userId,
               )?.bonusPercentage || 0;
+          }
+          if (dop.groupId === 19) {
+            bonusPercentage = 0.07;
+          }
+          if (
+            dop.groupId === 19 &&
+            dop.user.role.shortName === 'MOV' &&
+            dop.saleDate.slice(0, 7) >= '2025-10'
+          ) {
+            bonusPercentage = 0.05;
           }
           const paid = +(dopPaid * dealerPart).toFixed(2);
           return {
@@ -1071,6 +1098,14 @@ export class DashboardsService {
           if (m.groupId === 19) {
             bonusPercentage = 0.07;
           }
+          if (
+          m.groupId === 19 &&
+          m.role.shortName === 'MOV' &&
+          period >= '2025-10'
+          ) {
+            bonusPercentage = 0;
+          }
+
           totalSalary += dealPays + dopPays;
           const rem = +(totalSalary - pays).toFixed(2);
 
@@ -1101,6 +1136,7 @@ export class DashboardsService {
             role: m.role.fullName,
             id: m.id,
             workSpace: w.title,
+            group: m.group.title,
             plan: m.managersPlans[0]?.plan ?? 0,
             totalSales,
             dealSales,

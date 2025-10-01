@@ -146,7 +146,7 @@ export class UsersService {
   }
 
   async update(id: number, dto: UpdateUserDto) {
-    // Проверим, что пользователь существует (и не удалён, если у вас есть soft-delete)
+    // Проверим, что пользователь существует (и не удалён)
     const user = await this.prisma.user.findFirst({
       where: { id, deletedAt: null },
       select: { id: true },
@@ -154,20 +154,30 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     const data: any = {};
-    if (dto.tg_id !== undefined) data.tg_id = dto.tg_id;
+
+    if (dto.fullName !== undefined) data.fullName = String(dto.fullName).trim();
+    if (dto.tg !== undefined) data.tg = String(dto.tg).trim();
+
+    if (dto.tg_id !== undefined) {
+      // null -> очистить (ставим 0, т.к. поле не nullable в схеме)
+      data.tg_id = dto.tg_id === null ? 0 : dto.tg_id;
+    }
+
+    if (dto.roleId !== undefined) {
+      const role = await this.prisma.role.findUnique({ where: { id: dto.roleId } });
+      if (!role) throw new NotFoundException(`Role ${dto.roleId} not found`);
+      data.roleId = dto.roleId;
+    }
 
     if (Object.keys(data).length === 0) {
-      // ничего не меняем — вернём текущего пользователя
-      return this.prisma.user.findUnique({
-        where: { id },
-        select: { id: true, fullName: true, email: true, tg_id: true },
-      });
+      // ничего не меняем — вернём null, чтобы контроллер ответил 204
+      return null;
     }
 
     return this.prisma.user.update({
       where: { id },
       data,
-      select: { id: true, fullName: true, email: true, tg_id: true },
+      select: { id: true, fullName: true, email: true, tg: true, tg_id: true, roleId: true },
     });
   }
 

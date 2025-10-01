@@ -12,15 +12,7 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
-const statuses = [
-  'Создана',
-  'Изготовление',
-  'Готов',
-  'Готов к отправке',
-  'Отправлена',
-  'Вручена',
-  'Возврат',
-];
+const bookSizes = ['20х20', '20х30', '25х25', '30х30', ''];
 const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная', ''];
 const maketTypes = [
   'Дизайнерский',
@@ -28,7 +20,7 @@ const maketTypes = [
   'Рекламный',
   'Визуализатор',
   'Из рассылки',
-  ''
+  '',
 ];
 
 // const categories = ['Услуги', 'Товары для бизнеса', 'Мебель', 'Интерьер', ''];
@@ -64,8 +56,8 @@ export class UpdateDealDto {
   @IsString({ message: 'card_id должен быть строкой.' })
   // @IsNotEmpty({ message: 'card_id обязателен.' })
   @IsOptional()
-  @Matches(/^\d+$/, { message: 'card_id должен состоять только из цифр.' })
-  card_id?: string;
+  // @Matches(/^\d+$/, { message: 'card_id должен состоять только из цифр.' })
+  card_id?: string = '';
 
   @IsString({ message: 'Название сделки должно быть строкой.' })
   // @IsNotEmpty()
@@ -130,18 +122,18 @@ export class UpdateDealDto {
   @IsString({ message: 'дата презентации макета должно быть строкой.' })
   // @IsNotEmpty()
   @IsOptional()
-  @Matches(
-    /^\d{4}-\d{2}-\d{2}$/, // Проверка формата "YYYY-MM-DD"
-    { message: 'Дата должна быть в формате YYYY-MM-DD' },
-  )
-  @IsDateString(
-    {},
-    {
-      message:
-        'дата презентации макета должна быть валидной датой в формате YYYY-MM-DD',
-    },
-  )
-  maketPresentation?: string;
+  // @Matches(
+  //   /^\d{4}-\d{2}-\d{2}$/, // Проверка формата "YYYY-MM-DD"
+  //   { message: 'Дата должна быть в формате YYYY-MM-DD' },
+  // )
+  // @IsDateString(
+  //   {},
+  //   {
+  //     message:
+  //       'дата презентации макета должна быть валидной датой в формате YYYY-MM-DD',
+  //   },
+  // )
+  maketPresentation?: string = '';
 
   @IsString({ message: 'period должно быть строкой (период).' })
   @IsOptional()
@@ -168,4 +160,12 @@ export class UpdateDealDto {
   @IsOptional()
   @IsIn(maketTypes, { message: 'Не верный тип макета' })
   maketType: string | '';
+
+  @IsOptional()
+  @IsIn(bookSizes, { message: 'Не верный размер' })
+  bookSize?: string;
+
+  @IsInt()
+  @IsOptional()
+  pages?: number;
 }

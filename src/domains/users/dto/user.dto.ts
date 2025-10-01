@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsOptional, IsInt, IsArray } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsInt,
+  IsArray,
+} from 'class-validator';
 import { RoleDto } from 'src/domains/roles/dto/role.dto';
 import { WorkSpaceDto } from 'src/domains/workspaces/dto/workspace.dto';
 
@@ -89,6 +95,10 @@ export class UserDto {
     required: false,
   })
   workSpace: WorkSpaceDto; // Опционально, если нужно включить роль
+  group: {
+    id: number;
+    title: string;
+  }; // Опционально, если нужно включить роль
 
   @ApiProperty({ example: 1, description: 'ID рабочего пространства' })
   @IsInt()
