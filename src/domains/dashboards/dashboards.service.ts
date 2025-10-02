@@ -1073,6 +1073,10 @@ export class DashboardsService {
                 bonus += 10_000; // Премия за достижение 1 млн
               }
             } else {
+              // if (m.id === 136) {
+              //   console.log(m.fullName, m.managerReports);
+              // }
+
               if (totalSales < 250_000) {
                 bonusPercentage = 0.03;
               } else if (totalSales >= 250_000 && totalSales < 450_000) {
@@ -1099,9 +1103,9 @@ export class DashboardsService {
             bonusPercentage = 0.07;
           }
           if (
-          m.groupId === 19 &&
-          m.role.shortName === 'MOV' &&
-          period >= '2025-10'
+            m.groupId === 19 &&
+            m.role.shortName === 'MOV' &&
+            period >= '2025-10'
           ) {
             bonusPercentage = 0;
           }
@@ -1185,6 +1189,7 @@ export class DashboardsService {
             conversionDayToDay,
             dimmerSales,
             conversion,
+            groupId: m.groupId,
           };
         })
         .filter(
@@ -1207,7 +1212,7 @@ export class DashboardsService {
 
       // Определение топов
       const topTotalSales = [...userData]
-        .filter((u) => u.workSpace === 'ВК')
+        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
         .sort((a, b) => b.totalSales - a.totalSales)
         .slice(0, 3)
         .map((u, i) => {
@@ -1225,7 +1230,7 @@ export class DashboardsService {
         });
 
       const topDopSales = [...userData]
-        .filter((u) => u.workSpace === 'ВК')
+        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
         .sort((a, b) => b.dopSales - a.dopSales)
         .slice(0, 3)
         .map((u, i) => {
@@ -1242,7 +1247,7 @@ export class DashboardsService {
           }
         });
       const topDimmerSales = [...userData]
-        .filter((u) => u.workSpace === 'ВК')
+        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
         .sort((a, b) => b.dimmerSales - a.dimmerSales)
         .slice(0, 3)
         .map((u, i) => {
@@ -1259,7 +1264,7 @@ export class DashboardsService {
           }
         });
       const topSalesWithoutDesigners = [...userData]
-        .filter((u) => u.workSpace === 'ВК')
+        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
         .sort(
           (a, b) => b.dealsSalesWithoutDesigners - a.dealsSalesWithoutDesigners,
         )
@@ -1278,7 +1283,7 @@ export class DashboardsService {
           }
         });
       const topConversionDayToDay = [...userData]
-        .filter((u) => u.workSpace === 'ВК')
+        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
         .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
         .slice(0, 3)
         .map((u, i) => {

@@ -795,7 +795,7 @@ export class ReportsService {
   // }
 
   async getRopsReportsFromRange(
-    range: { start: string; end: string },
+    range: { from: string; to: string },
     user: UserDto,
   ) {
     const workspacesSearch =
@@ -808,8 +808,8 @@ export class ReportsService {
     const reports = await this.prisma.ropReport.findMany({
       where: {
         date: {
-          gte: range.start,
-          lte: range.end,
+          gte: range.from,
+          lte: range.to,
         },
         workSpaceId: workspacesSearch,
       },
@@ -820,8 +820,8 @@ export class ReportsService {
             deals: {
               where: {
                 saleDate: {
-                  gte: range.start,
-                  lte: range.end,
+                  gte: range.from,
+                  lte: range.to,
                 },
                 reservation: false,
                 status: { not: 'Возврат' },
@@ -833,8 +833,8 @@ export class ReportsService {
             dops: {
               where: {
                 saleDate: {
-                  gte: range.start,
-                  lte: range.end,
+                  gte: range.from,
+                  lte: range.to,
                 },
                 deal: {
                   reservation: false,
@@ -847,16 +847,16 @@ export class ReportsService {
             payments: {
               where: {
                 date: {
-                  gte: range.start,
-                  lte: range.end,
+                  gte: range.from,
+                  lte: range.to,
                 },
               },
             },
             adExpenses: {
               where: {
                 date: {
-                  gte: range.start,
-                  lte: range.end,
+                  gte: range.from,
+                  lte: range.to,
                 },
               },
             },
