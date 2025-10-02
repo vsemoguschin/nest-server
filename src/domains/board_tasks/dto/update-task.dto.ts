@@ -19,4 +19,8 @@ export class UpdateTaskDto {
   @IsString()
   @MaxLength(10000)
   chatLink?: string;
+
+  @IsOptional()
+  @IsNumber()
+  dealId?: number;
 }

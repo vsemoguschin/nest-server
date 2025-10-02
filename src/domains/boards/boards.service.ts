@@ -9,6 +9,7 @@ import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 import axios from 'axios';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateBoardTagDto } from './dto/create-board-tag.dto';
+import { collectTaskWarnings } from '../board_tasks/utils/task-warnings';
 
 @Injectable()
 export class BoardsService {
@@ -109,13 +110,23 @@ export class BoardsService {
                     lightings: { select: { color: true } },
                   },
                 },
+                deliveries: {
+                  select: {
+                    method: true,
+                    type: true,
+                    track: true,
+                  },
+                },
               },
             },
           },
         },
+        tags: true,
       },
     });
     if (!board) throw new NotFoundException('Board not found or access denied');
+    const warningsSet = new Set<string>();
+
     return {
       id: board.id,
       title: board.title,
@@ -128,52 +139,8 @@ export class BoardsService {
             tasks: c.tasks
               .map((t) => {
                 const previewPath = t.attachments[0]?.file.path ?? '';
-                // console.log(t.cover);
-                // build warnings from orders
-                const warningsSet = new Set<string>();
-                for (const o of t.orders ?? []) {
-                  if (o.type) warningsSet.add(o.type);
-                  if (o.holeType) warningsSet.add('Отверстия ' + o.holeType);
-                  if (
-                    o.fitting &&
-                    o.fitting.toLowerCase().includes('держатели')
-                  )
-                    warningsSet.add(o.fitting);
-                  // laminates and acrylic are strings; if present, add their values
-                  if (o.laminate) warningsSet.add(o.laminate);
-                  if (o.print) warningsSet.add('Цветная подложка');
-                  if (!o.acrylic.toLowerCase().includes('нет'))
-                    warningsSet.add('Акрил ' + o.acrylic);
-                  // booleans as 'Да'
-                  if (o.docs) warningsSet.add('Документы');
-                  if (o.dimmer) warningsSet.add('Диммер');
-                  // neons
-                  for (const n of o.neons ?? []) {
-                    const color = (n.color || '').toLowerCase();
-                    const width = (n.width || '').toLowerCase();
-                    if (color === 'rgb') warningsSet.add('РГБ');
-                    if (color === 'смарт') warningsSet.add('Смарт');
-                    if (width === '8мм') warningsSet.add('8мм неон');
-                  }
-                  // lightings
-                  for (const l of o.lightings ?? []) {
-                    const color = (l.color || '').toLowerCase();
-                    if (color === 'rgb') {
-                      warningsSet.add('РГБ подсветка');
-                    }
-                    if (color && color !== 'rgb') {
-                      warningsSet.add('Подсветка');
-                    }
-                  }
-                  if (
-                    o.boardHeight > 200 ||
-                    o.boardWidth > 200 ||
-                    (o.boardHeight > 150 && o.boardWidth > 150)
-                  ) {
-                    warningsSet.add('Большой размер подложки');
-                  }
-                }
-
+                const warnings = collectTaskWarnings(t.orders, t.deliveries);
+                for (const w of warnings) warningsSet.add(w);
                 return {
                   id: t.id,
                   title: t.title,
@@ -191,7 +158,8 @@ export class BoardsService {
                     if (!max) return d;
                     return d.localeCompare(max) > 0 ? d : max;
                   }, ''),
-                  warnings: Array.from(warningsSet),
+                  warnings,
+                  tracks: t.deliveries.map((d) => d.track),
                 };
               })
               .sort((a, b) => {
@@ -204,6 +172,8 @@ export class BoardsService {
           };
         }),
       ),
+      tags: board.tags.map((t) => t.name),
+      warnings: Array.from(warningsSet),
     };
   }
 

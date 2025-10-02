@@ -14,8 +14,11 @@ import { CreateTaskOrderDto } from './dto/order.dto';
 import { Prisma } from '@prisma/client';
 import { UserDto } from '../users/dto/user.dto';
 import { SearchTasksDto } from './dto/search-tasks.dto';
+import { collectTaskWarnings } from './utils/task-warnings';
+import { DeliveryCreateDto } from '../deliveries/dto/delivery-create.dto';
+import { DeliveryForTaskCreateDto } from '../deliveries/dto/delivery-for-task-create.dto';
 
-type FieldKey = 'title' | 'description' | 'chatLink' | 'columnId';
+type FieldKey = 'title' | 'description' | 'chatLink' | 'columnId' | 'dealId';
 
 type TaskSnapshot = {
   id: number;
@@ -24,6 +27,7 @@ type TaskSnapshot = {
   chatLink: string | null;
   columnId: number;
   updatedAt: Date;
+  dealId: number | null;
 };
 
 type UpdateTaskResult = {
@@ -141,7 +145,22 @@ export class TasksService {
         attachments: {
           // берём только последний загруженный .cdr
           where: { file: { path: { endsWith: '.cdr' } } },
-          select: { fileId: true },
+          select: {
+            file: {
+              select: {
+                id: true,
+                name: true,
+                ya_name: true,
+                size: true,
+                preview: true,
+                path: true,
+                directory: true,
+                mimeType: true,
+                file: true,
+                uploadedById: true,
+              },
+            },
+          },
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
@@ -243,23 +262,70 @@ export class TasksService {
       }
 
       // Соберём файлы для переноса в новую карточку: все .cdr вложения + файл из cover (если есть)
-      const cdrFileIds: number[] = [];
-      if (srcTask.attachments && srcTask.attachments.length) {
-        for (const a of srcTask.attachments) cdrFileIds.push(a.fileId);
+      const attachmentFiles = (srcTask.attachments ?? [])
+        .map((a) => a.file)
+        .filter((f): f is NonNullable<typeof f> => !!f);
+
+      const duplicatedAttachmentIds: number[] = [];
+      for (const file of attachmentFiles) {
+        const duplicated = await tx.kanbanFile.create({
+          data: {
+            name: file.name,
+            ya_name: file.ya_name,
+            size: file.size,
+            preview: file.preview,
+            path: file.path,
+            directory: file.directory,
+            mimeType: file.mimeType,
+            file: file.file,
+            uploadedById: file.uploadedById,
+          },
+          select: { id: true },
+        });
+        duplicatedAttachmentIds.push(duplicated.id);
       }
-      let coverFileId: number | null = null;
+
+      let newCoverFileId: number | null = null;
       if (srcTask.cover) {
         const coverFile = await tx.kanbanFile.findFirst({
           where: { path: srcTask.cover, deletedAt: null },
-          select: { id: true },
+          select: {
+            id: true,
+            name: true,
+            ya_name: true,
+            size: true,
+            preview: true,
+            path: true,
+            directory: true,
+            mimeType: true,
+            file: true,
+            uploadedById: true,
+          },
         });
         if (coverFile) {
-          coverFileId = coverFile.id;
+          const duplicatedCover = await tx.kanbanFile.create({
+            data: {
+              name: coverFile.name,
+              ya_name: coverFile.ya_name,
+              size: coverFile.size,
+              preview: coverFile.preview,
+              path: coverFile.path,
+              directory: coverFile.directory,
+              mimeType: coverFile.mimeType,
+              file: coverFile.file,
+              uploadedById: coverFile.uploadedById,
+            },
+            select: { id: true },
+          });
+          newCoverFileId = duplicatedCover.id;
         }
       }
 
       // 1) прикрепим как вложения к задаче (сумма всех файлов)
-      const toAttach = [...cdrFileIds, ...(coverFileId ? [coverFileId] : [])];
+      const toAttach = [
+        ...duplicatedAttachmentIds,
+        ...(newCoverFileId ? [newCoverFileId] : []),
+      ];
       if (toAttach.length) {
         await tx.kanbanTaskAttachment.createMany({
           data: toAttach.map((fid) => ({ taskId: created.id, fileId: fid })),
@@ -268,7 +334,7 @@ export class TasksService {
       }
 
       // 2) создадим отдельные комментарии: один для изображения cover, другой для .cdr файлов
-      if (coverFileId) {
+      if (newCoverFileId) {
         const coverComment = await tx.kanbanTaskComments.create({
           data: {
             taskId: created.id,
@@ -278,12 +344,12 @@ export class TasksService {
           select: { id: true },
         });
         await tx.kanbanFile.update({
-          where: { id: coverFileId },
+          where: { id: newCoverFileId },
           data: { commentId: coverComment.id },
           select: { id: true },
         });
       }
-      if (cdrFileIds.length) {
+      if (duplicatedAttachmentIds.length) {
         const cdrComment = await tx.kanbanTaskComments.create({
           data: {
             taskId: created.id,
@@ -293,7 +359,7 @@ export class TasksService {
           select: { id: true },
         });
         await tx.kanbanFile.updateMany({
-          where: { id: { in: cdrFileIds } },
+          where: { id: { in: duplicatedAttachmentIds } },
           data: { commentId: cdrComment.id },
         });
       }
@@ -383,52 +449,112 @@ export class TasksService {
   }
 
   async getOne(userId: number, taskId: number) {
-    const task = await this.prisma.kanbanTask.findFirst({
+    const taskIncludes = {
+      tags: { select: { id: true, name: true } },
+      members: {
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: { select: { fullName: true } },
+        },
+      },
+
+      attachments: true,
+      comments: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          text: true,
+          createdAt: true,
+          author: { select: { id: true, fullName: true, email: true } },
+        },
+      },
+      audits: {
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          action: true,
+          payload: true,
+          createdAt: true,
+          user: { select: { id: true, fullName: true, email: true } },
+        },
+      },
+      board: true,
+      column: true,
+      creator: true,
+      orders: {
+        select: {
+          deadline: true,
+          boardHeight: true,
+          boardWidth: true,
+          type: true,
+          holeType: true,
+          fitting: true,
+          laminate: true,
+          acrylic: true,
+          docs: true,
+          print: true,
+          dimmer: true,
+          neons: { select: { color: true, width: true } },
+          lightings: { select: { color: true } },
+        },
+      },
+
+      deliveries: {
+        select: {
+          method: true,
+          type: true,
+          track: true,
+        },
+      },
+
+      deal: true,
+    } as const;
+
+    let task = await this.prisma.kanbanTask.findFirst({
       where: {
         id: taskId,
         deletedAt: null,
       },
-      include: {
-        tags: { select: { id: true, name: true } },
-        members: {
-          select: {
-            id: true,
-            email: true,
-            fullName: true,
-            role: { select: { fullName: true } },
-          },
-        },
-
-        attachments: true,
-        comments: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'desc' },
-          select: {
-            id: true,
-            text: true,
-            createdAt: true,
-            author: { select: { id: true, fullName: true, email: true } },
-          },
-        },
-        audits: {
-          orderBy: { createdAt: 'desc' },
-          take: 20,
-          select: {
-            id: true,
-            action: true,
-            payload: true,
-            createdAt: true,
-            user: { select: { id: true, fullName: true, email: true } },
-          },
-        },
-        board: true,
-        column: true,
-        creator: true,
-      },
+      include: taskIncludes,
     });
 
     if (!task) throw new NotFoundException('Task not found');
     await this.assertBoardAccess(userId, task.boardId);
+
+    let avaliableDeals: { id: number; title: string; saleDate: string }[] = [];
+
+    if (!task.dealId && task.chatLink) {
+      const deals = await this.prisma.deal.findMany({
+        where: {
+          client: {
+            chatLink: { equals: task.chatLink, mode: 'insensitive' },
+          },
+        },
+        // take: 2,
+      });
+
+      if (deals.length > 1) {
+        avaliableDeals = deals.map((d) => ({
+          id: d.id,
+          title: d.title,
+          saleDate: d.saleDate,
+        }));
+      } else if (deals.length === 1) {
+        task = await this.prisma.kanbanTask.update({
+          where: { id: task.id },
+          data: {
+            deal: { connect: { id: deals[0].id } },
+          },
+          include: taskIncludes,
+        });
+      }
+    }
+
+    const warnings = collectTaskWarnings(task.orders, task.deliveries);
 
     return {
       id: task.id,
@@ -447,6 +573,11 @@ export class TasksService {
       attachmentsLength: task.attachments.length,
       cover: task.cover,
       archived: task.archived,
+      warnings,
+      deal: task.deal,
+      dealId: task.dealId,
+      tracks: task.deliveries.map((d) => d.track).filter((t) => t !== ''),
+      avaliableDeals,
 
       comments: [],
       audits: [],
@@ -454,6 +585,136 @@ export class TasksService {
       column: task.column,
       creator: task.creator,
     };
+  }
+
+  /**Редактировать основную информацию задачи */
+  // сервис
+  async updateTask(
+    userId: number,
+    task: { id: number; boardId: number },
+    dto: UpdateTaskDto,
+  ): Promise<UpdateTaskResult> {
+    await this.assertBoardAccess(userId, task.boardId);
+
+    return await this.prisma.$transaction(async (tx) => {
+      const keys = (
+        ['title', 'description', 'chatLink', 'columnId', 'dealId'] as const
+      ).filter((k) => (dto as any)[k] !== undefined);
+
+      if (keys.length === 0) {
+        const current = await tx.kanbanTask.findUniqueOrThrow({
+          where: { id: task.id },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            chatLink: true,
+            columnId: true,
+            updatedAt: true,
+            dealId: true,
+          },
+        });
+        return {
+          changed: false,
+          updated: current,
+          field: null,
+          fromVal: null,
+          toVal: null,
+        };
+      }
+
+      const field = keys[0];
+
+      const before = await tx.kanbanTask.findUniqueOrThrow({
+        where: { id: task.id },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          chatLink: true,
+          columnId: true,
+          dealId: true,
+        },
+      });
+
+      const data: Prisma.KanbanTaskUpdateInput = {};
+      if (field === 'title') data.title = dto.title!;
+      if (field === 'description') data.description = dto.description!;
+      if (field === 'chatLink') {
+        data.chatLink = dto.chatLink ?? null;
+        data.deal = { disconnect: true };
+      }
+      if (field === 'columnId')
+        data.column = { connect: { id: dto.columnId! } };
+      if (field === 'dealId') {
+        const hasDealId =
+          typeof dto.dealId === 'number' && Number.isFinite(dto.dealId);
+        data.deal = hasDealId
+          ? { connect: { id: dto.dealId! } }
+          : { disconnect: true };
+      }
+
+      const updated = await tx.kanbanTask.update({
+        where: { id: task.id },
+        data,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          chatLink: true,
+          columnId: true,
+          updatedAt: true,
+          dealId: true,
+        },
+      });
+
+      let finalDealId = updated.dealId;
+
+      if (field === 'chatLink') {
+        const normalizedLink = dto.chatLink?.trim();
+
+        if (normalizedLink) {
+          const deals = await tx.deal.findMany({
+            where: {
+              client: {
+                chatLink: { equals: normalizedLink, mode: 'insensitive' },
+              },
+            },
+            select: { id: true },
+          });
+
+          if (deals.length === 1) {
+            const relinked = await tx.kanbanTask.update({
+              where: { id: task.id },
+              data: { deal: { connect: { id: deals[0].id } } },
+              select: { dealId: true },
+            });
+            finalDealId = relinked.dealId;
+          } else {
+            finalDealId = null;
+          }
+        } else {
+          finalDealId = null;
+        }
+      }
+
+      if (field === 'dealId') {
+        const hasDealId =
+          typeof dto.dealId === 'number' && Number.isFinite(dto.dealId);
+        finalDealId = hasDealId ? dto.dealId! : null;
+      }
+
+      const fromVal = (before as any)[field] ?? null;
+      const toVal = (updated as any)[field] ?? null;
+
+      return {
+        changed: true,
+        updated: { ...updated, dealId: finalDealId },
+        field,
+        fromVal,
+        toVal,
+      };
+    });
   }
 
   /**
@@ -581,81 +842,6 @@ export class TasksService {
     }
 
     return { items, nextCursor };
-  }
-
-  /**Редактировать основную информацию задачи */
-  // сервис
-  async updateTask(
-    userId: number,
-    task: { id: number; boardId: number },
-    dto: UpdateTaskDto,
-  ): Promise<UpdateTaskResult> {
-    await this.assertBoardAccess(userId, task.boardId);
-
-    return await this.prisma.$transaction(async (tx) => {
-      const keys = (
-        ['title', 'description', 'chatLink', 'columnId'] as const
-      ).filter((k) => (dto as any)[k] !== undefined);
-
-      if (keys.length === 0) {
-        const current = await tx.kanbanTask.findUniqueOrThrow({
-          where: { id: task.id },
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            chatLink: true,
-            columnId: true,
-            updatedAt: true,
-          },
-        });
-        return {
-          changed: false,
-          updated: current,
-          field: null,
-          fromVal: null,
-          toVal: null,
-        };
-      }
-
-      const field = keys[0];
-
-      const before = await tx.kanbanTask.findUniqueOrThrow({
-        where: { id: task.id },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          chatLink: true,
-          columnId: true,
-        },
-      });
-
-      const data: Prisma.KanbanTaskUpdateInput = {};
-      if (field === 'title') data.title = dto.title!;
-      if (field === 'description') data.description = dto.description!;
-      if (field === 'chatLink') data.chatLink = dto.chatLink ?? null;
-      if (field === 'columnId')
-        data.column = { connect: { id: dto.columnId! } };
-
-      const updated = await tx.kanbanTask.update({
-        where: { id: task.id },
-        data,
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          chatLink: true,
-          columnId: true,
-          updatedAt: true,
-        },
-      });
-
-      const fromVal = (before as any)[field] ?? null;
-      const toVal = (updated as any)[field] ?? null;
-
-      return { changed: true, updated, field, fromVal, toVal };
-    });
   }
 
   /**Получить список доступных колонок для добавления в задачу */
@@ -953,6 +1139,79 @@ export class TasksService {
       },
     });
     return items;
+  }
+
+  /** Список доставок задачи */
+  async deliveriesListForTask(taskId: number) {
+    await this.ensureTask(taskId);
+    return this.prisma.delivery.findMany({
+      where: { taskId },
+      orderBy: { id: 'desc' },
+      include: {
+        deal: {
+          select: { id: true, title: true, saleDate: true },
+        },
+      },
+    });
+  }
+
+  /** Создать доставку для задачи */
+  async createDeliveryForTask(
+    taskId: number,
+    dto: DeliveryForTaskCreateDto,
+    user: UserDto,
+  ) {
+    const task = await this.ensureTask(taskId);
+
+    const dealId = task.dealId;
+
+    if (!dealId) {
+      throw new NotFoundException('Для доставки требуется указанная сделка');
+    }
+
+    const deal = await this.prisma.deal.findUnique({
+      where: { id: dealId },
+      select: { id: true, workSpaceId: true },
+    });
+
+    if (!deal) {
+      throw new NotFoundException(`Сделка с ID ${dealId} не найдена`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const delivery = await tx.delivery.create({
+        data: {
+          date: dto.date,
+          method: dto.method || '',
+          type: dto.type || '',
+          description: dto.description || '',
+          track: dto.track || '',
+          status: dto.status || 'Создана',
+          price: dto.price ?? 0,
+          deliveredDate: dto.deliveredDate || '',
+          dealId,
+          taskId: task.id,
+          userId: user.id,
+          workSpaceId: deal.workSpaceId,
+        },
+        include: {
+          deal: {
+            select: { id: true, title: true, saleDate: true },
+          },
+        },
+      });
+
+      await tx.dealAudit.create({
+        data: {
+          dealId,
+          userId: user.id,
+          action: 'Добавление доставки',
+          comment: `Добавил доставку (${delivery.method}) для задачи ${task.id}`,
+        },
+      });
+
+      return delivery;
+    });
   }
 
   /** Один заказ */

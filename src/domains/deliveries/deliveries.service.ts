@@ -3,6 +3,7 @@ import { DeliveryCreateDto } from './dto/delivery-create.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserDto } from '../users/dto/user.dto';
 import { CdekService } from 'src/services/cdek.service';
+import { DeliveryUpdateDto } from './dto/delivery-update.dto';
 
 @Injectable()
 export class DeliveriesService {
@@ -126,7 +127,7 @@ export class DeliveriesService {
   }
 
   // Редактирование записи
-  async update(id: number, updateDto: DeliveryCreateDto, user: UserDto) {
+  async update(id: number, updateDto: DeliveryUpdateDto, user: UserDto) {
     const delivery = await this.prisma.delivery.findUnique({
       where: { id },
     });

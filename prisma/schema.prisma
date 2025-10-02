@@ -310,6 +310,8 @@ model Deal {
   // orders            Order[]
   orders            TaskOrder[]
 
+  tasks             KanbanTask[]
+
   statusHistory     DealStatusHistory[]
   audit             DealAudit[]
 
@@ -489,11 +491,16 @@ model Delivery {
   dealId         Int
   deal           Deal    @relation(fields: [dealId], references: [id])
 
+  taskId         Int?
+  task           KanbanTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
   workSpaceId    Int?
   workSpace      WorkSpace?    @relation(fields: [workSpaceId], references: [id])
 
   userId         Int?
   user           User?   @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
 }
 
 // ОТЗЫВЫ
@@ -844,6 +851,7 @@ model KanbanTask {
   // вложения канбана (через связующую таблицу)
   attachments  KanbanTaskAttachment[]
   orders       TaskOrder[]
+  deliveries   Delivery[]
 
   comments     KanbanTaskComments[]
   tags         KanbanTaskTags[] @relation("TaskTags")
@@ -855,7 +863,11 @@ model KanbanTask {
   columnId     Int
   column       Column     @relation(fields: [columnId], references: [id], onDelete: Restrict)
 
+  dealId       Int?
+  deal         Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
   @@index([boardId, columnId, position])
+  @@index([dealId])
   @@index([deletedAt])
   // Если нужно ограничить дубликаты названий в пределах доски:
   // @@unique([boardId, title])

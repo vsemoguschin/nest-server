@@ -24,6 +24,7 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserDto } from '../users/dto/user.dto';
+import { DeliveryUpdateDto } from './dto/delivery-update.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('deliveries')
@@ -71,7 +72,7 @@ export class DeliveriesController {
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST')
   async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDto: DeliveryCreateDto,
+    @Body() updateDto: DeliveryUpdateDto,
     @CurrentUser() user: UserDto,
   ) {
     return this.deliveriesService.update(id, updateDto, user);

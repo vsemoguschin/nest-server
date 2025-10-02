@@ -330,7 +330,7 @@ export class NotificationSchedulerService {
         where: {
           deletedAt: null,
           archived: false,
-          createdAt: { lt: cutoff },
+          updatedAt: { lt: cutoff },
           boardId: { in: BOARD_IDS },
         },
         data: { archived: true },
