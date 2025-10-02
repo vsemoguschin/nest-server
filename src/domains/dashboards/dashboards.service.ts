@@ -216,9 +216,14 @@ export class DashboardsService {
         ? { gt: 0 }
         : user.workSpaceId;
 
+    const groupsSearch = ['MOP', 'MOV'].includes(user.role.shortName)
+      ? user.groupId
+      : { gt: 0 };
+
     const workSpaces = await this.prisma.workSpace.findMany({
       where: {
         id: workspacesSearch,
+
         department: 'COMMERCIAL',
       },
       include: {
@@ -229,6 +234,7 @@ export class DashboardsService {
                 in: ['MOP', 'MOV', 'DO'],
               },
             },
+            groupId: groupsSearch,
           },
           include: {
             group: true,
