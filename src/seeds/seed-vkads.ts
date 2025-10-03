@@ -9,12 +9,12 @@ async function bootstrap() {
     logger: ['error', 'warn', 'log'],
   });
   try {
-    await prisma.vkAdsDailyStat.deleteMany();
-    console.log('reset done');
+    // await prisma.vkAdsDailyStat.deleteMany();
+    // console.log('reset done');
     const stats = app.get(VkAdsStatsService);
     // Диапазон для сбора: 2025-01-01 .. 2025-10-01
-    const from = '2025-08-01';
-    const to = '2025-09-27';
+    const from = '2025-09-25';
+    const to = '2025-10-03';
     for (const project of ['neon', 'book'] as const) {
       console.log(project + ' start');
       for (const entity of [
@@ -24,19 +24,6 @@ async function bootstrap() {
       ] as const) {
         console.log(entity + ' start');
         await stats.collectRange(project, entity, from, to);
-      }
-    }
-    const from2 = '2025-01-01';
-    const to2 = '2025-08-01';
-    for (const project of ['neon', 'book'] as const) {
-      console.log(project + ' start');
-      for (const entity of [
-        'ad_plans',
-        'banners',
-        'ad_groups',
-      ] as const) {
-        console.log(entity + ' start');
-        await stats.collectRange(project, entity, from2, to2);
       }
     }
   } finally {

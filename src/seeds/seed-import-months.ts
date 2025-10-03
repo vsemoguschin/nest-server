@@ -278,7 +278,7 @@ async function importMonth(ym: string) {
 }
 
 async function main() {
-  const envMonths = process.env.MONTHS || '2025-08,2025-09';
+  const envMonths = process.env.MONTHS || '2025-09,2025-10';
   const months = envMonths.split(',').map((s) => s.trim()).filter(Boolean);
   console.log(`Import months: ${months.join(', ')}`);
   for (const ym of months) {

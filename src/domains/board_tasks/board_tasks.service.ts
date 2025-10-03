@@ -38,6 +38,11 @@ type UpdateTaskResult = {
   toVal: unknown | null;
 };
 
+const POSITION_STEP = 1000;
+const POSITION_SCALE = 4;
+const POSITION_MAX_ABS = 1_000_000;
+const POSITION_SAFE_LIMIT = POSITION_MAX_ABS - POSITION_STEP;
+
 const searchSelect = {
   id: true,
   title: true,
@@ -127,6 +132,33 @@ export class TasksService {
     });
     // Prisma Decimal -> приводим к числу
     return last ? Number(last.position) + 1 : 1;
+  }
+
+  private formatPosition(value: number): string {
+    return value.toFixed(POSITION_SCALE);
+  }
+
+  private async normalizeColumnPositions(
+    tx: Prisma.TransactionClient,
+    boardId: number,
+    columnId: number,
+  ) {
+    const tasks = await tx.kanbanTask.findMany({
+      where: { boardId, columnId, deletedAt: null },
+      orderBy: { position: 'asc' },
+      select: { id: true },
+    });
+
+    if (!tasks.length) return;
+
+    let position = POSITION_STEP;
+    for (const task of tasks) {
+      await tx.kanbanTask.update({
+        where: { id: task.id },
+        data: { position: this.formatPosition(position) },
+      });
+      position += POSITION_STEP;
+    }
   }
 
   /**
@@ -909,26 +941,48 @@ export class TasksService {
       if (!targetColumn) throw new NotFoundException('Target column not found');
 
       // --- позиция: сделать ПЕРВОЙ в целевой колонке ---
-      const top = await tx.kanbanTask.findFirst({
-        where: {
-          boardId: task.boardId,
-          columnId: targetColumn.id,
-          deletedAt: null,
-          NOT: { id: task.id },
-        },
-        orderBy: { position: 'asc' },
-        select: { position: true },
-      });
+      const fetchTop = () =>
+        tx.kanbanTask.findFirst({
+          where: {
+            boardId: task.boardId,
+            columnId: targetColumn.id,
+            deletedAt: null,
+            NOT: { id: task.id },
+          },
+          orderBy: { position: 'asc' },
+          select: { position: true },
+        });
 
-      const STEP = 1000;
-      const newPos = top
-        ? (Number(top.position) - STEP).toFixed(4) // меньше минимума → станет первой
-        : (1).toFixed(4); // колонка пустая → 1.0000
+      let top = await fetchTop();
+      let newPositionNumeric = 1;
+
+      if (top) {
+        let candidate = Number(top.position) - POSITION_STEP;
+        if (!Number.isFinite(candidate)) {
+          candidate = 1;
+        }
+
+        // перестраиваем позиции, если приблизились к ограничениям DECIMAL(10,4)
+        if (Math.abs(candidate) >= POSITION_SAFE_LIMIT) {
+          await this.normalizeColumnPositions(
+            tx,
+            task.boardId,
+            targetColumn.id,
+          );
+          top = await fetchTop();
+          candidate = top ? Number(top.position) - POSITION_STEP : 1;
+        }
+
+        newPositionNumeric = candidate;
+      }
 
       // обновление задачи
       const updated = await tx.kanbanTask.update({
         where: { id: task.id },
-        data: { columnId: targetColumn.id, position: newPos },
+        data: {
+          columnId: targetColumn.id,
+          position: this.formatPosition(newPositionNumeric),
+        },
         select: { id: true, columnId: true, position: true, updatedAt: true },
       });
 

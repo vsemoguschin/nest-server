@@ -444,6 +444,8 @@ export class DealsService {
         status = deliveryStatus;
       }
       // console.log(saleDate.toISOString().slice(0, 10), 234356);
+      const boxsize = el.bookSize;
+      const pages = el.pages;
 
       return {
         payments,
@@ -477,6 +479,8 @@ export class DealsService {
         isRegular,
         courseType,
         discontAmount,
+        boxsize,
+        pages,
       };
     });
 
