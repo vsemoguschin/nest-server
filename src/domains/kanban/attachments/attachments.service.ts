@@ -261,6 +261,7 @@ export class AttachmentsService {
 
     // 3) resize/convert
     const transformer = sharp();
+    transformer.rotate();
     const width = typeof w === 'number' && w > 0 ? w : undefined;
     const height = typeof h === 'number' && h > 0 ? h : undefined;
 

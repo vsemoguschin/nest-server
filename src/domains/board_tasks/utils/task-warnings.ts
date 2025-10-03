@@ -42,6 +42,7 @@ export type DeliveryLikeForWarnings =
 export function collectTaskWarnings(
   orders: OrderLikeForWarnings[] | null | undefined,
   deliveries: DeliveryLikeForWarnings[] | null | undefined,
+  chatLink: string | null | undefined,
 ): string[] {
   const warnings = new Set<string>();
 
@@ -124,6 +125,10 @@ export function collectTaskWarnings(
 
     const method = del.method?.trim();
     if (method) warnings.add(method);
+  }
+
+  if (typeof chatLink === 'string' && chatLink.toLowerCase().includes('bluesales.ru')) {
+    warnings.add('РОП1');
   }
 
   return Array.from(warnings);

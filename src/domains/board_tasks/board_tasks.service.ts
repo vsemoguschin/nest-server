@@ -42,6 +42,9 @@ const POSITION_STEP = 1000;
 const POSITION_SCALE = 4;
 const POSITION_MAX_ABS = 1_000_000;
 const POSITION_SAFE_LIMIT = POSITION_MAX_ABS - POSITION_STEP;
+const LOCKED_COLUMN_ID = 25;
+const TAG_REMOVAL_COLUMN_ID = 17;
+const TAG_ID_TO_REMOVE = 9;
 
 const searchSelect = {
   id: true,
@@ -586,7 +589,7 @@ export class TasksService {
       }
     }
 
-    const warnings = collectTaskWarnings(task.orders, task.deliveries);
+    const warnings = collectTaskWarnings(task.orders, task.deliveries, task.chatLink);
 
     return {
       id: task.id,
@@ -926,6 +929,10 @@ export class TasksService {
     task: { id: number; columnId: number; boardId: number },
     dto: MoveTaskDto,
   ) {
+    if (task.columnId === LOCKED_COLUMN_ID) {
+      throw new BadRequestException('Перемещение из этой колонки запрещено');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // исходная колонка (для аудита/ответа)
       const fromColumn = await tx.column.findFirst({
@@ -976,13 +983,19 @@ export class TasksService {
         newPositionNumeric = candidate;
       }
 
+      const updateData: Prisma.KanbanTaskUpdateInput = {
+        column: { connect: { id: targetColumn.id } },
+        position: this.formatPosition(newPositionNumeric),
+      };
+
+      if (targetColumn.id === TAG_REMOVAL_COLUMN_ID) {
+        updateData.tags = { disconnect: { id: TAG_ID_TO_REMOVE } };
+      }
+
       // обновление задачи
       const updated = await tx.kanbanTask.update({
         where: { id: task.id },
-        data: {
-          columnId: targetColumn.id,
-          position: this.formatPosition(newPositionNumeric),
-        },
+        data: updateData,
         select: { id: true, columnId: true, position: true, updatedAt: true },
       });
 
@@ -1014,6 +1027,9 @@ export class TasksService {
   }> {
     // 1) Текущая задача + её колонка
     const task = await this.ensureTask(taskId);
+    if (task.columnId === LOCKED_COLUMN_ID) {
+      throw new BadRequestException('Перемещение из этой колонки запрещено');
+    }
     const fromColumn = task.column as {
       id: number;
       title: string;
@@ -1049,14 +1065,17 @@ export class TasksService {
       : new Prisma.Decimal(1);
 
     // 4) Обновляем задачу: columnId и позицию
+    const updateData: Prisma.KanbanTaskUpdateInput = {
+      column: { connect: { id: targetColumn.id } },
+      position: newTopPosition, // карточка становится первой
+    };
+    if (targetColumn.id === TAG_REMOVAL_COLUMN_ID) {
+      updateData.tags = { disconnect: { id: TAG_ID_TO_REMOVE } };
+    }
+
     const updated = await this.prisma.kanbanTask.update({
       where: { id: taskId },
-      data: {
-        columnId: targetColumn.id,
-        position: newTopPosition, // карточка становится первой
-      },
-      // при желании ограничьте select
-      // select: { id: true, columnId: true, position: true, title: true }
+      data: updateData,
     });
 
     return { updated, fromColumn, targetColumn };

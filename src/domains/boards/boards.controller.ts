@@ -55,14 +55,19 @@ export class BoardsController {
     @CurrentUser() user: UserDto,
     @Param('id', ParseIntPipe) boardId: number,
     @Query('hidden') hidden?: string, // CSV: "1,2,3"
+    @Query('visibleMembers') visibleMembers?: string, // CSV user ids
   ) {
-    const hiddenIds =
-      (hidden ?? '')
+    const parseCsvNumbers = (value: string | undefined) =>
+      (value ?? '')
         .split(',')
         .map((s) => parseInt(s, 10))
-        .filter((n) => Number.isFinite(n)) || [];
+        .filter((n) => Number.isFinite(n));
 
-    return this.boardsService.getKanban(user, boardId, hiddenIds);
+    const hiddenIds = parseCsvNumbers(hidden);
+    const visibleMemberIds =
+      typeof visibleMembers === 'string' ? parseCsvNumbers(visibleMembers) : undefined;
+
+    return this.boardsService.getKanban(user, boardId, hiddenIds, visibleMemberIds);
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO')

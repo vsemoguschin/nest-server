@@ -18,7 +18,12 @@ export class BoardsService {
     private readonly files: KanbanFilesService,
   ) {}
 
-  async getKanban(user: UserDto, boardId: number, hiddenIds: number[] = []) {
+  async getKanban(
+    user: UserDto,
+    boardId: number,
+    hiddenIds: number[] = [],
+    visibleMemberIds?: number[],
+  ) {
     const userId = user.id;
     const columnsWhere: any = { deletedAt: null };
     if (hiddenIds?.length) {
@@ -54,6 +59,7 @@ export class BoardsService {
                 columnId: true,
                 cover: true,
                 boardId: true,
+                chatLink: true,
 
                 // только имена тегов
                 tags: { select: { name: true } },
@@ -126,49 +132,66 @@ export class BoardsService {
     });
     if (!board) throw new NotFoundException('Board not found or access denied');
     const warningsSet = new Set<string>();
+    const visibleMemberSet =
+      visibleMemberIds === undefined ? null : new Set(visibleMemberIds);
 
     return {
       id: board.id,
       title: board.title,
       columns: await Promise.all(
         board.columns.map(async (c) => {
+          const tasks = c.tasks
+            .filter((t) => {
+              if (!visibleMemberSet) return true;
+              const members = t.members ?? [];
+              if (!members.length) return false;
+              for (const m of members) {
+                if (visibleMemberSet.has(m.id)) return true;
+              }
+              return false;
+            })
+            .map((t) => {
+              const previewPath = t.attachments[0]?.file.path ?? '';
+              const warnings = collectTaskWarnings(
+                t.orders,
+                t.deliveries,
+                t.chatLink,
+              );
+              for (const w of warnings) warningsSet.add(w);
+              return {
+                id: t.id,
+                title: t.title,
+                preview: t.cover ?? previewPath,
+                path: previewPath,
+                columnId: t.columnId,
+                attachmentsLength: t._count.attachments,
+                tags: t.tags.map((x) => x.name),
+                members: t.members,
+                boardId: t.boardId,
+                // берем самую позднюю дату дедлайна среди заказов (если есть)
+                deadline: (t.orders ?? []).reduce((max, o) => {
+                  const d = o?.deadline || '';
+                  if (!d) return max;
+                  if (!max) return d;
+                  return d.localeCompare(max) > 0 ? d : max;
+                }, ''),
+                warnings,
+                tracks: t.deliveries.map((d) => d.track),
+              };
+            })
+            .sort((a, b) => {
+              const aHas = !!a.deadline;
+              const bHas = !!b.deadline;
+              if (aHas && bHas) return a.deadline.localeCompare(b.deadline);
+              if (aHas !== bHas) return aHas ? -1 : 1; // с дедлайном раньше
+              return 0; // оба без дедлайна — сохраняем позицию
+            });
+
           return {
             id: c.id,
             title: c.title,
             position: c.position,
-            tasks: c.tasks
-              .map((t) => {
-                const previewPath = t.attachments[0]?.file.path ?? '';
-                const warnings = collectTaskWarnings(t.orders, t.deliveries);
-                for (const w of warnings) warningsSet.add(w);
-                return {
-                  id: t.id,
-                  title: t.title,
-                  preview: t.cover ?? previewPath,
-                  path: previewPath,
-                  columnId: t.columnId,
-                  attachmentsLength: t._count.attachments,
-                  tags: t.tags.map((x) => x.name),
-                  members: t.members,
-                  boardId: t.boardId,
-                  // берем самую позднюю дату дедлайна среди заказов (если есть)
-                  deadline: (t.orders ?? []).reduce((max, o) => {
-                    const d = o?.deadline || '';
-                    if (!d) return max;
-                    if (!max) return d;
-                    return d.localeCompare(max) > 0 ? d : max;
-                  }, ''),
-                  warnings,
-                  tracks: t.deliveries.map((d) => d.track),
-                };
-              })
-              .sort((a, b) => {
-                const aHas = !!a.deadline;
-                const bHas = !!b.deadline;
-                if (aHas && bHas) return a.deadline.localeCompare(b.deadline);
-                if (aHas !== bHas) return aHas ? -1 : 1; // с дедлайном раньше
-                return 0; // оба без дедлайна — сохраняем позицию
-              }),
+            tasks,
           };
         }),
       ),
