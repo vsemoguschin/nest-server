@@ -172,7 +172,7 @@ export class BoardsController {
   }
 
   /** Добавить пользователя на доску */
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'LOGIST')
   @Post('users/:userId')
   addUser(
     @Param('userId', ParseIntPipe) userId: number,
@@ -182,7 +182,7 @@ export class BoardsController {
   }
 
   /** Удалить пользователя с доски */
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'LOGIST')
   @Delete('users/:userId')
   removeUser(
     @Param('userId', ParseIntPipe) userId: number,
