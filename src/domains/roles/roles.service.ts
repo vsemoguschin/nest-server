@@ -54,6 +54,7 @@ export class RolesService {
         'ROV',
         'MOV',
         'FINANCIER',
+        'GUEST'
       ],
       ['ROD']: ['DIZ'],
       ['ROV']: ['MOV'],

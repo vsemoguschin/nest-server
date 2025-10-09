@@ -96,7 +96,7 @@ export class TasksController {
     });
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ', 'LOGIST')
   @Post()
   async createTask(@CurrentUser() user: UserDto, @Body() dto: CreateTaskDto) {
     const column = await this.tasksService.ensureTaskColumn(dto.columnId);
@@ -128,6 +128,7 @@ export class TasksController {
     'RP',
     'PACKER',
     'FRZ',
+    'GUEST'
   )
   @Get(':taskId')
   async getOne(
@@ -206,6 +207,7 @@ export class TasksController {
     'RP',
     'PACKER',
     'FRZ',
+    'GUEST'
   )
   @Get(':taskId/attachments')
   async getAttachmentsByTaskId(@Param('taskId', ParseIntPipe) taskId: number) {
@@ -338,7 +340,7 @@ export class TasksController {
     summary:
       'Копировать задачу на другую доску (без cover), с дубликатами orders',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP','LOGIST')
   async copyToBoard(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
@@ -358,7 +360,7 @@ export class TasksController {
 
   @Post(':taskId/move-to-board')
   @ApiOperation({ summary: 'Переместить задачу на другую доску' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP','LOGIST')
   async moveToBoard(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
