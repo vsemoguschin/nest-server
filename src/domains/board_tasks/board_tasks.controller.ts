@@ -231,6 +231,7 @@ export class TasksController {
     'RP',
     'PACKER',
     'FRZ',
+    'GUEST'
   )
   async updateTaskColumnId(
     @CurrentUser() user: UserDto,
@@ -287,6 +288,7 @@ export class TasksController {
     'RP',
     'PACKER',
     'FRZ',
+    'GUEST'
   )
   async moveToNextColumn(
     @CurrentUser() user: UserDto,

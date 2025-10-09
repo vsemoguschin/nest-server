@@ -39,7 +39,7 @@ export class ReportsController {
   }
 
   @Post('manager')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'MOV')
   @ApiOperation({ summary: 'Создать отчет менеджера' })
   @ApiResponse({ status: 201, description: 'Отчет успешно создан' })
   @ApiResponse({ status: 400, description: 'Неверные данные' })
@@ -65,7 +65,7 @@ export class ReportsController {
   }
 
   @Get('managers')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP','MOV')
   async getManagersReports(
     @CurrentUser() user: UserDto,
     @Query('period') period: string,
@@ -79,7 +79,7 @@ export class ReportsController {
   }
 
   @Get('managers/range')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP','MOV')
   async getManagersReportsFromRange(
     @CurrentUser() user: UserDto,
     @Query('from') from: string,
