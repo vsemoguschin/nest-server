@@ -13,6 +13,7 @@ import {
 import { Transform } from 'class-transformer';
 
 const bookSizes = ['20х20', '20х30', '25х25', '30х30', ''];
+const pageTypes = ['Журнал', 'Пластик', ''];
 const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная', ''];
 const maketTypes = [
   'Дизайнерский',
@@ -164,6 +165,10 @@ export class UpdateDealDto {
   @IsOptional()
   @IsIn(bookSizes, { message: 'Не верный размер' })
   bookSize?: string;
+
+  @IsOptional()
+  @IsIn(pageTypes, { message: 'Не верный тип страниц' })
+  pageType?: string;
 
   @IsInt()
   @IsOptional()

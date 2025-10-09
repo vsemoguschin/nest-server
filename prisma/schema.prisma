@@ -277,6 +277,7 @@ model Deal {
   createdAt         DateTime   @default(now())
   reservation       Boolean    @default(false) // Бронь
   bookSize          String     @default("")
+  pageType          String     @default("")
   pages             Int        @default(0)
 
   courseType        String     @default("")

@@ -23,6 +23,7 @@ const statuses = [
   'Вручена',
 ];
 const bookSizes = ['20х20', '20х30', '25х25', '30х30', ''];
+const pageTypes = ['Журнал', 'Пластик', ''];
 
 const disconts = ['Без скидки', 'Желтая', 'ОПТ', 'Рассылка', 'Красная'];
 const maketTypes = [
@@ -186,6 +187,10 @@ export class DealDto {
   @IsOptional()
   @IsIn(bookSizes, { message: 'Не верный размер' })
   bookSize?: string;
+
+  @IsOptional()
+  @IsIn(pageTypes, { message: 'Не верный тип страниц' })
+  pageType?: string;
 
   @IsInt()
   @IsOptional()

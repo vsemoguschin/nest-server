@@ -135,7 +135,7 @@ export class DealsController {
     summary: 'Редактировать сделку',
     description: 'Endpoint: PATCH /clients. Редактировать сделку.',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDealDto: UpdateDealDto,
