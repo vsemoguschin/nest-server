@@ -339,7 +339,7 @@ export class DealsService {
       workspacesSearch = 2;
     }
     // Ведение ВК
-    if (user.id === 86 || user.id === 88) {
+    if (user.id === 88) {
       workspacesSearch = 3;
     }
 
