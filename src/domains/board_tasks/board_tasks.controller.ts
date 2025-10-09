@@ -180,7 +180,7 @@ export class TasksController {
     return updated;
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'LOGIST')
   @Delete(':taskId')
   async deleteTask(
     @CurrentUser() user: UserDto,
