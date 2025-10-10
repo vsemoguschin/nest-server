@@ -36,7 +36,6 @@ export class AdController {
   async create(
     @Body() adExpenseCreateDto: AdExpenseCreateDto,
   ): Promise<AdExpenseCreateDto> {
-    console.log(adExpenseCreateDto);
     return this.adService.createAdExpense(adExpenseCreateDto);
   }
 

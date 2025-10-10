@@ -12,6 +12,8 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { UserDto } from '../users/dto/user.dto';
 
 @ApiTags('groups')
 @Controller('groups')
@@ -33,8 +35,10 @@ export class GroupsController {
     summary: 'Получить список групп',
     description: 'Endpoint: GET /groups. Возвращает список всех групп.',
   })
-  async findAll() {
-    return this.groupsService.findAll();
+  async findAll(
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.groupsService.findAll(user);
   }
 
   @Get(':id')

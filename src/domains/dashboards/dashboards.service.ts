@@ -207,6 +207,89 @@ export class DashboardsService {
     return { workSpaces, groups, managers };
   }
 
+  async getCommercialData(user: UserDto, period: string, groupId: number) {
+    const groups = await this.prisma.group.findMany({
+      where: {
+        id: groupId,
+      },
+      include: {
+        payments: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+          include: {
+            deal: { include: { dops: true, dealers: true } },
+          },
+        },
+        users: {
+          include: {
+            managersPlans: {
+              where: {
+                period,
+              },
+            },
+            managerReports: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
+              },
+            },
+            salaryPays: {
+              where: {
+                period,
+              },
+            },
+            salaryCorrections: {
+              where: {
+                period,
+              },
+            },
+          },
+        },
+        adExpenses: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
+        deals: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            reservation: false,
+            status: { not: 'Возврат' },
+          },
+        },
+        dops: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            deal: {
+              reservation: false,
+              status: { not: 'Возврат' },
+            },
+          },
+        },
+      },
+    });
+
+    const wData = groups.map((group) => {
+      const payments = group.payments;
+      const managers = group.users;
+      const paymentsData = payments.map((p) => {
+        const deal = p.deal;
+        const dops = deal.dops;
+        const dealers = deal.dealers; 
+      });
+    });
+  }
+
   // comercial
   async getComercialData(user: UserDto, period: string) {
     const workspacesSearch =

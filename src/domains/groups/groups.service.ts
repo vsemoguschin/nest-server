@@ -7,6 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { CreateWorkspaceGroupDto } from '../workspace-groups/dto/create-workspace-group.dto';
+import { UserDto } from '../users/dto/user.dto';
 
 @Injectable()
 export class GroupsService {
@@ -38,8 +39,23 @@ export class GroupsService {
     });
   }
 
-  async findAll() {
-    const groups = await this.prisma.group.findMany();
+  async findAll(user: UserDto) {
+    const workspacesSearch =
+      user.role.department === 'administration' ||
+      user.role.shortName === 'KD' ||
+      user.id === 21
+        ? { gt: 0 }
+        : user.workSpaceId;
+
+    const groupsSearch = ['MOP', 'MOV'].includes(user.role.shortName)
+      ? user.groupId
+      : { gt: 0 };
+    const groups = await this.prisma.group.findMany({
+      where: {
+        id: groupsSearch,
+        workSpaceId: workspacesSearch,
+      },
+    });
     if (!groups || groups.length === 0) {
       throw new NotFoundException('Группы не найдены.');
     }

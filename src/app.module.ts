@@ -40,6 +40,7 @@ import { AttachmentsModule } from './domains/kanban/attachments/attachments.modu
 import { MembersModule } from './domains/kanban/members/members.module';
 import { CommentsModule } from './domains/kanban/comments/comments.module';
 import { VkAdsModule } from './domains/vk-ads/vk-ads.module';
+import { CommercialDatasModule } from './domains/commercial-datas/commercial-datas.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { VkAdsModule } from './domains/vk-ads/vk-ads.module';
     MembersModule,
     CommentsModule,
     VkAdsModule,
+    CommercialDatasModule,
 
     // другие модули
   ],

@@ -59,17 +59,22 @@ export class PaymentsService {
         .digest('hex');
       return hash;
     }
-
+    console.log(createPaymentLinkDto);
     const { Name, Phone, Email } = createPaymentLinkDto;
     const Amount = createPaymentLinkDto.Amount * 100;
-    const Description = 'Оплата неоновой вывески';
+    const Description =
+      Name === 'Изготовление неоновой вывески'
+        ? 'Оплата неоновой вывески'
+        : 'Оплата фотокниги';
     const OrderId = new Date().getTime();
     // console.log(OrderId);
 
     let TerminalKey = '';
     let password = '';
-
-    if (createPaymentLinkDto.terminal === 'Терминал Изинеон СБП') {
+    if (createPaymentLinkDto.terminal === 'Терминал ИзиБук') {
+      TerminalKey = process.env.TB_TERMINAL_BOOK || '';
+      password = process.env.TB_TERMINAL_PASSWORD_BOOK || '';
+    } else if (createPaymentLinkDto.terminal === 'Терминал Изинеон СБП') {
       TerminalKey = process.env.TB_TERMINAL_SPB || '';
       password = process.env.TB_TERMINAL_PASSWORD_SPB || '';
     } else {
@@ -131,8 +136,11 @@ export class PaymentsService {
     }
     let TerminalKey = '';
     let password = '';
-
-    if (terminal === 'Терминал Изинеон СБП') {
+    console.log(terminal);
+    if (terminal === 'Терминал ИзиБук') {
+      TerminalKey = process.env.TB_TERMINAL_BOOK || '';
+      password = process.env.TB_TERMINAL_PASSWORD_BOOK || '';
+    } else if (terminal === 'Терминал Изинеон СБП') {
       TerminalKey = process.env.TB_TERMINAL_SPB || '';
       password = process.env.TB_TERMINAL_PASSWORD_SPB || '';
     } else {

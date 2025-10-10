@@ -53,7 +53,7 @@ export class DashboardsController {
     'MTZ',
     'LOGIST',
     'MARKETER',
-    'ASSISTANT'
+    'ASSISTANT',
   )
   async getDeals(@CurrentUser() user: UserDto) {
     return this.dashboardsService.getDeals(user);
@@ -64,6 +64,7 @@ export class DashboardsController {
   async getComercialData(
     @CurrentUser() user: UserDto,
     @Query('period') period: string,
+    @Query('groupId') groupId: number,
   ): Promise<any> {
     console.log(period);
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
@@ -71,8 +72,11 @@ export class DashboardsController {
         'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
       );
     }
+    this.dashboardsService.getCommercialData(user, period, groupId);
     return this.dashboardsService.getComercialData(user, period);
   }
+
+
 
   // @Get('/managers')
   // @ApiOperation({
@@ -173,3 +177,4 @@ export class DashboardsController {
     return this.dashboardsService.getDatas();
   }
 }
+
