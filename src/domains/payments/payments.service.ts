@@ -127,6 +127,43 @@ export class PaymentsService {
     return { link: data.PaymentURL, PaymentId: data.PaymentId };
   }
 
+  async checkPaymentByLink(link: string) {
+    console.log(link);
+    const linkEnd = link.split('/').reverse()[0];
+
+    const result = {
+      isConfirmed: false,
+      message: 'Оплата не подтверждена',
+      price: 0,
+    };
+
+    try {
+      const { data } = await axios.get<{
+        status?: string;
+        merchant?: { successUrl?: string };
+      }>(`https://payapi.tbank.ru/api/v1/pf/sessions/${linkEnd}`);
+
+      if (data.status === 'SUCCESS' && data.merchant?.successUrl) {
+        const successUrl = new URL(data.merchant.successUrl);
+        const amountParam = successUrl.searchParams.get('Amount');
+
+        if (amountParam) {
+          const amount = Number.parseInt(amountParam, 10);
+          if (!Number.isNaN(amount)) {
+            result.price = amount / 100;
+            result.isConfirmed = true;
+            result.message = 'Оплата подтверждена';
+          }
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.log(error);
+      throw new NotFoundException(`Ошибка при проверке оплаты`);
+    }
+  }
+
   async checkPayment(paymentId: string, terminal: string) {
     function generateToken(Data): string {
       const hash = createHash('sha256')

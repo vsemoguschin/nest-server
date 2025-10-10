@@ -64,4 +64,10 @@ export class PaymentsController {
   ) {
     return this.paymentsService.checkPayment(paymentId, terminal);
   }
+
+  @Get('checkPaymentLink')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  async checkPaymentByLink(@Query('link') link: string) {
+    return this.paymentsService.checkPaymentByLink(link);
+  }
 }
