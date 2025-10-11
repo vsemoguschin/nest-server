@@ -72,7 +72,6 @@ export class DashboardsController {
         'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
       );
     }
-    this.dashboardsService.getCommercialData(user, period, groupId);
     return this.dashboardsService.getComercialData(user, period);
   }
 

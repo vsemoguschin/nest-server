@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Param,
+  ParseIntPipe,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -43,7 +45,7 @@ export class CommercialDatasController {
   async getManagerDatas(
     @CurrentUser() user: UserDto,
     @Query('period') period: string,
-    @Query('managerId') managerId: number,
+    @Param('managerId', ParseIntPipe) managerId: number,
   ): Promise<any> {
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
       throw new BadRequestException(

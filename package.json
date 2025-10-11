@@ -24,6 +24,7 @@
     "seed:new-role": "ts-node src/seeds/seed-new-role.ts",
     "seed:months": "ts-node src/seeds/seed-import-months.ts",
     "seed:crm:reset": "ts-node src/seeds/seed-crm-reset.ts",
+    "seed:update-manager-reports": "ts-node src/seeds/seed-update-manager-reports.ts",
     "seed:rename-board": "ts-node src/seeds/seed-rename-board.ts",
     "seed:archive-board-3": "ts-node src/seeds/seed-archive-board-3.ts",
     "seed:vkads": "ts-node -r tsconfig-paths/register src/seeds/seed-vkads.ts",

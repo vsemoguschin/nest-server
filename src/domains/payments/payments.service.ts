@@ -81,13 +81,28 @@ export class PaymentsService {
       TerminalKey = process.env.TB_TERMINAL || '';
       password = process.env.TB_TERMINAL_PASSWORD || '';
     }
-
+    const RedirectDueDate = (() => {
+      const dueDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+      const pad = (value: number) => value.toString().padStart(2, '0');
+      const year = dueDate.getFullYear();
+      const month = pad(dueDate.getMonth() + 1);
+      const day = pad(dueDate.getDate());
+      const hours = pad(dueDate.getHours());
+      const minutes = pad(dueDate.getMinutes());
+      const seconds = pad(dueDate.getSeconds());
+      const timezoneOffset = -dueDate.getTimezoneOffset();
+      const sign = timezoneOffset >= 0 ? '+' : '-';
+      const offsetHours = pad(Math.floor(Math.abs(timezoneOffset) / 60));
+      const offsetMinutes = pad(Math.abs(timezoneOffset) % 60);
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMinutes}`;
+    })();
     // Генерация токена
     const Token = generateToken([
       Amount,
       Description,
       OrderId,
       password,
+      RedirectDueDate,
       TerminalKey,
     ]);
     // console.log([Amount, Description, OrderId, password, TerminalKey].join(''));
@@ -98,6 +113,7 @@ export class PaymentsService {
       OrderId,
       Description,
       Token,
+      RedirectDueDate,
       Receipt: {
         Email,
         Phone,

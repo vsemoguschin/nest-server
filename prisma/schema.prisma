@@ -168,6 +168,7 @@ model ManagerReport {
   period         String  @default("")
   redirectToMSG  Int     @default(0) //new
   shiftCost      Float   @default(666.67)
+  isIntern       Boolean @default(false)
 
   userId         Int
   user           User    @relation(fields: [userId], references: [id])

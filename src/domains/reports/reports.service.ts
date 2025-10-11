@@ -32,7 +32,7 @@ export class ReportsService {
       },
       include: {
         role: true,
-      }
+      },
     });
 
     if (!existingUser) {
@@ -44,7 +44,6 @@ export class ReportsService {
         userId,
         date,
       },
-      
     });
 
     if (existingReport) {
@@ -71,6 +70,7 @@ export class ReportsService {
         period: date.slice(0, 7),
         redirectToMSG,
         shiftCost,
+        isIntern: existingUser.isIntern,
       },
     });
 
