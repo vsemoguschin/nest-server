@@ -162,9 +162,11 @@ export class CommercialDatasService {
     }
     if (groupId === 19) {
       bonusPercentage = 0.07;
+      dopsPercentage = 0.07;
     }
     if (groupId === 19 && role === 'MOV' && period >= '2025-10') {
-      bonusPercentage = 0;
+      dopsPercentage = 0.05;
+      bonusPercentage = 0.05;
     }
     // console.log(bonus);
     return {
@@ -1042,7 +1044,7 @@ export class CommercialDatasService {
         : 0;
     const factAmount = m.payments.length;
     const factPercentage =
-      m.groupId === 19 && m.role.shortName === 'MOV' ? 0.1 : 0;
+      m.groupId === 19 && m.role.shortName === 'MOV' ? 0.01 : 0;
     const factBonus = +(fact * factPercentage).toFixed(2);
     const temp = this.calculateTemp(totalSales, period);
     /** стоимость заявки в проекте*/
