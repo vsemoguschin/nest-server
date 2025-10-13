@@ -50,360 +50,6 @@ export class CommercialDatasService {
     return +((totalSales / dayValue) * daysInMonth).toFixed();
   }
 
-  private async getManagerGroupDatas(groupId: number, period: string) {
-    const group = await this.prisma.group.findFirst({
-      where: {
-        id: groupId,
-        users: {
-          some: {},
-        },
-      },
-      include: {
-        adExpenses: {
-          where: {
-            date: {
-              startsWith: period,
-            },
-          },
-        },
-        users: {
-          include: {
-            managerReports: {
-              where: {
-                date: {
-                  startsWith: period,
-                },
-              },
-            },
-            dealSales: {
-              where: {
-                deal: {
-                  saleDate: {
-                    startsWith: period,
-                  },
-                  reservation: false,
-                  status: { not: 'Возврат' },
-                },
-              },
-              include: {
-                deal: {
-                  include: {
-                    client: true,
-                  },
-                },
-              },
-            },
-            dops: {
-              where: {
-                saleDate: {
-                  startsWith: period,
-                },
-                deal: {
-                  reservation: false,
-                  status: { not: 'Возврат' },
-                },
-              },
-            },
-          },
-        },
-        deals: {
-          where: {
-            saleDate: {
-              startsWith: period,
-            },
-            reservation: false,
-            status: { not: 'Возврат' },
-          },
-        },
-        dops: {
-          where: {
-            saleDate: {
-              startsWith: period,
-            },
-            deal: {
-              reservation: false,
-              status: { not: 'Возврат' },
-            },
-          },
-        },
-      },
-    });
-    if (!group) {
-      throw new NotFoundException('Группа не найдена');
-    }
-    const adExpenses = group.adExpenses.reduce((a, b) => a + b.price, 0);
-    /** количество заявок проекта*/
-    const totalCalls = group.users
-      .flatMap((u) => u.managerReports)
-      .reduce((a, b) => a + b.calls, 0);
-    /** стоимость заявки в проекте*/
-    const callCost = totalCalls ? adExpenses / totalCalls : 0;
-
-    const ropPlan = await this.prisma.managersPlan.findMany({
-      where: {
-        period,
-        user: {
-          role: {
-            shortName: 'DO',
-          },
-          fullName: { in: ['Юлия Куштанова', 'Сергей Иванов'] },
-        },
-      },
-      include: {
-        user: true,
-      },
-    });
-
-    let isOverRopPlan = false;
-    const ropPlanValue =
-      ropPlan.find((p) => p.user.workSpaceId === group.workSpaceId)?.plan || 0;
-    const groupDealSales = group.deals.reduce((acc, d) => acc + d.price, 0);
-    const groupDopSales = group.dops.reduce((acc, d) => acc + d.price, 0);
-    const groupTotalSales = groupDealSales + groupDopSales;
-
-    if (groupTotalSales > ropPlanValue && ropPlanValue > 0) {
-      isOverRopPlan = true;
-    }
-
-    const vkTop: {
-      topTotalSales: { user: string; sales: number }[];
-      topDopSales: { user: string; sales: number }[];
-      topDimmerSales: { user: string; sales: number }[];
-      topSalesWithoutDesigners: { user: string; sales: number }[];
-      topConversionDayToDay: { user: string; sales: number }[];
-    } = {
-      topTotalSales: [],
-      topDopSales: [],
-      topDimmerSales: [],
-      topSalesWithoutDesigners: [],
-      topConversionDayToDay: [],
-    };
-    const b2bTop: { user: string; sales: number; category: string }[] = [];
-    const userData = group.users.map((m) => {
-      const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
-      const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
-      const totalSales = dealSales + dopSales;
-      const shift = m.managerReports.length;
-      const dealsAmount = m.dealSales.length;
-      const averageBill = dealsAmount
-        ? +(totalSales / dealsAmount).toFixed()
-        : 0;
-      const dimmerSales = m.dops
-        .filter((d) => d.type === 'Диммер')
-        .reduce((a, b) => a + b.price, 0);
-      // Находим сделки без дизайнеров
-      const dealsWithoutDesigners = m.dealSales
-        .flatMap((ds) => ds.deal)
-        .filter((d) =>
-          [
-            'Заготовка из базы',
-            'Рекламный',
-            'Из рассылки',
-            'Визуализатор',
-          ].includes(d.maketType),
-        );
-
-      const dealsSalesWithoutDesigners = dealsWithoutDesigners.reduce(
-        (sum, deal) => sum + (deal.price || 0),
-        0,
-      );
-      const dealsDayToDay = m.dealSales.filter(
-        (ds) => ds.deal.saleDate === ds.deal.client.firstContact,
-      );
-      const calls = m.managerReports.reduce((a, b) => a + b.calls, 0);
-      const conversionDayToDay = calls
-        ? +((dealsDayToDay.length / calls) * 100).toFixed(2)
-        : 0;
-      // Конверсия
-      const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
-      return {
-        id: m.id,
-        fullName: m.fullName,
-        groupId: m.groupId,
-        workSpaceId: m.workSpaceId,
-        totalSales,
-        shift,
-        topBonus: 0,
-        dopSales,
-        dimmerSales,
-        dealsSalesWithoutDesigners,
-        conversionDayToDay,
-        dealSales,
-        averageBill,
-        conversion,
-      };
-    });
-    // Определение топов
-    const topTotalSales = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
-      .sort((a, b) => b.totalSales - a.totalSales)
-      .slice(0, 3)
-      .map((u, i) => {
-        const user = userData.find((us) => us.id === u.id)!;
-        if (user.totalSales !== 0) {
-          if (user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-          }
-          vkTop.topTotalSales.push({
-            user: u.fullName,
-            sales: u.totalSales,
-          });
-        }
-      });
-
-    const topDopSales = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
-      .sort((a, b) => b.dopSales - a.dopSales)
-      .slice(0, 3)
-      .map((u, i) => {
-        const user = userData.find((us) => us.id === u.id)!;
-        if (user.totalSales !== 0) {
-          if (user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-          }
-          vkTop.topDopSales.push({
-            user: u.fullName,
-            sales: u.dopSales,
-          });
-        }
-      });
-    const topDimmerSales = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
-      .sort((a, b) => b.dimmerSales - a.dimmerSales)
-      .slice(0, 3)
-      .map((u, i) => {
-        const user = userData.find((us) => us.id === u.id)!;
-        if (user.totalSales !== 0) {
-          if (user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-          }
-          vkTop.topDimmerSales.push({
-            user: u.fullName,
-            sales: u.dimmerSales,
-          });
-        }
-      });
-    const topSalesWithoutDesigners = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
-      .sort(
-        (a, b) => b.dealsSalesWithoutDesigners - a.dealsSalesWithoutDesigners,
-      )
-      .slice(0, 3)
-      .map((u, i) => {
-        const user = userData.find((us) => us.id === u.id)!;
-        if (user.totalSales !== 0) {
-          if (user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-          }
-          vkTop.topSalesWithoutDesigners.push({
-            user: u.fullName,
-            sales: u.dealsSalesWithoutDesigners,
-          });
-        }
-      });
-    const topConversionDayToDay = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
-      .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
-      .slice(0, 3)
-      .map((u, i) => {
-        const user = userData.find((us) => us.id === u.id)!;
-        if (user.totalSales !== 0) {
-          if (user.shift > 12) {
-            user.topBonus += (-i + 3) * 1000;
-          }
-          vkTop.topConversionDayToDay.push({
-            user: u.fullName,
-            sales: u.conversionDayToDay,
-          });
-        }
-      });
-
-    // АВИТО
-    // - Самая высокая Сумма Заказов в отделе
-    const topDealSalesAvito = [...userData]
-      .filter((u) => u.workSpaceId === 2)
-      .sort((a, b) => b.dealSales - a.dealSales)
-      .slice(0, 1)
-      .map((u, i) => {
-        const user = userData.find((us) => us.id === u.id)!;
-        if (user.totalSales !== 0) {
-          if (user.shift > 12) {
-            u.topBonus += 2000;
-          }
-          b2bTop.push({
-            user: u.fullName,
-            sales: u.dealSales,
-            category: 'Топ суммы заказов',
-          });
-        }
-      });
-    // - Самая высокая сумма Допов в отделе
-    const topDopSalesAvito = [...userData]
-      .filter((u) => u.workSpaceId === 2)
-
-      .sort((a, b) => b.dopSales - a.dopSales)
-      .slice(0, 1)
-      .map((u, i) => {
-        const user = userData.find((us) => us.id === u.id)!;
-        if (user.totalSales !== 0) {
-          if (user.shift > 12) {
-            u.topBonus += 2000;
-          }
-          b2bTop.push({
-            user: u.fullName,
-            sales: u.dopSales,
-            category: 'Топ сумма допов',
-          });
-        }
-      });
-    // - Самый Высокий средний чек в отделе
-    const topAverageBillAvito = [...userData]
-      .filter((u) => u.workSpaceId === 2)
-
-      .sort((a, b) => b.averageBill - a.averageBill)
-      .slice(0, 1)
-      .map((u, i) => {
-        const user = userData.find((us) => us.id === u.id)!;
-        if (user.totalSales !== 0) {
-          if (user.shift > 12) {
-            u.topBonus += 2000;
-          }
-          b2bTop.push({
-            user: u.fullName,
-            sales: u.averageBill,
-            category: 'Топ средний чек',
-          });
-        }
-      });
-    // - Самая высокая конверсия в отделе
-    const topConversionAvito = [...userData]
-      .filter((u) => u.workSpaceId === 2)
-
-      .sort((a, b) => b.conversion - a.conversion)
-      .slice(0, 1)
-      .map((u, i) => {
-        const user = userData.find((us) => us.id === u.id)!;
-        if (user.totalSales !== 0) {
-          if (user.shift > 12) {
-            u.topBonus += 2000;
-          }
-          b2bTop.push({
-            user: u.fullName,
-            sales: u.conversion,
-            category: 'Топ конверсия',
-          });
-        }
-      });
-    // console.log(userData.filter((u) => u.topBonus > 0));
-    return {
-      adExpenses,
-      totalCalls,
-      callCost,
-      isOverRopPlan,
-      tops: userData.filter((u) => u.topBonus > 0),
-    };
-  }
-
   private getBonusPercentage(
     totalSales: number,
     workSpaceId: number,
@@ -414,8 +60,7 @@ export class CommercialDatasService {
   ) {
     let bonusPercentage = 0;
     let dopsPercentage = 0;
-      let bonus = 0;
-      console.log(isIntern);
+    let bonus = 0;
     if (workSpaceId === 2) {
       if (!isIntern) {
         if (totalSales < 400_000) {
@@ -811,6 +456,362 @@ export class CommercialDatasService {
       shift,
     };
   }
+  /** get /commercial-datas/tops/:groupId?period */
+  async getManagerGroupDatas(groupId: number, period: string) {
+    const group = await this.prisma.group.findFirst({
+      where: {
+        id: groupId,
+        users: {
+          some: {},
+        },
+      },
+      include: {
+        adExpenses: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
+        users: {
+          include: {
+            managerReports: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
+              },
+            },
+            dealSales: {
+              where: {
+                deal: {
+                  saleDate: {
+                    startsWith: period,
+                  },
+                  reservation: false,
+                  status: { not: 'Возврат' },
+                },
+              },
+              include: {
+                deal: {
+                  include: {
+                    client: true,
+                  },
+                },
+              },
+            },
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: period,
+                },
+                deal: {
+                  reservation: false,
+                  status: { not: 'Возврат' },
+                },
+              },
+            },
+          },
+        },
+        deals: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            reservation: false,
+            status: { not: 'Возврат' },
+          },
+        },
+        dops: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            deal: {
+              reservation: false,
+              status: { not: 'Возврат' },
+            },
+          },
+        },
+      },
+    });
+    if (!group) {
+      throw new NotFoundException('Группа не найдена');
+    }
+    const adExpenses = group.adExpenses.reduce((a, b) => a + b.price, 0);
+    /** количество заявок проекта*/
+    const totalCalls = group.users
+      .flatMap((u) => u.managerReports)
+      .reduce((a, b) => a + b.calls, 0);
+    /** стоимость заявки в проекте*/
+    const callCost = totalCalls ? adExpenses / totalCalls : 0;
+
+    const ropPlan = await this.prisma.managersPlan.findMany({
+      where: {
+        period,
+        user: {
+          role: {
+            shortName: 'DO',
+          },
+          fullName: { in: ['Юлия Куштанова', 'Сергей Иванов'] },
+        },
+      },
+      include: {
+        user: true,
+      },
+    });
+
+    let isOverRopPlan = false;
+    const ropPlanValue =
+      ropPlan.find((p) => p.user.workSpaceId === group.workSpaceId)?.plan || 0;
+    const groupDealSales = group.deals.reduce((acc, d) => acc + d.price, 0);
+    const groupDopSales = group.dops.reduce((acc, d) => acc + d.price, 0);
+    const groupTotalSales = groupDealSales + groupDopSales;
+
+    if (groupTotalSales > ropPlanValue && ropPlanValue > 0) {
+      isOverRopPlan = true;
+    }
+
+    const vkTop: {
+      topTotalSales: { user: string; sales: number }[];
+      topDopSales: { user: string; sales: number }[];
+      topDimmerSales: { user: string; sales: number }[];
+      topSalesWithoutDesigners: { user: string; sales: number }[];
+      topConversionDayToDay: { user: string; sales: number }[];
+    } = {
+      topTotalSales: [],
+      topDopSales: [],
+      topDimmerSales: [],
+      topSalesWithoutDesigners: [],
+      topConversionDayToDay: [],
+    };
+    const b2bTop: { user: string; sales: number; category: string }[] = [];
+    const userData = group.users.map((m) => {
+      const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
+      const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
+      const totalSales = dealSales + dopSales;
+      const shift = m.managerReports.length;
+      const dealsAmount = m.dealSales.length;
+      const averageBill = dealsAmount
+        ? +(totalSales / dealsAmount).toFixed()
+        : 0;
+      const dimmerSales = m.dops
+        .filter((d) => d.type === 'Диммер')
+        .reduce((a, b) => a + b.price, 0);
+      // Находим сделки без дизайнеров
+      const dealsWithoutDesigners = m.dealSales
+        .flatMap((ds) => ds.deal)
+        .filter((d) =>
+          [
+            'Заготовка из базы',
+            'Рекламный',
+            'Из рассылки',
+            'Визуализатор',
+          ].includes(d.maketType),
+        );
+
+      const dealsSalesWithoutDesigners = dealsWithoutDesigners.reduce(
+        (sum, deal) => sum + (deal.price || 0),
+        0,
+      );
+      const dealsDayToDay = m.dealSales.filter(
+        (ds) => ds.deal.saleDate === ds.deal.client.firstContact,
+      );
+      const calls = m.managerReports.reduce((a, b) => a + b.calls, 0);
+      const conversionDayToDay = calls
+        ? +((dealsDayToDay.length / calls) * 100).toFixed(2)
+        : 0;
+      // Конверсия
+      const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
+      return {
+        id: m.id,
+        fullName: m.fullName,
+        groupId: m.groupId,
+        workSpaceId: m.workSpaceId,
+        totalSales,
+        shift,
+        topBonus: 0,
+        dopSales,
+        dimmerSales,
+        dealsSalesWithoutDesigners,
+        conversionDayToDay,
+        dealSales,
+        averageBill,
+        conversion,
+      };
+    });
+    // Определение топов
+    const topTotalSales = [...userData]
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .sort((a, b) => b.totalSales - a.totalSales)
+      .slice(0, 3)
+      .map((u, i) => {
+        const user = userData.find((us) => us.id === u.id)!;
+        if (user.totalSales !== 0) {
+          if (user.shift > 12) {
+            user.topBonus += (-i + 3) * 1000;
+          }
+          vkTop.topTotalSales.push({
+            user: u.fullName,
+            sales: u.totalSales,
+          });
+        }
+      });
+
+    const topDopSales = [...userData]
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .sort((a, b) => b.dopSales - a.dopSales)
+      .slice(0, 3)
+      .map((u, i) => {
+        const user = userData.find((us) => us.id === u.id)!;
+        if (user.totalSales !== 0) {
+          if (user.shift > 12) {
+            user.topBonus += (-i + 3) * 1000;
+          }
+          vkTop.topDopSales.push({
+            user: u.fullName,
+            sales: u.dopSales,
+          });
+        }
+      });
+    const topDimmerSales = [...userData]
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .sort((a, b) => b.dimmerSales - a.dimmerSales)
+      .slice(0, 3)
+      .map((u, i) => {
+        const user = userData.find((us) => us.id === u.id)!;
+        if (user.totalSales !== 0) {
+          if (user.shift > 12) {
+            user.topBonus += (-i + 3) * 1000;
+          }
+          vkTop.topDimmerSales.push({
+            user: u.fullName,
+            sales: u.dimmerSales,
+          });
+        }
+      });
+    const topSalesWithoutDesigners = [...userData]
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .sort(
+        (a, b) => b.dealsSalesWithoutDesigners - a.dealsSalesWithoutDesigners,
+      )
+      .slice(0, 3)
+      .map((u, i) => {
+        const user = userData.find((us) => us.id === u.id)!;
+        if (user.totalSales !== 0) {
+          if (user.shift > 12) {
+            user.topBonus += (-i + 3) * 1000;
+          }
+          vkTop.topSalesWithoutDesigners.push({
+            user: u.fullName,
+            sales: u.dealsSalesWithoutDesigners,
+          });
+        }
+      });
+    const topConversionDayToDay = [...userData]
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
+      .slice(0, 3)
+      .map((u, i) => {
+        const user = userData.find((us) => us.id === u.id)!;
+        if (user.totalSales !== 0) {
+          if (user.shift > 12) {
+            user.topBonus += (-i + 3) * 1000;
+          }
+          vkTop.topConversionDayToDay.push({
+            user: u.fullName,
+            sales: u.conversionDayToDay,
+          });
+        }
+      });
+
+    // АВИТО
+    // - Самая высокая Сумма Заказов в отделе
+    const topDealSalesAvito = [...userData]
+      .filter((u) => u.workSpaceId === 2)
+      .sort((a, b) => b.dealSales - a.dealSales)
+      .slice(0, 1)
+      .map((u, i) => {
+        const user = userData.find((us) => us.id === u.id)!;
+        if (user.totalSales !== 0) {
+          if (user.shift > 12) {
+            u.topBonus += 2000;
+          }
+          b2bTop.push({
+            user: u.fullName,
+            sales: u.dealSales,
+            category: 'Топ суммы заказов',
+          });
+        }
+      });
+    // - Самая высокая сумма Допов в отделе
+    const topDopSalesAvito = [...userData]
+      .filter((u) => u.workSpaceId === 2)
+
+      .sort((a, b) => b.dopSales - a.dopSales)
+      .slice(0, 1)
+      .map((u, i) => {
+        const user = userData.find((us) => us.id === u.id)!;
+        if (user.totalSales !== 0) {
+          if (user.shift > 12) {
+            u.topBonus += 2000;
+          }
+          b2bTop.push({
+            user: u.fullName,
+            sales: u.dopSales,
+            category: 'Топ сумма допов',
+          });
+        }
+      });
+    // - Самый Высокий средний чек в отделе
+    const topAverageBillAvito = [...userData]
+      .filter((u) => u.workSpaceId === 2)
+
+      .sort((a, b) => b.averageBill - a.averageBill)
+      .slice(0, 1)
+      .map((u, i) => {
+        const user = userData.find((us) => us.id === u.id)!;
+        if (user.totalSales !== 0) {
+          if (user.shift > 12) {
+            u.topBonus += 2000;
+          }
+          b2bTop.push({
+            user: u.fullName,
+            sales: u.averageBill,
+            category: 'Топ средний чек',
+          });
+        }
+      });
+    // - Самая высокая конверсия в отделе
+    const topConversionAvito = [...userData]
+      .filter((u) => u.workSpaceId === 2)
+
+      .sort((a, b) => b.conversion - a.conversion)
+      .slice(0, 1)
+      .map((u, i) => {
+        const user = userData.find((us) => us.id === u.id)!;
+        if (user.totalSales !== 0) {
+          if (user.shift > 12) {
+            u.topBonus += 2000;
+          }
+          b2bTop.push({
+            user: u.fullName,
+            sales: u.conversion,
+            category: 'Топ конверсия',
+          });
+        }
+      });
+    // console.log(userData.filter((u) => u.topBonus > 0));
+    return {
+      adExpenses,
+      totalCalls,
+      callCost,
+      isOverRopPlan,
+      tops: userData.filter((u) => u.topBonus > 0),
+      vkTop,
+      b2bTop,
+    };
+  }
   /** get /commercial-datas/groups */
   async getGroups(user: UserDto) {
     const workspacesSearch =
@@ -1035,8 +1036,14 @@ export class CommercialDatasService {
     const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
     const totalSales = dealSales + dopSales;
     /**Факт для ведения */
-    const fact = m.payments.reduce((a, b) => a + b.price, 0);
+    const fact =
+      m.groupId === 19 && m.role.shortName === 'MOV'
+        ? m.payments.reduce((a, b) => a + b.price, 0)
+        : 0;
     const factAmount = m.payments.length;
+    const factPercentage =
+      m.groupId === 19 && m.role.shortName === 'MOV' ? 0.1 : 0;
+    const factBonus = +(fact * factPercentage).toFixed(2);
     const temp = this.calculateTemp(totalSales, period);
     /** стоимость заявки в проекте*/
     const { callCost, isOverRopPlan, tops } = await this.getManagerGroupDatas(
@@ -1117,6 +1124,12 @@ export class CommercialDatasService {
       .toFixed(2);
     const { pays, salaryPays, salaryCorrections, shift, shiftBonus } =
       await this.getManagerSalaryDatas(m.id, period);
+    console.log(
+      m.managerReports.map((r) => ({
+        isIntern: r.isIntern,
+        cost: r.shiftCost,
+      })),
+    );
     const isIntern = m.managerReports.find((r) => r.isIntern === true)
       ? true
       : false;
@@ -1142,7 +1155,8 @@ export class CommercialDatasService {
       (m.groupId === 3 || m.groupId === 2)
         ? 3000
         : 0;
-    const topBonus = tops.find((m) => m.id === managerId)?.topBonus ?? 0;
+    const topBonus =
+      tops.find((m) => m.id === managerId && m.groupId === 3)?.topBonus ?? 0;
     totalSalary +=
       salaryCorrectionPlus -
       salaryCorrectionMinus +
@@ -1153,7 +1167,8 @@ export class CommercialDatasService {
       dopPays +
       shiftBonus +
       groupPlanBonus +
-      topBonus;
+      topBonus +
+      factBonus;
 
     return {
       fullName: m.fullName,
@@ -1170,6 +1185,8 @@ export class CommercialDatasService {
       dopSales,
       fact,
       factAmount,
+      factPercentage,
+      factBonus,
       temp,
 
       // Показатели
@@ -1204,10 +1221,18 @@ export class CommercialDatasService {
       totalSalary,
       rem: 0,
 
-      dealsInfo: dealsInfo.sort((a, b) => a.id - b.id),
-      dealsInfoPrevMounth,
-      dopsInfo,
-      dopsInfoPrevMounth,
+      dealsInfo: dealsInfo
+        .sort((a, b) => a.id - b.id)
+        .filter((d) => d.toSalary > 0),
+      dealsInfoPrevMounth: dealsInfoPrevMounth
+        .sort((a, b) => a.id - b.id)
+        .filter((d) => d.toSalary > 0),
+      dopsInfo: dopsInfo
+        .sort((a, b) => a.dealId - b.dealId)
+        .filter((d) => d.toSalary > 0),
+      dopsInfoPrevMounth: dopsInfoPrevMounth
+        .sort((a, b) => a.dealId - b.dealId)
+        .filter((d) => d.toSalary > 0),
       prevPeriodsDealsPays,
       prevPeriodsDopsPays,
 
