@@ -233,6 +233,7 @@ export class DealsService {
 
       const boxsize = el.bookSize;
       const pages = el.pages;
+      const pageType = el.pageType;
 
       const deliveryStatus = el.deliveries
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -285,6 +286,7 @@ export class DealsService {
         discontAmount,
         boxsize,
         pages,
+        pageType
       };
     });
 
@@ -446,6 +448,7 @@ export class DealsService {
       // console.log(saleDate.toISOString().slice(0, 10), 234356);
       const boxsize = el.bookSize;
       const pages = el.pages;
+      const pageType = el.pageType;
 
       return {
         payments,
@@ -481,6 +484,7 @@ export class DealsService {
         discontAmount,
         boxsize,
         pages,
+        pageType
       };
     });
 

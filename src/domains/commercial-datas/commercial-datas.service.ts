@@ -168,7 +168,7 @@ export class CommercialDatasService {
       dopsPercentage = 0.05;
       bonusPercentage = 0.05;
     }
-    // console.log(bonus);
+
     return {
       bonusPercentage,
       dopsPercentage,
@@ -407,7 +407,6 @@ export class CommercialDatasService {
       }
     });
 
-    // console.log(res);
     return {
       dealsInfo,
       dealsInfoPrevMounth,
@@ -1126,12 +1125,6 @@ export class CommercialDatasService {
       .toFixed(2);
     const { pays, salaryPays, salaryCorrections, shift, shiftBonus } =
       await this.getManagerSalaryDatas(m.id, period);
-    console.log(
-      m.managerReports.map((r) => ({
-        isIntern: r.isIntern,
-        cost: r.shiftCost,
-      })),
-    );
     const isIntern = m.managerReports.find((r) => r.isIntern === true)
       ? true
       : false;
@@ -1224,21 +1217,22 @@ export class CommercialDatasService {
       rem: 0,
 
       dealsInfo: dealsInfo
-        .sort((a, b) => a.id - b.id)
-        .filter((d) => d.toSalary > 0),
+        .sort((a, b) => a.id - b.id),
+        // .filter((d) => d.toSalary > 0),
       dealsInfoPrevMounth: dealsInfoPrevMounth
-        .sort((a, b) => a.id - b.id)
-        .filter((d) => d.toSalary > 0),
+        .sort((a, b) => a.id - b.id),
+        // .filter((d) => d.toSalary > 0),
       dopsInfo: dopsInfo
-        .sort((a, b) => a.dealId - b.dealId)
-        .filter((d) => d.toSalary > 0),
+        .sort((a, b) => a.dealId - b.dealId),
+        // .filter((d) => d.toSalary > 0),
       dopsInfoPrevMounth: dopsInfoPrevMounth
-        .sort((a, b) => a.dealId - b.dealId)
-        .filter((d) => d.toSalary > 0),
+        .sort((a, b) => a.dealId - b.dealId),
+        // .filter((d) => d.toSalary > 0),
       prevPeriodsDealsPays,
       prevPeriodsDopsPays,
 
       groupId: m.groupId,
+      isIntern: m.isIntern,
       fired: m.deletedAt ? true : false,
     };
   }
