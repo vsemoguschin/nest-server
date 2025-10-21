@@ -160,6 +160,7 @@ export class DashboardsService {
   }
 
   async getDeals(user: UserDto) {
+    console.log(user);
     let workSpacesSearch = {
       deletedAt: null as null,
       id: { gt: 0 } as { gt: number } | number,
@@ -206,6 +207,8 @@ export class DashboardsService {
 
     return { workSpaces, groups, managers };
   }
+
+
 
   // comercial
   async getComercialData(user: UserDto, period: string) {

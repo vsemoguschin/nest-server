@@ -34,6 +34,53 @@ export class DealsService {
     // private readonly filesService: FilesService,
   ) {}
 
+  async getGroups(user: UserDto) {
+    let workspaceSearch =
+      user.role.department === 'administration' ||
+      user.role.shortName === 'ROV' ||
+      user.role.shortName === 'KD' ||
+      user.role.shortName === 'LOGIST' ||
+      user.role.shortName === 'ASSISTANT' ||
+      user.role.shortName === 'MARKETER'
+        ? { gt: 0 }
+        : user.workSpaceId;
+    
+    let groupsSearch = ['MOP', 'MOV'].includes(user.role.shortName)
+      ? user.groupId
+      : { gt: 0 };
+
+    //Ведение авито
+    if (user.id === 84 || user.id === 87) {
+      workspaceSearch = 2;
+    }
+    // Ведение ВК
+    if (user.id === 88) {
+      workspaceSearch = 3;
+    }
+    console.log('groupsSearch', groupsSearch);
+    console.log('workspaceSearch', workspaceSearch);
+    const groups = await this.prisma.group.findMany({
+      where: {
+        id: groupsSearch,
+        workSpaceId: workspaceSearch,
+        workSpace: {
+          department: 'COMMERCIAL',
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+      },
+      orderBy: {
+        id: 'asc',
+      }
+    });
+    if (!groups || groups.length === 0) {
+      throw new NotFoundException('Группы не найдены.');
+    }
+    return groups;
+  }
+
   async create(createDealDto: CreateDealDto, user: UserDto) {
     const client = await this.prisma.client.findUnique({
       where: {
@@ -123,7 +170,7 @@ export class DealsService {
     return newDeal;
   }
 
-  async getList(user: UserDto, period: string) {
+  async getList(user: UserDto, from: string, to: string, groupId: number) {
     let workspacesSearch =
       user.role.department === 'administration' ||
       user.role.shortName === 'ROV' ||
@@ -148,14 +195,15 @@ export class DealsService {
       where: {
         // deletedAt: null,
         saleDate: {
-          startsWith: period,
+          gte: from,
+          lte: to,
         },
         // client: {
         //   firstContact: {
         //     startsWith: period
         //   }
         // },
-        groupId: user.groupId === 19 ? 19 : { gt: 0 },
+        groupId: groupId,
         workSpaceId: workspacesSearch,
       },
 
@@ -286,7 +334,7 @@ export class DealsService {
         discontAmount,
         boxsize,
         pages,
-        pageType
+        pageType,
       };
     });
 
@@ -484,7 +532,7 @@ export class DealsService {
         discontAmount,
         boxsize,
         pages,
-        pageType
+        pageType,
       };
     });
 

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateDopDto } from './dto/dop-create.dto';
 import { UserDto } from '../users/dto/user.dto';
@@ -6,6 +7,79 @@ import { UserDto } from '../users/dto/user.dto';
 @Injectable()
 export class DopsService {
   constructor(private prisma: PrismaService) {}
+
+  async getList(
+    user: UserDto,
+    from: string,
+    to: string,
+    groupId: number,
+    take: number,
+    page: number,
+    managersIds?: number[],
+  ) {
+    const sanitizedTake = Math.max(1, take);
+    const sanitizedPage = Math.max(1, page);
+    const skip = (sanitizedPage - 1) * sanitizedTake;
+
+    const where: Prisma.DopWhereInput = {
+      saleDate: {
+        gte: from,
+        lte: to,
+      },
+      groupId,
+    };
+
+    if (managersIds?.length) {
+      where.userId = { in: managersIds };
+    }
+
+    console.log(managersIds);
+
+    const [dops, total] = await this.prisma.$transaction([
+      this.prisma.dop.findMany({
+        where,
+        skip,
+        take: sanitizedTake,
+        include: {
+          deal: {
+            select: {
+              title: true,
+              saleDate: true,
+            },
+          },
+          user: {
+            select: {
+              fullName: true,
+            },
+          },
+        },
+        orderBy: {
+          saleDate: 'desc',
+        },
+      }),
+      this.prisma.dop.aggregate({
+        where,
+        _sum: {
+          price: true,
+        },
+      }),
+    ]);
+
+    return {
+      totalDopPrice: Number(total._sum.price ?? 0),
+      items: dops.map((dop) => ({
+        id: dop.id,
+        dealId: dop.dealId,
+        dealTitle: dop.deal?.title ?? '',
+        dealSaleDate: dop.deal?.saleDate ?? '',
+        saleDate: dop.saleDate,
+        userId: dop.userId,
+        userFullName: dop.user?.fullName ?? '',
+        price: dop.price,
+        type: dop.type,
+      })),
+    };
+  }
 
   async create(createDopDto: CreateDopDto, user: UserDto) {
     // Проверяем, существует ли сделка

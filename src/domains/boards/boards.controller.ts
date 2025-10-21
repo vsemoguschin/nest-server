@@ -141,7 +141,7 @@ export class BoardsController {
     @Param('boardId', ParseIntPipe) boardId: number,
   ) {
     this.boardsService.ensureBoard(boardId);
-    return await this.boardsService.getColumns(boardId);
+    return await this.boardsService.getColumns(boardId, user);
   }
 
   @Roles(

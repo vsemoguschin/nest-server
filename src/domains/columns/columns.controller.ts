@@ -73,4 +73,20 @@ export class ColumnsController {
   ) {
     return this.columnsService.remove(user.id, id);
   }
+
+  @Post(':id/subscribe')
+  async subscribe(
+    @CurrentUser() user: UserDto,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.columnsService.subscribe(user.id, id);
+  }
+
+  @Delete(':id/subscribe')
+  async unsubscribe(
+    @CurrentUser() user: UserDto,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.columnsService.unsubscribe(user.id, id);
+  }
 }

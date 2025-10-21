@@ -33,6 +33,7 @@ export class TaskMembersService {
             email: true,
             role: { select: { id: true, shortName: true, fullName: true } },
             avatarUrl: true,
+            tg: true,
           },
           orderBy: { fullName: 'asc' },
         },
@@ -45,6 +46,7 @@ export class TaskMembersService {
       fullName: m.fullName,
       email: m.email,
       avatarUrl: m.avatarUrl,
+      tg: m.tg,
       role: {
         id: m.role?.id,
         shortName: m.role?.shortName,

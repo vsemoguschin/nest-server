@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UserDto } from '../users/dto/user.dto';
@@ -251,6 +252,80 @@ export class PaymentsService {
       },
     });
     return await this.prisma.payment.delete({ where: { id } });
+  }
+
+  async getList(
+    user: UserDto,
+    from: string,
+    to: string,
+    groupId: number,
+    take: number,
+    page: number,
+    managersIds?: number[],
+  ) {
+    const sanitizedTake = Math.max(1, take);
+    const sanitizedPage = Math.max(1, page);
+    const skip = (sanitizedPage - 1) * sanitizedTake;
+
+    const where: Prisma.PaymentWhereInput = {
+      date: {
+        gte: from,
+        lte: to,
+      },
+      groupId,
+    };
+
+    if (managersIds?.length) {
+      where.userId = { in: managersIds };
+    }
+
+    const [payments, total] = await this.prisma.$transaction([
+      this.prisma.payment.findMany({
+        where,
+        skip,
+        take: sanitizedTake,
+        include: {
+          deal: {
+            select: {
+              title: true,
+              saleDate: true,
+              reservation: true,
+            },
+          },
+          user: {
+            select: {
+              fullName: true,
+            },
+          },
+        },
+        orderBy: {
+          date: 'desc',
+        },
+      }),
+      this.prisma.payment.aggregate({
+        where,
+        _sum: {
+          price: true,
+        },
+      }),
+    ]);
+
+    return {
+      totalPaymentPrice: Number(total._sum.price ?? 0),
+      items: payments.map((payment) => ({
+        id: payment.id,
+        dealId: payment.dealId,
+        method: payment.method,
+        price: payment.price,
+        dealTitle: payment.deal?.title ?? '',
+        dealSaleDate: payment.deal?.saleDate ?? '',
+        userFullName: payment.user?.fullName ?? '',
+        userId: payment.userId,
+        date: payment.date,
+        isConfirmed: payment.isConfirmed,
+        reservation: payment.deal.reservation,
+      })),
+    };
   }
 }
 

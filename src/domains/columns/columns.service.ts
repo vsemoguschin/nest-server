@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateColumnDto } from './dto/create-column.dto';
 
@@ -44,6 +45,7 @@ export class ColumnsService {
         title: true,
         position: true,
         createdAt: true,
+        
         // При желании можно вернуть счётчики задач:
         _count: { select: { tasks: { where: { deletedAt: null } } } },
       },
@@ -115,6 +117,54 @@ export class ColumnsService {
       where: { id: columnId },
       data: { deletedAt: new Date() },
     });
+
+    return { success: true };
+  }
+
+  async subscribe(userId: number, columnId: number) {
+    const column = await this.prisma.column.findFirst({
+      where: { id: columnId, deletedAt: null },
+      select: { id: true, boardId: true },
+    });
+    if (!column) throw new NotFoundException('Column not found');
+
+    await this.assertBoardAccess(userId, column.boardId);
+ 
+    const existing = await this.prisma.columnSubscription.findUnique({
+      where: { userId_columnId: { userId, columnId } },
+      select: { id: true, userId: true, columnId: true, createdAt: true },
+    });
+
+    if (existing) return existing;
+
+    return this.prisma.columnSubscription.create({
+      data: { userId, columnId },
+      select: { id: true, userId: true, columnId: true, createdAt: true },
+    });
+  }
+
+  async unsubscribe(userId: number, columnId: number) {
+    const column = await this.prisma.column.findFirst({
+      where: { id: columnId, deletedAt: null },
+      select: { id: true, boardId: true },
+    });
+    if (!column) throw new NotFoundException('Column not found');
+
+    await this.assertBoardAccess(userId, column.boardId);
+
+    try {
+      await this.prisma.columnSubscription.delete({
+        where: { userId_columnId: { userId, columnId } },
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2025'
+      ) {
+        return { success: true };
+      }
+      throw e;
+    }
 
     return { success: true };
   }

@@ -17,6 +17,7 @@ import { SearchTasksDto } from './dto/search-tasks.dto';
 import { collectTaskWarnings } from './utils/task-warnings';
 import { DeliveryCreateDto } from '../deliveries/dto/delivery-create.dto';
 import { DeliveryForTaskCreateDto } from '../deliveries/dto/delivery-for-task-create.dto';
+import { title } from 'process';
 
 type FieldKey = 'title' | 'description' | 'chatLink' | 'columnId' | 'dealId';
 
@@ -104,7 +105,25 @@ export class TasksService {
   async ensureTaskColumn(columnId: number) {
     const column = await this.prisma.column.findFirst({
       where: { id: columnId, deletedAt: null },
-      select: { id: true, boardId: true },
+      select: {
+        id: true,
+        boardId: true,
+        title: true,
+        subscriptions: {
+          where: {
+            user: {
+              deletedAt: null,
+            },
+          },
+          include: {
+            user: {
+              select: {
+                tg_id: true,
+              },
+            },
+          },
+        },
+      },
     });
     if (!column) throw new NotFoundException('Column not found');
     return column;
@@ -492,6 +511,7 @@ export class TasksService {
           email: true,
           fullName: true,
           role: { select: { fullName: true } },
+          tg: true,
         },
       },
 
@@ -546,7 +566,7 @@ export class TasksService {
         },
       },
 
-      deal: true,
+      deal: true
     } as const;
 
     let task = await this.prisma.kanbanTask.findFirst({
@@ -589,7 +609,11 @@ export class TasksService {
       }
     }
 
-    const warnings = collectTaskWarnings(task.orders, task.deliveries, task.chatLink);
+    const warnings = collectTaskWarnings(
+      task.orders,
+      task.deliveries,
+      task.chatLink,
+    );
 
     return {
       id: task.id,
@@ -774,6 +798,11 @@ export class TasksService {
           {
             title: { contains: q, mode: 'insensitive' },
           },
+          {
+            deliveries: {
+              some: { track: { contains: q, mode: 'insensitive' } },
+            },
+          },
         ],
         boardId: { in: userBoards },
       },
@@ -943,7 +972,19 @@ export class TasksService {
       // целевая колонка
       const targetColumn = await tx.column.findFirst({
         where: { id: dto.toColumnId, boardId: task.boardId, deletedAt: null },
-        select: { id: true, title: true },
+        select: {
+          id: true,
+          title: true,
+          boardId: true,
+          subscriptions: {
+            where: { user: { deletedAt: null } },
+            include: {
+              user: {
+                select: { tg_id: true },
+              },
+            },
+          },
+        },
       });
       if (!targetColumn) throw new NotFoundException('Target column not found');
 
@@ -996,7 +1037,13 @@ export class TasksService {
       const updated = await tx.kanbanTask.update({
         where: { id: task.id },
         data: updateData,
-        select: { id: true, columnId: true, position: true, updatedAt: true },
+        select: {
+          id: true,
+          title: true,
+          columnId: true,
+          position: true,
+          updatedAt: true,
+        },
       });
 
       const movedBetweenColumns = fromColumn?.id !== targetColumn.id;
@@ -1023,6 +1070,11 @@ export class TasksService {
       title: string;
       position: Prisma.Decimal;
       boardId: number;
+      subscriptions: {
+        user: {
+          tg_id: number | null;
+        };
+      }[];
     };
   }> {
     // 1) Текущая задача + её колонка
@@ -1042,9 +1094,23 @@ export class TasksService {
       where: {
         boardId: fromColumn.boardId, // при необходимости замените на ваш внешний ключ (projectId и т.п.)
         position: { gt: fromColumn.position },
+        deletedAt: null,
       },
       orderBy: { position: 'asc' },
-      select: { id: true, title: true, position: true, boardId: true },
+      select: {
+        id: true,
+        title: true,
+        position: true,
+        boardId: true,
+        subscriptions: {
+          where: { user: { deletedAt: null } },
+          include: {
+            user: {
+              select: { tg_id: true },
+            },
+          },
+        },
+      },
     });
 
     if (!targetColumn) {

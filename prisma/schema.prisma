@@ -145,6 +145,8 @@ model User {
   comments      KanbanTaskComments[]
   audits        KanbanTaskAudit[]
   uploadedFiles KanbanFile[]       @relation("KanbanFileUploader")
+
+  columnSubscriptions ColumnSubscription[]
 }
 model ManagersPlan {
   id         Int        @id @default(autoincrement()) 
@@ -826,10 +828,25 @@ model Column {
   boardId    Int
   board      Board       @relation(fields: [boardId], references: [id], onDelete: Restrict)
 
+  subscriptions ColumnSubscription[]
+
   @@index([boardId, position])
   @@index([deletedAt])
   // Если нужно запретить одинаковые названия колонок внутри одной доски:
   // @@unique([boardId, title])
+}
+
+model ColumnSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  columnId  Int
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  column Column @relation(fields: [columnId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, columnId])
+  @@index([columnId])
 }
 
 //// ========= KANBAN TASK =========

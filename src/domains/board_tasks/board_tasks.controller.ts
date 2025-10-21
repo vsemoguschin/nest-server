@@ -96,16 +96,37 @@ export class TasksController {
     });
   }
 
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'MOP', 'MOV', 'DIZ', 'LOGIST')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+  )
   @Post()
   async createTask(@CurrentUser() user: UserDto, @Body() dto: CreateTaskDto) {
     const column = await this.tasksService.ensureTaskColumn(dto.columnId);
     const task = await this.tasksService.create(user, dto, column.boardId);
+    const { subscriptions } = column;
+    // console.log(subscriptions);
     await this.audit.log({
       userId: user.id,
       taskId: task.id,
       action: 'TASK_CREATED',
       description: `${user.fullName} создал карточку`,
+    });
+    await this.notify.notifyColumnSubscribers({
+      taskId: task.id,
+      boardId: column.boardId,
+      taskTitle: task.title,
+      subscriptions,
+      columnTitle: column.title,
     });
     return task;
   }
@@ -128,7 +149,7 @@ export class TasksController {
     'RP',
     'PACKER',
     'FRZ',
-    'GUEST'
+    'GUEST',
   )
   @Get(':taskId')
   async getOne(
@@ -170,12 +191,12 @@ export class TasksController {
         description: `Изменено поле: ${field}. Было - "${fromVal}", стало - "${toVal}"`,
       });
 
-      await this.notify.notifyParticipants({
-        taskId,
-        actorUserId: user.id,
-        message: `Изменено поле: ${field}. Было - "${fromVal}", стало - "${toVal}"`,
-        // link опционально, если не передашь — сгенерится автоматически
-      });
+      // await this.notify.notifyParticipants({
+      //   taskId,
+      //   actorUserId: user.id,
+      //   message: `Изменено поле: ${field}. Было - "${fromVal}", стало - "${toVal}"`,
+      //   // link опционально, если не передашь — сгенерится автоматически
+      // });
     }
     return updated;
   }
@@ -207,7 +228,7 @@ export class TasksController {
     'RP',
     'PACKER',
     'FRZ',
-    'GUEST'
+    'GUEST',
   )
   @Get(':taskId/attachments')
   async getAttachmentsByTaskId(@Param('taskId', ParseIntPipe) taskId: number) {
@@ -231,7 +252,7 @@ export class TasksController {
     'RP',
     'PACKER',
     'FRZ',
-    'GUEST'
+    'GUEST',
   )
   async updateTaskColumnId(
     @CurrentUser() user: UserDto,
@@ -261,12 +282,21 @@ export class TasksController {
       },
     });
 
-    await this.notify.notifyParticipants({
-      taskId,
-      actorUserId: user.id,
-      message: msg,
-      // link опционально, если не передашь — сгенерится автоматически
-    });
+    // await this.notify.notifyParticipants({
+    //   taskId,
+    //   actorUserId: user.id,
+    //   message: msg,
+    //   // link опционально, если не передашь — сгенерится автоматически
+    // });
+    if (movedBetweenColumns && targetColumn.subscriptions?.length) {
+      await this.notify.notifyColumnSubscribers({
+        taskId,
+        boardId: targetColumn.boardId,
+        taskTitle: updated.title,
+        subscriptions: targetColumn.subscriptions,
+        columnTitle: targetColumn.title,
+      });
+    }
     return { updated, message: msg };
   }
 
@@ -288,7 +318,7 @@ export class TasksController {
     'RP',
     'PACKER',
     'FRZ',
-    'GUEST'
+    'GUEST',
   )
   async moveToNextColumn(
     @CurrentUser() user: UserDto,
@@ -305,6 +335,15 @@ export class TasksController {
       action: 'MOVE_TASK',
       description: msg,
     });
+    if (targetColumn.subscriptions?.length) {
+      await this.notify.notifyColumnSubscribers({
+        taskId,
+        boardId: targetColumn.boardId,
+        taskTitle: updated.title,
+        subscriptions: targetColumn.subscriptions,
+        columnTitle: targetColumn.title,
+      });
+    }
     return updated;
   }
 
@@ -342,7 +381,7 @@ export class TasksController {
     summary:
       'Копировать задачу на другую доску (без cover), с дубликатами orders',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP','LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST')
   async copyToBoard(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
@@ -362,7 +401,7 @@ export class TasksController {
 
   @Post(':taskId/move-to-board')
   @ApiOperation({ summary: 'Переместить задачу на другую доску' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP','LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST')
   async moveToBoard(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
@@ -553,7 +592,7 @@ export class TasksController {
   async createDeliveryForTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: DeliveryForTaskCreateDto,
-    @CurrentUser() user: UserDto, 
+    @CurrentUser() user: UserDto,
   ) {
     return this.tasksService.createDeliveryForTask(taskId, dto, user);
   }

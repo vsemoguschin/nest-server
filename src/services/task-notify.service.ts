@@ -12,6 +12,12 @@ type NotifyOpts = {
   includeNewMemberId?: number; // спец-случай, когда только что добавлен новый участник — можно отдельно упомянуть его
 };
 
+type ColumnSubscriptionPayload = {
+  user: {
+    tg_id: number | null;
+  };
+};
+
 @Injectable()
 export class TaskNotifyService {
   private readonly logger = new Logger(TaskNotifyService.name);
@@ -70,6 +76,48 @@ export class TaskNotifyService {
 
     await Promise.allSettled(
       targets.map((u) => this.telegram.sendToChat(u.tg_id!, text, silent)),
+    );
+  }
+
+  async notifyColumnSubscribers(opts: {
+    taskId: number;
+    boardId: number;
+    taskTitle?: string | null;
+    columnTitle: string;
+    subscriptions: ColumnSubscriptionPayload[];
+    link?: string;
+    silent?: boolean;
+  }) {
+    // if (this.env === 'development') {
+    //   this.logger.debug('[dev] skip telegram');
+    //   return;
+    // }
+
+    const { taskId, boardId, taskTitle, subscriptions, link, silent, columnTitle } = opts;
+
+    if (!subscriptions.length) return;
+
+    const url = link || this.buildTaskUrl(boardId, taskId);
+    const text =
+      `<b>${columnTitle || 'Колонка'}</b>\n` +
+      `Новая карточка - "${taskTitle || 'Задача'}"\n` +
+      `<a href="${url}">Открыть карточку</a>`;
+
+    const chatIds = Array.from(
+      new Set(
+        subscriptions
+          .map((sub) => sub.user?.tg_id)
+          .filter(
+            (chatId): chatId is number =>
+              typeof chatId === 'number' && chatId > 0,
+          ),
+      ),
+    );
+
+    if (!chatIds.length) return;
+
+    await Promise.allSettled(
+      chatIds.map((chatId) => this.telegram.sendToChat(chatId, text, silent)),
     );
   }
 

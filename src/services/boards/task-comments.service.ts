@@ -11,7 +11,7 @@ export class TaskCommentsService {
       where: { taskId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       include: {
-        author: { select: { id: true, fullName: true, avatarUrl: true } },
+        author: { select: { id: true, fullName: true, avatarUrl: true, tg: true } },
         files: {
           where: { deletedAt: null },
           select: {

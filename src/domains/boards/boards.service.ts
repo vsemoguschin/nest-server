@@ -97,6 +97,7 @@ export class BoardsService {
                     fullName: true,
                     avatarUrl: true,
                     role: { select: { fullName: true } },
+                    tg: true,
                   },
                 },
                 orders: {
@@ -201,11 +202,16 @@ export class BoardsService {
   }
 
   /**Получить список доступных колонок для добавления в задачу */
-  async getColumns(boardId: number) {
+  async getColumns(boardId: number, user: UserDto) {
     // подтягиваем участников
     const avalCol = await this.prisma.column.findMany({
       where: {
         boardId,
+      },
+      include: {
+        subscriptions: {
+          where: { userId: user.id },
+        },
       },
       orderBy: {
         position: 'asc',
@@ -216,6 +222,7 @@ export class BoardsService {
     return (avalCol ?? []).map((c) => ({
       id: c.id,
       title: c.title,
+      isSubs: c.subscriptions.length > 0,
     }));
   }
 

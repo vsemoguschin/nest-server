@@ -57,7 +57,12 @@ export class DealsController {
     return this.dealsService.create(createDealDto, user);
   }
 
-  @Get()
+  @Get('groups')
+  async getGroups(@CurrentUser() user: UserDto) {
+    return this.dealsService.getGroups(user);
+  }
+
+  @Get('group/:groupId')
   @ApiOperation({
     summary: 'Получить все сделки',
     description:
@@ -74,21 +79,25 @@ export class DealsController {
     'MOV',
     'LOGIST',
     'MARKETER',
-    'ASSISTANT'
+    'ASSISTANT',
   )
   async getList(
     @CurrentUser() user: UserDto,
-    @Query('period') period: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Param('groupId', ParseIntPipe) groupId: number,
   ): Promise<any> {
-    if (
-      !period ||
-      (!/^\d{4}-\d{2}-\d{2}$/.test(period) && !/^\d{4}-\d{2}$/.test(period))
-    ) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
-        'Параметры period обязательны и должны быть в формате YYYY-MM-DD',
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    return this.dealsService.getList(user, period);
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.dealsService.getList(user, from, to, groupId);
   }
 
   @Get('search')
@@ -97,7 +106,18 @@ export class DealsController {
     description:
       'Endpoint: GET /deals/search?name=Название. Поиск сделок по названию.',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST', 'ASSISTANT')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'MOP',
+    'ROP',
+    'ROV',
+    'MOV',
+    'LOGIST',
+    'ASSISTANT',
+  )
   async searchDealsByName(
     @CurrentUser() user: UserDto,
     @Query('name') name: string,
@@ -124,7 +144,7 @@ export class DealsController {
     'MOV',
     'LOGIST',
     'MARKETER',
-    'ASSISTANT'
+    'ASSISTANT',
   )
   async getOne(@Param('id', ParseIntPipe) id: number): Promise<DealDto> {
     return this.dealsService.findOne(id);
