@@ -41,6 +41,17 @@ export class GroupsController {
     return this.groupsService.findAll(user);
   }
 
+  @Get('available')
+  @ApiOperation({
+    summary: 'Получить список групп',
+    description: 'Endpoint: GET /groups. Возвращает список всех групп.',
+  })
+  async findAllAvailableGroups(
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.groupsService.findAllAvailableGroups(user);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Получить группу по id',

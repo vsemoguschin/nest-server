@@ -3,12 +3,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateDealDto } from './dto/deal-create.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { UpdateDealDto } from './dto/deal-update.dto';
 import { UpdateDealersDto } from './dto/dealers-update.dto';
 import { FilesService } from '../files/files.service';
+import { GroupsAccessService } from '../groups/groups-access.service';
+
 import axios from 'axios';
 
 const useMyGetDaysDifference = (
@@ -27,58 +30,537 @@ const useMyGetDaysDifference = (
   return differenceInDays;
 };
 
+interface DealMapOptions {
+  includeLeadAging?: boolean;
+  includeReviewSummary?: boolean;
+}
+
+interface DealTotals {
+  totalPrice: number;
+  price: number;
+  dopsPrice: number;
+  recievedPayments: number;
+  remainder: number;
+  dealsAmount: number;
+  deliveredPrice: number;
+  deliveredAmount: number;
+}
+
+type DealSortKey =
+  | 'saleDate'
+  | 'totalPrice'
+  | 'price'
+  | 'dopsPrice'
+  | 'remainder';
+
+type SortOrder = 'asc' | 'desc';
+
+interface DealListFilters {
+  status?: string[];
+  maketType?: string[];
+  source?: string[];
+  adTag?: string[];
+  daysGone?: string[];
+  dealers?: Array<number>;
+  haveReviews?: string[];
+  isRegular?: string[];
+  boxsize?: string[];
+}
+
+interface BuildDealsResponseOptions extends DealMapOptions {
+  totalsOverride?: DealTotals;
+  meta?: Record<string, any>;
+  sortKey?: DealSortKey;
+  sortOrder?: SortOrder;
+  pagination?: {
+    skip: number;
+    limit: number;
+  };
+}
+
 @Injectable()
 export class DealsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly groupsAccessService: GroupsAccessService,
+
     // private readonly filesService: FilesService,
   ) {}
 
-  async getGroups(user: UserDto) {
-    let workspaceSearch =
-      user.role.department === 'administration' ||
-      user.role.shortName === 'ROV' ||
-      user.role.shortName === 'KD' ||
-      user.role.shortName === 'LOGIST' ||
-      user.role.shortName === 'ASSISTANT' ||
-      user.role.shortName === 'MARKETER'
-        ? { gt: 0 }
-        : user.workSpaceId;
-    
-    let groupsSearch = ['MOP', 'MOV'].includes(user.role.shortName)
-      ? user.groupId
-      : { gt: 0 };
+  private readonly DEFAULT_LIMIT = 20;
+  private readonly MAX_LIMIT = 100;
 
-    //Ведение авито
-    if (user.id === 84 || user.id === 87) {
-      workspaceSearch = 2;
+  private normalizeSortKey(sortKey?: string): DealSortKey {
+    switch ((sortKey ?? 'saleDate').toLowerCase()) {
+      case 'totalprice':
+        return 'totalPrice';
+      case 'price':
+        return 'price';
+      case 'dopsprice':
+        return 'dopsPrice';
+      case 'remainder':
+        return 'remainder';
+      case 'saledate':
+      default:
+        return 'saleDate';
     }
-    // Ведение ВК
-    if (user.id === 88) {
-      workspaceSearch = 3;
+  }
+
+  private normalizeSortOrder(sortOrder?: string): SortOrder {
+    return sortOrder && sortOrder.toLowerCase() === 'asc' ? 'asc' : 'desc';
+  }
+
+  private requiresManualSorting(sortKey: DealSortKey) {
+    return ['totalPrice', 'dopsPrice', 'remainder'].includes(sortKey);
+  }
+
+  private getOrderByForSortKey(
+    sortKey: DealSortKey,
+    sortOrder: SortOrder,
+  ): Prisma.DealOrderByWithRelationInput {
+    switch (sortKey) {
+      case 'price':
+        return { price: sortOrder };
+      case 'saleDate':
+      default:
+        return { saleDate: sortOrder };
     }
-    console.log('groupsSearch', groupsSearch);
-    console.log('workspaceSearch', workspaceSearch);
-    const groups = await this.prisma.group.findMany({
-      where: {
-        id: groupsSearch,
-        workSpaceId: workspaceSearch,
-        workSpace: {
-          department: 'COMMERCIAL',
+  }
+
+  private getDealInclude() {
+    return {
+      dops: true,
+      payments: true,
+      dealers: true,
+      client: true,
+      deliveries: true,
+      reviews: true,
+      masterReports: true,
+      packerReports: true,
+      group: true,
+    } as const;
+  }
+
+  private normalizePagination(page?: number, limit?: number) {
+    const normalizedPage =
+      typeof page === 'number' && Number.isFinite(page) && page > 0
+        ? Math.floor(page)
+        : 1;
+
+    const safeLimit =
+      typeof limit === 'number' && Number.isFinite(limit) && limit > 0
+        ? Math.floor(Math.min(limit, this.MAX_LIMIT))
+        : this.DEFAULT_LIMIT;
+
+    const normalizedLimit = Math.max(safeLimit, 1);
+
+    return {
+      page: normalizedPage,
+      limit: normalizedLimit,
+      skip: (normalizedPage - 1) * normalizedLimit,
+    };
+  }
+
+  private getDaysGoneCategory(deal: Record<string, any>): string {
+    if (!deal.client?.firstContact || !deal.saleDate) {
+      return '';
+    }
+
+    const difference = useMyGetDaysDifference(
+      deal.client.firstContact,
+      deal.saleDate,
+    );
+
+    if (difference > 31) {
+      return 'Больше 31';
+    }
+    if (difference > 7) {
+      return '8-31';
+    }
+    if (difference > 2) {
+      return '3-7';
+    }
+    if (difference >= 1) {
+      return '1-2';
+    }
+    if (difference === 0) {
+      return '0';
+    }
+
+    return '';
+  }
+
+  private getDealStatus(deal: Record<string, any>): string {
+    const deliveryStatus = (deal.deliveries ?? [])
+      .slice()
+      .sort(
+        (a: Record<string, any>, b: Record<string, any>) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime(),
+      )
+      .slice(0, 1)[0]?.status;
+
+    let status = 'Создана';
+
+    if (deal.masterReports?.length) {
+      status = 'Сборка';
+    }
+    if (deal.packerReports?.length) {
+      status = 'Упаковка';
+    }
+    if (deliveryStatus) {
+      status = deliveryStatus;
+    }
+    if (deal.reservation) {
+      status = 'Бронь';
+    }
+
+    return status;
+  }
+
+  private async fetchTotals(where: Prisma.DealWhereInput): Promise<DealTotals> {
+    const totalsSource = await this.prisma.deal.findMany({
+      where,
+      select: {
+        reservation: true,
+        price: true,
+        dops: {
+          select: {
+            price: true,
+          },
+        },
+        payments: {
+          select: {
+            price: true,
+          },
+        },
+        deliveries: {
+          select: {
+            status: true,
+          },
         },
       },
-      select: {
-        id: true,
-        title: true,
-      },
-      orderBy: {
-        id: 'asc',
+    });
+
+    const totalsInput = totalsSource.map((deal) => {
+      const price = deal.price ?? 0;
+      const dopsPrice = (deal.dops ?? []).reduce(
+        (acc: number, dop: { price: number | null }) => acc + (dop.price ?? 0),
+        0,
+      );
+      const recievedPayments = (deal.payments ?? []).reduce(
+        (acc: number, payment: { price: number | null }) =>
+          acc + (payment.price ?? 0),
+        0,
+      );
+      const totalPrice = price + dopsPrice;
+      const remainder = totalPrice - recievedPayments;
+
+      return {
+        totalPrice,
+        price,
+        dopsPrice,
+        recievedPayments,
+        remainder,
+        reservation: deal.reservation,
+        deliveries: deal.deliveries,
+      };
+    });
+
+    return this.calculateTotals(totalsInput);
+  }
+
+  private sortDealsList(
+    deals: Array<Record<string, any>>,
+    sortKey: DealSortKey,
+    sortOrder: SortOrder,
+  ) {
+    const sorted = [...deals];
+
+    const getNumeric = (value: unknown) =>
+      typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+    const getDateTimestamp = (value: unknown) => {
+      if (value instanceof Date) {
+        return value.getTime();
+      }
+      if (typeof value === 'string' || typeof value === 'number') {
+        const parsed = new Date(value).getTime();
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      return 0;
+    };
+
+    sorted.sort((a, b) => {
+      const compareNumbers = (left: number, right: number) =>
+        sortOrder === 'desc' ? right - left : left - right;
+
+      switch (sortKey) {
+        case 'saleDate': {
+          const aDate = getDateTimestamp(a.saleDate);
+          const bDate = getDateTimestamp(b.saleDate);
+          return compareNumbers(aDate, bDate);
+        }
+        case 'totalPrice':
+          return compareNumbers(
+            getNumeric(a.totalPrice),
+            getNumeric(b.totalPrice),
+          );
+        case 'price':
+          return compareNumbers(getNumeric(a.price), getNumeric(b.price));
+        case 'dopsPrice':
+          return compareNumbers(
+            getNumeric(a.dopsPrice),
+            getNumeric(b.dopsPrice),
+          );
+        case 'remainder':
+          return compareNumbers(
+            getNumeric(a.remainder),
+            getNumeric(b.remainder),
+          );
+        default:
+          return 0;
       }
     });
-    if (!groups || groups.length === 0) {
-      throw new NotFoundException('Группы не найдены.');
+
+    return sorted;
+  }
+
+  private applyDealListFilters(
+    where: Prisma.DealWhereInput,
+    filters?: DealListFilters,
+  ) {
+    const postFilters: Array<(deal: Record<string, any>) => boolean> = [];
+
+    if (!filters) {
+      return { where, postFilters };
     }
-    return groups;
+
+    const normalizeStrings = (values?: string[]) =>
+      values
+        ?.map((value) => value?.trim())
+        .filter((value): value is string => !!value) ?? [];
+
+    const status = normalizeStrings(filters.status);
+    if (status.length) {
+      const allowed = new Set(status);
+      postFilters.push((deal) => allowed.has(this.getDealStatus(deal)));
+    }
+
+    const maketType = normalizeStrings(filters.maketType);
+    if (maketType.length) {
+      where.maketType = { in: maketType };
+    }
+
+    const source = normalizeStrings(filters.source);
+    if (source.length) {
+      where.source = { in: source };
+    }
+
+    const adTag = normalizeStrings(filters.adTag);
+    if (adTag.length) {
+      where.adTag = { in: adTag };
+    }
+
+    const boxsize = normalizeStrings(filters.boxsize);
+    if (boxsize.length) {
+      where.bookSize = { in: boxsize };
+    }
+
+    const dealers = (filters.dealers ?? []).filter((id) =>
+      Number.isInteger(id),
+    );
+    if (dealers.length) {
+      where.dealers = {
+        some: {
+          userId: {
+            in: dealers,
+          },
+        },
+      };
+    }
+
+    const haveReviews = normalizeStrings(filters.haveReviews);
+    if (haveReviews.length) {
+      const has = haveReviews.includes('Есть');
+      const hasNot = haveReviews.includes('Нет');
+
+      if (has && !hasNot) {
+        where.reviews = { some: {} };
+      } else if (hasNot && !has) {
+        where.reviews = { none: {} };
+      }
+    }
+
+    const isRegularFilters = normalizeStrings(filters.isRegular);
+    if (isRegularFilters.length) {
+      const wantRegular = isRegularFilters.includes('Постоянный клиент');
+      const wantNew = isRegularFilters.includes('Новый клиент');
+
+      if (wantRegular && !wantNew) {
+        where.client = { is: { isRegular: true } };
+      } else if (wantNew && !wantRegular) {
+        where.client = { is: { isRegular: false } };
+      }
+    }
+
+    const daysGone = normalizeStrings(filters.daysGone);
+    if (daysGone.length) {
+      const allowed = new Set(daysGone);
+      postFilters.push((deal) => allowed.has(this.getDaysGoneCategory(deal)));
+    }
+
+    return { where, postFilters };
+  }
+
+  private mapDealToListItem(
+    deal: Record<string, any>,
+    options: DealMapOptions = {},
+  ) {
+    const price = deal.price ?? 0;
+    const dopsPrice = (deal.dops ?? []).reduce(
+      (total: number, dop: Record<string, any>) => total + (dop.price ?? 0),
+      0,
+    );
+    const recievedPayments = (deal.payments ?? []).reduce(
+      (total: number, payment: Record<string, any>) =>
+        total + (payment.price ?? 0),
+      0,
+    );
+    const totalPrice = price + dopsPrice;
+    const remainder = totalPrice - recievedPayments;
+    const firstPayment = deal.payments?.[0]?.method ?? '';
+
+    const status = this.getDealStatus(deal);
+    const hasDelivered = (deal.deliveries ?? []).some((delivery: any) =>
+      ['Отправлена', 'Вручена'].includes(delivery.status),
+    );
+
+    const dto: Record<string, any> = {
+      payments: deal.payments,
+      id: deal.id,
+      title: deal.title,
+      totalPrice,
+      price,
+      clientType: deal.client?.type,
+      dopsPrice,
+      recievedPayments,
+      remainder,
+      dealers: deal.dealers,
+      source: deal.source,
+      adTag: deal.adTag,
+      firstPayment,
+      city: deal.city,
+      clothingMethod: deal.clothingMethod,
+      client: { firstContact: deal.client?.firstContact },
+      sphere: deal.sphere,
+      discont: deal.discont,
+      status,
+      // paid: deal.paid,
+      // workSpaceId: deal.workSpaceId,
+      // groupId: deal.groupId,
+      group: deal.group?.title,
+      // chatLink: deal.client?.chatLink,
+      saleDate: deal.saleDate,
+      maketType: deal.maketType,
+      // deletedAt: deal.deletedAt,
+      reservation: deal.reservation,
+      isRegular: deal.client?.isRegular ? 'Постоянный клиент' : 'Новый клиент',
+      courseType: deal.courseType,
+      discontAmount: deal.discontAmount,
+      boxsize: deal.bookSize,
+      pages: deal.pages,
+      pageType: deal.pageType,
+      hasDelivered,
+    };
+
+    if (options.includeLeadAging) {
+      dto.daysGone = this.getDaysGoneCategory(deal);
+    }
+
+    if (options.includeReviewSummary) {
+      dto.haveReviews = (deal.reviews ?? []).length ? 'Есть' : 'Нет';
+    }
+
+    return dto;
+  }
+
+  private calculateTotals(deals: Array<Record<string, any>>): DealTotals {
+    const totals: DealTotals = {
+      totalPrice: 0,
+      price: 0,
+      dopsPrice: 0,
+      recievedPayments: 0,
+      remainder: 0,
+      dealsAmount: deals.length,
+      deliveredPrice: 0,
+      deliveredAmount: 0,
+    };
+
+    deals.forEach((deal) => {
+      if (!deal.reservation) {
+        totals.totalPrice += deal.totalPrice ?? 0;
+        totals.price += deal.price ?? 0;
+        totals.dopsPrice += deal.dopsPrice ?? 0;
+        totals.recievedPayments += deal.recievedPayments ?? 0;
+        totals.remainder += deal.remainder ?? 0;
+      }
+
+      const hasDelivered = Array.isArray(deal.deliveries)
+        ? deal.deliveries.some((delivery: any) =>
+            ['Отправлена', 'Вручена'].includes(delivery.status),
+          )
+        : deal.hasDelivered === true;
+
+      if (hasDelivered) {
+        totals.deliveredPrice += deal.price ?? 0;
+        totals.deliveredAmount += 1;
+      }
+    });
+
+    return totals;
+  }
+
+  private buildDealsResponse(
+    deals: any[],
+    options: BuildDealsResponseOptions = {},
+  ) {
+    const {
+      totalsOverride,
+      meta,
+      sortKey,
+      sortOrder = 'desc',
+      pagination,
+      ...mapOptions
+    } = options;
+    const mappedDeals = deals.map((deal) =>
+      this.mapDealToListItem(deal, mapOptions),
+    );
+
+    const totals = totalsOverride ?? this.calculateTotals(mappedDeals);
+    const totalCount = totalsOverride?.dealsAmount ?? mappedDeals.length;
+
+    const sortedDeals = sortKey
+      ? this.sortDealsList(mappedDeals, sortKey, sortOrder)
+      : mappedDeals;
+
+    const paginatedDeals = pagination
+      ? sortedDeals.slice(pagination.skip, pagination.skip + pagination.limit)
+      : sortedDeals;
+
+    const response: Record<string, any> = {
+      deals: paginatedDeals,
+      totalInfo: totals,
+    };
+
+    if (meta || pagination) {
+      const metaPayload = {
+        ...(meta ?? {}),
+        totalCount: meta?.totalCount ?? totalCount,
+      };
+      response.meta = metaPayload;
+    }
+
+    return response;
   }
 
   async create(createDealDto: CreateDealDto, user: UserDto) {
@@ -170,409 +652,191 @@ export class DealsService {
     return newDeal;
   }
 
-  async getList(user: UserDto, from: string, to: string, groupId: number) {
-    let workspacesSearch =
-      user.role.department === 'administration' ||
-      user.role.shortName === 'ROV' ||
-      user.role.shortName === 'KD' ||
-      user.role.shortName === 'LOGIST' ||
-      user.role.shortName === 'MOV' ||
-      user.role.shortName === 'ASSISTANT' ||
-      user.role.shortName === 'MARKETER'
-        ? { gt: 0 }
-        : user.workSpaceId;
+  async getList(
+    user: UserDto,
+    from: string,
+    to: string,
+    groupId?: number,
+    page?: number,
+    limit?: number,
+    sortKey?: string,
+    sortOrder?: string,
+    filters?: DealListFilters,
+  ) {
+    const groupsSearch = this.groupsAccessService.buildGroupsScope(user);
+    const {
+      page: currentPage,
+      limit: currentLimit,
+      skip,
+    } = this.normalizePagination(page, limit);
+    const normalizedSortKey = this.normalizeSortKey(sortKey);
+    const normalizedSortOrder = this.normalizeSortOrder(sortOrder);
+    const requiresManual = this.requiresManualSorting(normalizedSortKey);
+    const baseOrderKey = requiresManual ? 'saleDate' : normalizedSortKey;
+    const orderBy = this.getOrderByForSortKey(
+      baseOrderKey,
+      normalizedSortOrder,
+    );
 
-    //Ведение авито
-    if (user.id === 84 || user.id === 87) {
-      workspacesSearch = 2;
-    }
-    // Ведение ВК
-    if (user.id === 88) {
-      workspacesSearch = 3;
-    }
-    // Запрашиваем сделки, у которых saleDate попадает в диапазон
-    const deals = await this.prisma.deal.findMany({
-      where: {
-        // deletedAt: null,
-        saleDate: {
-          gte: from,
-          lte: to,
+    const whereBase: Prisma.DealWhereInput = {
+      saleDate: {
+        gte: from,
+        lte: to,
+      },
+      groupId: groupId ? groupId : { gt: 0 },
+      group: groupsSearch,
+    };
+
+    const { where, postFilters } = this.applyDealListFilters(
+      whereBase,
+      filters,
+    );
+    const needsPostFilter = postFilters.length > 0;
+    const shouldDisablePagination = requiresManual || needsPostFilter;
+    const includeTotals = !needsPostFilter;
+
+    const dealsPromise = this.prisma.deal.findMany({
+      where,
+      include: this.getDealInclude(),
+      orderBy,
+      ...(shouldDisablePagination
+        ? {}
+        : {
+            skip,
+            take: currentLimit,
+          }),
+    });
+
+    const totalsPromise = includeTotals
+      ? this.fetchTotals(where)
+      : Promise.resolve<DealTotals | undefined>(undefined);
+
+    const [deals, totals] = await Promise.all([dealsPromise, totalsPromise]);
+
+    const filteredDeals = postFilters.length
+      ? deals.filter((deal) =>
+          postFilters.every((predicate) => predicate(deal)),
+        )
+      : deals;
+
+    const totalCount = includeTotals
+      ? (totals?.dealsAmount ?? filteredDeals.length)
+      : filteredDeals.length;
+
+    return this.buildDealsResponse(filteredDeals, {
+      includeLeadAging: true,
+      includeReviewSummary: true,
+      totalsOverride: includeTotals ? totals : undefined,
+      sortKey: normalizedSortKey,
+      sortOrder: normalizedSortOrder,
+      pagination: shouldDisablePagination
+        ? {
+            skip,
+            limit: currentLimit,
+          }
+        : undefined,
+      meta: {
+        page: currentPage,
+        limit: currentLimit,
+        totalCount,
+        sortBy: normalizedSortKey,
+        sortOrder: normalizedSortOrder,
+      },
+    });
+  }
+
+  async searchByName(
+    user: UserDto,
+    name: string,
+    page?: number,
+    limit?: number,
+    sortKey?: string,
+    sortOrder?: string,
+  ) {
+    const groupsSearch = this.groupsAccessService.buildGroupsScope(user);
+    const {
+      page: currentPage,
+      limit: currentLimit,
+      skip,
+    } = this.normalizePagination(page, limit);
+    const normalizedSortKey = this.normalizeSortKey(sortKey);
+    const normalizedSortOrder = this.normalizeSortOrder(sortOrder);
+    const requiresManual = this.requiresManualSorting(normalizedSortKey);
+    const orderBy = this.getOrderByForSortKey(
+      requiresManual ? 'saleDate' : normalizedSortKey,
+      normalizedSortOrder,
+    );
+
+    const where: Prisma.DealWhereInput = {
+      OR: [
+        {
+          title: {
+            contains: name,
+            mode: Prisma.QueryMode.insensitive,
+          },
         },
-        // client: {
-        //   firstContact: {
-        //     startsWith: period
-        //   }
-        // },
-        groupId: groupId,
-        workSpaceId: workspacesSearch,
-      },
-
-      include: {
-        dops: true,
-        payments: true,
-        dealers: true,
-        client: true,
-        deliveries: true,
-        reviews: true,
-        masterReports: true,
-        packerReports: true,
-        group: true,
-        // workSpace: true,
-      },
-      orderBy: {
-        saleDate: 'desc',
-      },
-    });
-
-    // console.log(deals.length);
-
-    const dealsList = deals.map((el) => {
-      const { id } = el;
-      const title = el.title; //Название
-      const price = el.price; //Стоимость сделки
-      const dopsPrice = el.dops.reduce((a, b) => a + b.price, 0); //сумма допов
-      const recievedPayments = el.payments.reduce((a, b) => a + b.price, 0); //внесенных платежей
-      const totalPrice = price + dopsPrice; //Общяя сумма
-      const remainder = totalPrice - recievedPayments; //Остаток
-      const dealers = el.dealers; //менеджер(ы)
-      const source = el.source; //источник сделки
-      const adTag = el.adTag; //тег рекламный
-      const firstPayment = el.payments[0]?.method || ''; //метод первого платежа
-      const city = el.city;
-      const clothingMethod = el.clothingMethod;
-      const clientType = el.client.type;
-      const chatLink = el.client.chatLink;
-      const sphere = el.sphere;
-      const discont = el.discont;
-      const paid = el.paid;
-      // const delivery = el.deliveries; //полностью
-      // const workspace = el.workSpace.title;
-      const client = el.client; //передаю полность
-      const workSpaceId = el.workSpaceId;
-      const groupId = el.groupId;
-      const saleDate = el.saleDate;
-      const maketType = el.maketType;
-      const deletedAt = el.deletedAt;
-      const reservation = el.reservation;
-      const payments = el.payments;
-      const group = el.group.title;
-      const courseType = el.courseType;
-      const discontAmount = el.discontAmount;
-      const isRegular = el.client.isRegular
-        ? 'Постоянный клиент'
-        : 'Новый клиент';
-
-      const haveReviews = el.reviews.length ? 'Есть' : 'Нет';
-      const dg = useMyGetDaysDifference(el.client.firstContact, saleDate);
-      let daysGone = '';
-      if (dg > 31) {
-        daysGone = 'Больше 31';
-      } else if (7 < dg && dg <= 31) {
-        daysGone = '8-31';
-      } else if (2 < dg && dg <= 7) {
-        daysGone = '3-7';
-      } else if (1 <= dg && dg <= 2) {
-        daysGone = '1-2';
-      } else if (dg === 0) {
-        daysGone = '0';
-      }
-
-      let status = 'Создана';
-
-      const boxsize = el.bookSize;
-      const pages = el.pages;
-      const pageType = el.pageType;
-
-      const deliveryStatus = el.deliveries
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .slice(0, 1)[0]?.status;
-
-      if (el.masterReports.length) {
-        status = 'Сборка';
-      }
-      if (el.packerReports.length) {
-        status = 'Упаковка';
-      }
-      if (deliveryStatus) {
-        status = deliveryStatus;
-      }
-      // console.log(title, status, deliveryStatus);
-
-      return {
-        id,
-        payments,
-        title,
-        group,
-        totalPrice,
-        price,
-        clientType,
-        dopsPrice,
-        recievedPayments,
-        remainder,
-        dealers,
-        source,
-        adTag,
-        firstPayment,
-        city,
-        clothingMethod,
-        client,
-        sphere,
-        discont,
-        status,
-        paid,
-        workSpaceId,
-        groupId,
-        chatLink,
-        saleDate,
-        maketType,
-        deletedAt,
-        reservation,
-        daysGone,
-        haveReviews,
-        isRegular,
-        courseType,
-        discontAmount,
-        boxsize,
-        pages,
-        pageType,
-      };
-    });
-
-    const totalInfo = {
-      totalPrice: 0,
-      price: 0,
-      dopsPrice: 0,
-      recievedPayments: 0,
-      remainder: 0,
-      dealsAmount: dealsList.length,
-    };
-
-    dealsList.map((el) => {
-      if (!el.reservation) {
-        totalInfo.totalPrice += el.totalPrice;
-        totalInfo.price += el.price;
-        totalInfo.dopsPrice += el.dopsPrice;
-        totalInfo.recievedPayments += el.recievedPayments;
-        totalInfo.remainder += el.remainder;
-      }
-    });
-
-    const resp = {
-      deals: dealsList,
-      totalInfo,
-    };
-
-    // const pay = await this.prisma.payment.findMany({
-    //   where: {
-    //     period: start.slice(0, 7),
-    //   },
-    // });
-    // console.log(pay.length);
-    // console.log(pay.reduce((a, b) => a + b.price, 0));
-    return resp;
-  }
-
-  async searchByName(user: UserDto, name: string) {
-    let workspacesSearch =
-      user.role.department === 'administration' ||
-      user.role.shortName === 'ROV' ||
-      user.role.shortName === 'LOGIST' ||
-      user.role.shortName === 'KD' ||
-      user.role.shortName === 'ASSISTANT' ||
-      user.role.shortName === 'MOV'
-        ? { gt: 0 }
-        : user.workSpaceId;
-    // Запрашиваем сделки, у которых saleDate попадает в диапазон
-
-    //Ведение авито
-    if (user.id === 84 || user.id === 87) {
-      workspacesSearch = 2;
-    }
-    // Ведение ВК
-    if (user.id === 88) {
-      workspacesSearch = 3;
-    }
-
-    const deals = await this.prisma.deal.findMany({
-      where: {
-        OR: [
-          {
-            title: {
+        {
+          client: {
+            chatLink: {
               contains: name,
-              mode: 'insensitive',
+              mode: Prisma.QueryMode.insensitive,
             },
           },
-          {
-            client: {
-              chatLink: {
+        },
+        {
+          deliveries: {
+            some: {
+              track: {
                 contains: name,
-                mode: 'insensitive',
+                mode: Prisma.QueryMode.insensitive,
               },
             },
           },
-          {
-            deliveries: {
-              some: {
-                track: {
-                  contains: name,
-                  mode: 'insensitive',
-                },
-              },
-            },
-          },
-        ],
-        workSpaceId: workspacesSearch,
-      },
-
-      include: {
-        dops: true,
-        payments: true,
-        dealers: true,
-        client: true,
-        deliveries: true,
-        masterReports: true,
-        packerReports: true,
-        group: true,
-        // workSpace: true,
-      },
-      orderBy: {
-        saleDate: 'desc',
-      },
-    });
-
-    // console.log(deals.length);
-
-    const dealsList = deals.map((el) => {
-      const { id } = el;
-      const title = el.title; //Название
-      const price = el.price; //Стоимость сделки
-      const dopsPrice = el.dops.reduce((a, b) => a + b.price, 0); //сумма допов
-      const recievedPayments = el.payments.reduce((a, b) => a + b.price, 0); //внесенных платежей
-      const totalPrice = price + dopsPrice; //Общяя сумма
-      const remainder = totalPrice - recievedPayments; //Остаток
-      const dealers = el.dealers; //менеджер(ы)
-      const source = el.source; //источник сделки
-      const adTag = el.adTag; //тег рекламный
-      const firstPayment = el.payments[0]?.method || ''; //метод первого платежа
-      const city = el.city;
-      const clothingMethod = el.clothingMethod;
-      const clientType = el.client.type;
-      const chatLink = el.client.chatLink;
-      const sphere = el.sphere;
-      const discont = el.discont;
-      const paid = el.paid;
-      // const delivery = el.deliveries; //полностью
-      // const workspace = el.workSpace.title;
-      const client = el.client; //передаю полность
-      const workSpaceId = el.workSpaceId;
-      const groupId = el.groupId;
-      const group = el.group.title;
-      const saleDate = el.saleDate;
-      const maketType = el.maketType;
-      const deletedAt = el.deletedAt;
-      const reservation = el.reservation;
-      const payments = el.payments;
-      const courseType = el.courseType;
-      const discontAmount = el.discontAmount;
-      const isRegular = el.client.isRegular
-        ? 'Постоянный клиент'
-        : 'Новый клиент';
-
-      let status = 'Создана';
-
-      const deliveryStatus = el.deliveries
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .slice(0, 1)[0]?.status;
-
-      if (el.masterReports.length) {
-        status = 'Сборка';
-      }
-      if (el.packerReports.length) {
-        status = 'Упаковка';
-      }
-      if (deliveryStatus) {
-        status = deliveryStatus;
-      }
-      // console.log(saleDate.toISOString().slice(0, 10), 234356);
-      const boxsize = el.bookSize;
-      const pages = el.pages;
-      const pageType = el.pageType;
-
-      return {
-        payments,
-        id,
-        title,
-        totalPrice,
-        price,
-        clientType,
-        dopsPrice,
-        recievedPayments,
-        remainder,
-        dealers,
-        source,
-        adTag,
-        firstPayment,
-        city,
-        clothingMethod,
-        client,
-        sphere,
-        discont,
-        status,
-        paid,
-        workSpaceId,
-        groupId,
-        group,
-        chatLink,
-        saleDate,
-        maketType,
-        deletedAt,
-        reservation,
-        isRegular,
-        courseType,
-        discontAmount,
-        boxsize,
-        pages,
-        pageType,
-      };
-    });
-
-    const totalInfo = {
-      totalPrice: 0,
-      price: 0,
-      dopsPrice: 0,
-      recievedPayments: 0,
-      remainder: 0,
-      dealsAmount: dealsList.length,
+        },
+      ],
+      group: groupsSearch,
     };
 
-    dealsList.map((el) => {
-      if (!el.reservation) {
-        totalInfo.totalPrice += el.totalPrice;
-        totalInfo.price += el.price;
-        totalInfo.dopsPrice += el.dopsPrice;
-        totalInfo.recievedPayments += el.recievedPayments;
-        totalInfo.remainder += el.remainder;
-      }
+    const [deals, totals] = await Promise.all([
+      this.prisma.deal.findMany({
+        where,
+        include: this.getDealInclude(),
+        orderBy,
+        ...(requiresManual
+          ? {}
+          : {
+              skip,
+              take: currentLimit,
+            }),
+      }),
+      this.fetchTotals(where),
+    ]);
+
+    return this.buildDealsResponse(deals, {
+      totalsOverride: totals,
+      sortKey: normalizedSortKey,
+      sortOrder: normalizedSortOrder,
+      pagination: requiresManual
+        ? {
+            skip,
+            limit: currentLimit,
+          }
+        : undefined,
+      meta: {
+        page: currentPage,
+        limit: currentLimit,
+        totalCount: totals.dealsAmount,
+        sortBy: normalizedSortKey,
+        sortOrder: normalizedSortOrder,
+      },
     });
-
-    const resp = {
-      deals: dealsList,
-      totalInfo,
-    };
-
-    // const pay = await this.prisma.payment.findMany({
-    //   where: {
-    //     period: start.slice(0, 7),
-    //   },
-    // });
-    // console.log(pay.length);
-    // console.log(pay.reduce((a, b) => a + b.price, 0));
-    return resp;
   }
 
-  async findOne(id: number) {
+  async findOne(user: UserDto, id: number) {
+    const groupsSearch = this.groupsAccessService.buildGroupsScope(user);
+
     const deal = await this.prisma.deal.findUnique({
-      where: { id },
+      where: { id, group: groupsSearch },
       include: {
         dops: {
           include: {
@@ -598,6 +862,14 @@ export class DealsService {
         },
         masterReports: true,
         packerReports: true,
+        tasks: {
+          select: {
+            id: true,
+            title: true,
+            boardId: true,
+            board: { select: { title: true } },
+          },
+        },
       },
     });
 
@@ -817,38 +1089,67 @@ export class DealsService {
   }
 
   async getDatas(user: UserDto) {
-    const methods = await this.prisma.clothingMethod.findMany();
-    const sources = await this.prisma.dealSource.findMany();
-    const adTags = await this.prisma.adTag.findMany();
-    const spheres = await this.prisma.sphere.findMany();
+    const groupsSearch = this.groupsAccessService.buildGroupsScope(user);
+    const groups = await this.prisma.group.findMany({
+      where: {
+        ...groupsSearch,
+        workSpace: {
+          department: 'COMMERCIAL',
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+      },
+    });
 
-    let groupSearch: {
-      id: { gt: number } | number;
-      workSpaceId?: number;
-    } = { id: user.groupId };
+    const methods = await this.prisma.clothingMethod.findMany({
+      select: {
+        title: true,
+      },
+    });
+    const sources = await this.prisma.dealSource.findMany({
+      where: {
+        workSpace: {
+          groups: {
+            some: groupsSearch,
+          },
+        },
+      },
+      select: {
+        title: true,
+      },
+    });
+    const adTags = await this.prisma.adTag.findMany({
+      select: {
+        title: true,
+      },
+    });
+    const spheres = await this.prisma.sphere.findMany({
+      select: {
+        title: true,
+      },
+    });
 
-    if (['ADMIN', 'G', 'KD'].includes(user.role.shortName)) {
-      groupSearch = {
-        id: { gt: 0 },
-      };
-    }
-    if (['DO'].includes(user.role.shortName)) {
-      groupSearch = {
-        id: { gt: 0 },
-        workSpaceId: user.workSpaceId,
-      };
-    }
-
-    const userGroups = await this.prisma.group.findMany({
-      where: { ...groupSearch, workSpace: { department: 'COMMERCIAL' } },
+    const managers = await this.prisma.user.findMany({
+      where: {
+        group: groupsSearch,
+        role: { shortName: { in: ['MOP', 'DO', 'ROP'] } },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        fullName: true,
+      },
     });
 
     return {
-      methods: methods.map((el) => el.title.trim()),
-      sources: sources.map((el) => el.title.trim()),
-      adTags: adTags.map((el) => el.title.trim()),
-      spheres: spheres.map((el) => el.title.trim()),
-      userGroups,
+      methods: methods.map((i) => i.title),
+      sources: sources.map((i) => i.title),
+      adTags: adTags.map((i) => i.title),
+      spheres: spheres.map((i) => i.title),
+      groups,
+      managers,
     };
   }
 

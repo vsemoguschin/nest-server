@@ -564,6 +564,607 @@ export class CommercialDatasService {
       shift,
     };
   }
+  /** данные по мопу */
+  private async getMopDatas(user: UserDto, period: string, managerId: number) {
+    const m = await this.prisma.user.findUnique({
+      where: {
+        id: managerId,
+      },
+      include: {
+        role: true,
+        workSpace: true,
+        group: true,
+        managersPlans: {
+          where: {
+            period,
+          },
+        },
+        dealSales: {
+          where: {
+            deal: {
+              saleDate: {
+                startsWith: period,
+              },
+              reservation: false,
+              deletedAt: null,
+              status: { not: 'Возврат' },
+            },
+          },
+          include: {
+            deal: {
+              include: {
+                client: true,
+                payments: true,
+              },
+            },
+          },
+        },
+        dops: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            deal: {
+              reservation: false,
+              deletedAt: null,
+              status: { not: 'Возврат' },
+            },
+          },
+          include: {
+            deal: {
+              select: {
+                title: true,
+                price: true,
+                payments: true,
+                dops: true,
+              },
+            },
+          },
+        },
+        managerReports: {
+          where: {
+            period,
+          },
+        },
+        payments: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+            deal: {
+              reservation: false,
+              deletedAt: null,
+              status: { not: 'Возврат' },
+            },
+          },
+        },
+        salaryPays: {
+          where: {
+            period,
+          },
+        },
+        salaryCorrections: {
+          where: {
+            period,
+          },
+        },
+      },
+    });
+
+    if (!m) {
+      throw new NotFoundException('Менеджер не найден.');
+    }
+    const dealsAmount = m.dealSales.length;
+    const dopsAmount = m.dops.length;
+    const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
+    const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
+    const totalSales = dealSales + dopSales;
+    /**Факт для ведения */
+    const fact =
+      m.groupId === 19 && m.role.shortName === 'MOV'
+        ? m.payments.reduce((a, b) => a + b.price, 0)
+        : 0;
+    const factAmount = m.payments.length;
+    const factPercentage =
+      m.groupId === 19 && m.role.shortName === 'MOV' ? 0.01 : 0;
+    const factBonus = +(fact * factPercentage).toFixed(2);
+    const temp = this.calculateTemp(totalSales, period);
+    /** стоимость заявки в проекте*/
+    const { callCost, isOverRopPlan, tops } = await this.getManagerGroupDatas(
+      m.groupId,
+      period,
+    );
+
+    /** Стредний чек */
+    const averageBill = dealsAmount ? +(totalSales / dealsAmount).toFixed() : 0;
+    /** количество заявок менеджера */
+    const calls = m.managerReports.reduce((a, b) => a + b.calls, 0);
+    /** макеты */
+    const makets = m.managerReports.reduce((a, b) => a + b.makets, 0);
+    /** Макеты день в день */
+    const maketsDayToDay = m.managerReports.reduce(
+      (a, b) => a + b.maketsDayToDay,
+      0,
+    );
+    /**Переходы в мессенджер */
+    const redirectToMSG = m.managerReports.reduce(
+      (a, b) => a + b.redirectToMSG,
+      0,
+    );
+    /**дрр*/
+    const drr = totalSales
+      ? +(((calls * callCost) / totalSales) * 100).toFixed(2)
+      : 0;
+    /** % из заявки в продажу */
+    const conversionDealsToCalls = calls
+      ? +((dealsAmount / calls) * 100).toFixed(2)
+      : 0;
+
+    /** % из заявки в макет */
+    const conversionMaketsToCalls = calls
+      ? +((makets / calls) * 100).toFixed(2)
+      : 0;
+
+    /** % из макета в продажу */
+    const conversionMaketsToSales = makets
+      ? +((dealsAmount / makets) * 100).toFixed(2)
+      : 0;
+    /** % из заявки в макет день в день */
+    const conversionMaketsDayToDayToCalls = calls
+      ? +((maketsDayToDay / calls) * 100).toFixed(2)
+      : 0;
+    /** Продажи день в день */
+    const dealsDayToDay = m.dealSales
+      .flatMap((ds) => ds.deal)
+      .filter((d) => d.saleDate === d.client.firstContact);
+    /** Продажи день в день */
+    const dealsDayToDayPrice = dealsDayToDay.reduce((a, b) => a + b.price, 0);
+    /** Без дизайнера */
+    const dealsWithoutDesigners = m.dealSales
+      .flatMap((ds) => ds.deal)
+      .filter((d) =>
+        [
+          'Заготовка из базы',
+          'Рекламный',
+          'Из рассылки',
+          'Визуализатор',
+        ].includes(d.maketType),
+      );
+    /** Сумма продаж без дизайнера */
+    const dealsSalesWithoutDesigners = dealsWithoutDesigners.reduce(
+      (sum, deal) => sum + (deal.price || 0),
+      0,
+    );
+
+    const { dealsInfo, dealsInfoPrevMounth, dopsInfo, dopsInfoPrevMounth } =
+      await this.getManagerSalesDatas(m.id, period);
+    const dealPays = +dealsInfo.reduce((a, b) => a + b.toSalary, 0).toFixed(2);
+    const dopPays = +dopsInfo.reduce((a, b) => a + b.toSalary, 0).toFixed(2);
+    const prevPeriodsDealsPays = +dealsInfoPrevMounth
+      .reduce((a, b) => a + b.toSalary, 0)
+      .toFixed(2);
+    const prevPeriodsDopsPays = +dopsInfoPrevMounth
+      .reduce((a, b) => a + b.toSalary, 0)
+      .toFixed(2);
+    const { pays, salaryPays, salaryCorrections, shift, shiftBonus } =
+      await this.getManagerSalaryDatas(m.id, period);
+    const isIntern = m.managerReports.find((r) => r.isIntern === true)
+      ? true
+      : false;
+    const { bonusPercentage, bonus, dopsPercentage } = this.getBonusPercentage(
+      totalSales,
+      m.workSpaceId,
+      m.groupId,
+      isIntern,
+      m.role.shortName,
+      period,
+    );
+    let totalSalary = 0;
+
+    const salaryCorrectionMinus = salaryCorrections
+      .filter((c) => c.type === 'Вычет')
+      .reduce((a, b) => a + b.price, 0);
+    const salaryCorrectionPlus = salaryCorrections
+      .filter((s) => s.type === 'Прибавка')
+      .reduce((a, b) => a + b.price, 0);
+    const groupPlanBonus =
+      isOverRopPlan &&
+      m.deletedAt === null &&
+      (m.groupId === 3 || m.groupId === 2)
+        ? 3000
+        : 0;
+    const topBonus =
+      tops.find((m) => m.id === managerId && m.groupId === 3)?.topBonus ?? 0;
+    totalSalary +=
+      salaryCorrectionPlus -
+      salaryCorrectionMinus +
+      prevPeriodsDealsPays +
+      prevPeriodsDopsPays +
+      bonus +
+      dealPays +
+      dopPays +
+      shiftBonus +
+      groupPlanBonus +
+      topBonus +
+      factBonus;
+
+    return {
+      fullName: m.fullName,
+      role: m.role.fullName,
+      id: m.id,
+      workSpace: m.workSpace.title,
+      group: m.group.title,
+
+      plan: m.managersPlans[0]?.plan ?? 0,
+      totalSales,
+      dealsAmount,
+      dealSales,
+      dopsAmount,
+      dopSales,
+      fact,
+      factAmount,
+      factPercentage,
+      factBonus,
+      temp,
+
+      // Показатели
+      averageBill: averageBill,
+      drr: drr,
+      calls: calls,
+      conversionDealsToCalls: conversionDealsToCalls,
+      conversionMaketsToCalls: conversionMaketsToCalls,
+      makets: makets,
+      conversionMaketsToSales: conversionMaketsToSales,
+      maketsDayToDay: maketsDayToDay,
+      conversionMaketsDayToDayToCalls: conversionMaketsDayToDayToCalls,
+      dealsDayToDay: dealsDayToDay.length,
+      dealsDayToDayPrice: dealsDayToDayPrice,
+      dealsWithoutDesigners: dealsWithoutDesigners.length,
+      dealsSalesWithoutDesigners: dealsSalesWithoutDesigners,
+      redirectToMSG: redirectToMSG,
+
+      pays,
+      salaryPays,
+      salaryCorrections,
+      shift,
+      shiftBonus,
+
+      bonusPercentage,
+      bonus,
+      dopsPercentage,
+
+      dopPays,
+      dealPays,
+      topBonus,
+      totalSalary,
+      rem: 0,
+
+      dealsInfo: dealsInfo.sort((a, b) => a.id - b.id),
+      // .filter((d) => d.toSalary > 0),
+      dealsInfoPrevMounth: dealsInfoPrevMounth.sort((a, b) => a.id - b.id),
+      // .filter((d) => d.toSalary > 0),
+      dopsInfo: dopsInfo.sort((a, b) => a.dealId - b.dealId),
+      // .filter((d) => d.toSalary > 0),
+      dopsInfoPrevMounth: dopsInfoPrevMounth.sort(
+        (a, b) => a.dealId - b.dealId,
+      ),
+      // .filter((d) => d.toSalary > 0),
+      prevPeriodsDealsPays,
+      prevPeriodsDopsPays,
+
+      reports: m.managerReports,
+
+      groupId: m.groupId,
+      isIntern: m.isIntern,
+      fired: m.deletedAt ? true : false,
+    };
+  }
+  /** данные по ропу */
+  private async getRopDatas(user: UserDto, period: string, managerId: number) {
+    const m = await this.prisma.user.findUnique({
+      where: {
+        id: managerId,
+      },
+      include: {
+        role: true,
+        workSpace: true,
+        group: {
+          include: {
+            payments: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
+                deal: {
+                  reservation: false,
+                  deletedAt: null,
+                  status: { not: 'Возврат' },
+                },
+              },
+            },
+          },
+        },
+        managersPlans: {
+          where: {
+            period,
+          },
+        },
+        dealSales: {
+          where: {
+            deal: {
+              saleDate: {
+                startsWith: period,
+              },
+              reservation: false,
+              deletedAt: null,
+              status: { not: 'Возврат' },
+            },
+          },
+          include: {
+            deal: {
+              include: {
+                client: true,
+                payments: true,
+              },
+            },
+          },
+        },
+        dops: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            deal: {
+              reservation: false,
+              deletedAt: null,
+              status: { not: 'Возврат' },
+            },
+          },
+          include: {
+            deal: {
+              select: {
+                title: true,
+                price: true,
+                payments: true,
+                dops: true,
+              },
+            },
+          },
+        },
+        managerReports: {
+          where: {
+            period,
+          },
+        },
+        payments: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
+        salaryPays: {
+          where: {
+            period,
+          },
+        },
+        salaryCorrections: {
+          where: {
+            period,
+          },
+        },
+      },
+    });
+
+    if (!m) {
+      throw new NotFoundException('Менеджер не найден.');
+    }
+    const dealsAmount = m.dealSales.length;
+    const dopsAmount = m.dops.length;
+    const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
+    const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
+    const totalSales = dealSales + dopSales;
+
+    /**Факт */
+    const fact =
+      m.groupId === 19 && m.role.shortName === 'ROP'
+        ? m.group.payments.reduce((a, b) => a + b.price, 0)
+        : 0;
+    const factAmount = m.group.payments.length;
+    const factPercentage =
+      m.groupId === 19 && m.role.shortName === 'ROP' ? 0.005 : 0;
+    const factBonus = +(fact * factPercentage).toFixed(2);
+    const temp = this.calculateTemp(totalSales, period);
+    /** стоимость заявки в проекте*/
+    const { callCost, isOverRopPlan, tops } = await this.getManagerGroupDatas(
+      m.groupId,
+      period,
+    );
+
+    /** Стредний чек */
+    const averageBill = dealsAmount ? +(totalSales / dealsAmount).toFixed() : 0;
+    /** количество заявок менеджера */
+    const calls = m.managerReports.reduce((a, b) => a + b.calls, 0);
+    /** макеты */
+    const makets = m.managerReports.reduce((a, b) => a + b.makets, 0);
+    /** Макеты день в день */
+    const maketsDayToDay = m.managerReports.reduce(
+      (a, b) => a + b.maketsDayToDay,
+      0,
+    );
+    /**Переходы в мессенджер */
+    const redirectToMSG = m.managerReports.reduce(
+      (a, b) => a + b.redirectToMSG,
+      0,
+    );
+    /**дрр*/
+    const drr = totalSales
+      ? +(((calls * callCost) / totalSales) * 100).toFixed(2)
+      : 0;
+    /** % из заявки в продажу */
+    const conversionDealsToCalls = calls
+      ? +((dealsAmount / calls) * 100).toFixed(2)
+      : 0;
+
+    /** % из заявки в макет */
+    const conversionMaketsToCalls = calls
+      ? +((makets / calls) * 100).toFixed(2)
+      : 0;
+
+    /** % из макета в продажу */
+    const conversionMaketsToSales = makets
+      ? +((dealsAmount / makets) * 100).toFixed(2)
+      : 0;
+    /** % из заявки в макет день в день */
+    const conversionMaketsDayToDayToCalls = calls
+      ? +((maketsDayToDay / calls) * 100).toFixed(2)
+      : 0;
+    /** Продажи день в день */
+    const dealsDayToDay = m.dealSales
+      .flatMap((ds) => ds.deal)
+      .filter((d) => d.saleDate === d.client.firstContact);
+    /** Продажи день в день */
+    const dealsDayToDayPrice = dealsDayToDay.reduce((a, b) => a + b.price, 0);
+    /** Без дизайнера */
+    const dealsWithoutDesigners = m.dealSales
+      .flatMap((ds) => ds.deal)
+      .filter((d) =>
+        [
+          'Заготовка из базы',
+          'Рекламный',
+          'Из рассылки',
+          'Визуализатор',
+        ].includes(d.maketType),
+      );
+    /** Сумма продаж без дизайнера */
+    const dealsSalesWithoutDesigners = dealsWithoutDesigners.reduce(
+      (sum, deal) => sum + (deal.price || 0),
+      0,
+    );
+
+    const { dealsInfo, dealsInfoPrevMounth, dopsInfo, dopsInfoPrevMounth } =
+      await this.getManagerSalesDatas(m.id, period);
+    const dealPays = +dealsInfo.reduce((a, b) => a + b.toSalary, 0).toFixed(2);
+    const dopPays = +dopsInfo.reduce((a, b) => a + b.toSalary, 0).toFixed(2);
+    const prevPeriodsDealsPays = +dealsInfoPrevMounth
+      .reduce((a, b) => a + b.toSalary, 0)
+      .toFixed(2);
+    const prevPeriodsDopsPays = +dopsInfoPrevMounth
+      .reduce((a, b) => a + b.toSalary, 0)
+      .toFixed(2);
+    const { pays, salaryPays, salaryCorrections, shift, shiftBonus } =
+      await this.getManagerSalaryDatas(m.id, period);
+    const isIntern = m.managerReports.find((r) => r.isIntern === true)
+      ? true
+      : false;
+    const { bonusPercentage, bonus, dopsPercentage } = this.getBonusPercentage(
+      totalSales,
+      m.workSpaceId,
+      m.groupId,
+      isIntern,
+      m.role.shortName,
+      period,
+    );
+    let totalSalary = 0;
+
+    const salaryCorrectionMinus = salaryCorrections
+      .filter((c) => c.type === 'Вычет')
+      .reduce((a, b) => a + b.price, 0);
+    const salaryCorrectionPlus = salaryCorrections
+      .filter((s) => s.type === 'Прибавка')
+      .reduce((a, b) => a + b.price, 0);
+    const groupPlanBonus =
+      isOverRopPlan &&
+      m.deletedAt === null &&
+      (m.groupId === 3 || m.groupId === 2)
+        ? 3000
+        : 0;
+    const topBonus =
+      tops.find((m) => m.id === managerId && m.groupId === 3)?.topBonus ?? 0;
+    totalSalary +=
+      salaryCorrectionPlus -
+      salaryCorrectionMinus +
+      prevPeriodsDealsPays +
+      prevPeriodsDopsPays +
+      bonus +
+      dealPays +
+      dopPays +
+      shiftBonus +
+      groupPlanBonus +
+      topBonus +
+      factBonus;
+
+    return {
+      fullName: m.fullName,
+      role: m.role.fullName,
+      id: m.id,
+      workSpace: m.workSpace.title,
+      group: m.group.title,
+
+      plan: m.managersPlans[0]?.plan ?? 0,
+      totalSales,
+      dealsAmount,
+      dealSales,
+      dopsAmount,
+      dopSales,
+      fact,
+      factAmount,
+      factPercentage,
+      factBonus,
+      temp,
+
+      // Показатели
+      averageBill: averageBill,
+      drr: drr,
+      calls: calls,
+      conversionDealsToCalls: conversionDealsToCalls,
+      conversionMaketsToCalls: conversionMaketsToCalls,
+      makets: makets,
+      conversionMaketsToSales: conversionMaketsToSales,
+      maketsDayToDay: maketsDayToDay,
+      conversionMaketsDayToDayToCalls: conversionMaketsDayToDayToCalls,
+      dealsDayToDay: dealsDayToDay.length,
+      dealsDayToDayPrice: dealsDayToDayPrice,
+      dealsWithoutDesigners: dealsWithoutDesigners.length,
+      dealsSalesWithoutDesigners: dealsSalesWithoutDesigners,
+      redirectToMSG: redirectToMSG,
+
+      pays,
+      salaryPays,
+      salaryCorrections,
+      shift,
+      shiftBonus,
+
+      bonusPercentage,
+      bonus,
+      dopsPercentage,
+
+      dopPays,
+      dealPays,
+      topBonus,
+      totalSalary,
+      rem: 0,
+
+      dealsInfo: dealsInfo.sort((a, b) => a.id - b.id),
+      // .filter((d) => d.toSalary > 0),
+      dealsInfoPrevMounth: dealsInfoPrevMounth.sort((a, b) => a.id - b.id),
+      // .filter((d) => d.toSalary > 0),
+      dopsInfo: dopsInfo.sort((a, b) => a.dealId - b.dealId),
+      // .filter((d) => d.toSalary > 0),
+      dopsInfoPrevMounth: dopsInfoPrevMounth.sort(
+        (a, b) => a.dealId - b.dealId,
+      ),
+      // .filter((d) => d.toSalary > 0),
+      prevPeriodsDealsPays,
+      prevPeriodsDopsPays,
+
+      reports: m.managerReports,
+
+      groupId: m.groupId,
+      isIntern: m.isIntern,
+      fired: m.deletedAt ? true : false,
+    };
+  }
   /** get /commercial-datas/tops/:groupId?period */
   async getManagerGroupDatas(groupId: number, period: string) {
     if (groupId === 18 || groupId === 3) {
@@ -1246,7 +1847,10 @@ export class CommercialDatasService {
         groupId,
         role: {
           shortName: {
-            in: ['DO', 'MOP', 'ROP', 'MOV'],
+            in:
+              user.role.shortName === 'MOP'
+                ? ['MOP']
+                : ['DO', 'MOP', 'ROP', 'MOV'],
           },
         },
       },
@@ -1349,7 +1953,7 @@ export class CommercialDatasService {
       })
       .sort((a, b) => b.totalSales - a.totalSales);
     //   .filter((u) => u.totalSales || !u.fired);
-    console.log(res.reduce((a, b) => a + b.dealSales, 0));
+    // console.log(res.reduce((a, b) => a + b.dealSales, 0));
     return res;
   }
   /** get /commercial-datas/:managerId */
@@ -1359,289 +1963,25 @@ export class CommercialDatasService {
         id: managerId,
       },
       include: {
-        role: true,
-        workSpace: true,
-        group: true,
-        managersPlans: {
-          where: {
-            period,
-          },
-        },
-        dealSales: {
-          where: {
-            deal: {
-              saleDate: {
-                startsWith: period,
-              },
-              reservation: false,
-              deletedAt: null,
-              status: { not: 'Возврат' },
-            },
-          },
-          include: {
-            deal: {
-              include: {
-                client: true,
-                payments: true,
-              },
-            },
-          },
-        },
-        dops: {
-          where: {
-            saleDate: {
-              startsWith: period,
-            },
-            deal: {
-              reservation: false,
-              deletedAt: null,
-              status: { not: 'Возврат' },
-            },
-          },
-          include: {
-            deal: {
-              select: {
-                title: true,
-                price: true,
-                payments: true,
-                dops: true,
-              },
-            },
-          },
-        },
-        managerReports: {
-          where: {
-            period,
-          },
-        },
-        payments: {
-          where: {
-            date: {
-              startsWith: period,
-            },
-          },
-        },
-        salaryPays: {
-          where: {
-            period,
-          },
-        },
-        salaryCorrections: {
-          where: {
-            period,
+        role: {
+          select: {
+            shortName: true,
           },
         },
       },
     });
-
     if (!m) {
-      throw new NotFoundException('Менеджер не найден.');
+      throw new NotFoundException('Manager not found');
     }
-    const dealsAmount = m.dealSales.length;
-    const dopsAmount = m.dops.length;
-    const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
-    const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
-    const totalSales = dealSales + dopSales;
-    /**Факт для ведения */
-    const fact =
-      m.groupId === 19 && m.role.shortName === 'MOV'
-        ? m.payments.reduce((a, b) => a + b.price, 0)
-        : 0;
-    const factAmount = m.payments.length;
-    const factPercentage =
-      m.groupId === 19 && m.role.shortName === 'MOV' ? 0.01 : 0;
-    const factBonus = +(fact * factPercentage).toFixed(2);
-    const temp = this.calculateTemp(totalSales, period);
-    /** стоимость заявки в проекте*/
-    const { callCost, isOverRopPlan, tops } = await this.getManagerGroupDatas(
-      m.groupId,
-      period,
-    );
-
-    /** Стредний чек */
-    const averageBill = dealsAmount ? +(totalSales / dealsAmount).toFixed() : 0;
-    /** количество заявок менеджера */
-    const calls = m.managerReports.reduce((a, b) => a + b.calls, 0);
-    /** макеты */
-    const makets = m.managerReports.reduce((a, b) => a + b.makets, 0);
-    /** Макеты день в день */
-    const maketsDayToDay = m.managerReports.reduce(
-      (a, b) => a + b.maketsDayToDay,
-      0,
-    );
-    /**Переходы в мессенджер */
-    const redirectToMSG = m.managerReports.reduce(
-      (a, b) => a + b.redirectToMSG,
-      0,
-    );
-    /**дрр*/
-    const drr = totalSales
-      ? +(((calls * callCost) / totalSales) * 100).toFixed(2)
-      : 0;
-    /** % из заявки в продажу */
-    const conversionDealsToCalls = calls
-      ? +((dealsAmount / calls) * 100).toFixed(2)
-      : 0;
-
-    /** % из заявки в макет */
-    const conversionMaketsToCalls = calls
-      ? +((makets / calls) * 100).toFixed(2)
-      : 0;
-
-    /** % из макета в продажу */
-    const conversionMaketsToSales = makets
-      ? +((dealsAmount / makets) * 100).toFixed(2)
-      : 0;
-    /** % из заявки в макет день в день */
-    const conversionMaketsDayToDayToCalls = calls
-      ? +((maketsDayToDay / calls) * 100).toFixed(2)
-      : 0;
-    /** Продажи день в день */
-    const dealsDayToDay = m.dealSales
-      .flatMap((ds) => ds.deal)
-      .filter((d) => d.saleDate === d.client.firstContact);
-    /** Продажи день в день */
-    const dealsDayToDayPrice = dealsDayToDay.reduce((a, b) => a + b.price, 0);
-    /** Без дизайнера */
-    const dealsWithoutDesigners = m.dealSales
-      .flatMap((ds) => ds.deal)
-      .filter((d) =>
-        [
-          'Заготовка из базы',
-          'Рекламный',
-          'Из рассылки',
-          'Визуализатор',
-        ].includes(d.maketType),
-      );
-    /** Сумма продаж без дизайнера */
-    const dealsSalesWithoutDesigners = dealsWithoutDesigners.reduce(
-      (sum, deal) => sum + (deal.price || 0),
-      0,
-    );
-
-    const { dealsInfo, dealsInfoPrevMounth, dopsInfo, dopsInfoPrevMounth } =
-      await this.getManagerSalesDatas(m.id, period);
-    const dealPays = +dealsInfo.reduce((a, b) => a + b.toSalary, 0).toFixed(2);
-    const dopPays = +dopsInfo.reduce((a, b) => a + b.toSalary, 0).toFixed(2);
-    const prevPeriodsDealsPays = +dealsInfoPrevMounth
-      .reduce((a, b) => a + b.toSalary, 0)
-      .toFixed(2);
-    const prevPeriodsDopsPays = +dopsInfoPrevMounth
-      .reduce((a, b) => a + b.toSalary, 0)
-      .toFixed(2);
-    const { pays, salaryPays, salaryCorrections, shift, shiftBonus } =
-      await this.getManagerSalaryDatas(m.id, period);
-    const isIntern = m.managerReports.find((r) => r.isIntern === true)
-      ? true
-      : false;
-    const { bonusPercentage, bonus, dopsPercentage } = this.getBonusPercentage(
-      totalSales,
-      m.workSpaceId,
-      m.groupId,
-      isIntern,
-      m.role.shortName,
-      period,
-    );
-    let totalSalary = 0;
-
-    const salaryCorrectionMinus = salaryCorrections
-      .filter((c) => c.type === 'Вычет')
-      .reduce((a, b) => a + b.price, 0);
-    const salaryCorrectionPlus = salaryCorrections
-      .filter((s) => s.type === 'Прибавка')
-      .reduce((a, b) => a + b.price, 0);
-    const groupPlanBonus =
-      isOverRopPlan &&
-      m.deletedAt === null &&
-      (m.groupId === 3 || m.groupId === 2)
-        ? 3000
-        : 0;
-    const topBonus =
-      tops.find((m) => m.id === managerId && m.groupId === 3)?.topBonus ?? 0;
-    totalSalary +=
-      salaryCorrectionPlus -
-      salaryCorrectionMinus +
-      prevPeriodsDealsPays +
-      prevPeriodsDopsPays +
-      bonus +
-      dealPays +
-      dopPays +
-      shiftBonus +
-      groupPlanBonus +
-      topBonus +
-      factBonus;
-
-    return {
-      fullName: m.fullName,
-      role: m.role.fullName,
-      id: m.id,
-      workSpace: m.workSpace.title,
-      group: m.group.title,
-
-      plan: m.managersPlans[0]?.plan ?? 0,
-      totalSales,
-      dealsAmount,
-      dealSales,
-      dopsAmount,
-      dopSales,
-      fact,
-      factAmount,
-      factPercentage,
-      factBonus,
-      temp,
-
-      // Показатели
-      averageBill: averageBill,
-      drr: drr,
-      calls: calls,
-      conversionDealsToCalls: conversionDealsToCalls,
-      conversionMaketsToCalls: conversionMaketsToCalls,
-      makets: makets,
-      conversionMaketsToSales: conversionMaketsToSales,
-      maketsDayToDay: maketsDayToDay,
-      conversionMaketsDayToDayToCalls: conversionMaketsDayToDayToCalls,
-      dealsDayToDay: dealsDayToDay.length,
-      dealsDayToDayPrice: dealsDayToDayPrice,
-      dealsWithoutDesigners: dealsWithoutDesigners.length,
-      dealsSalesWithoutDesigners: dealsSalesWithoutDesigners,
-      redirectToMSG: redirectToMSG,
-
-      pays,
-      salaryPays,
-      salaryCorrections,
-      shift,
-      shiftBonus,
-
-      bonusPercentage,
-      bonus,
-      dopsPercentage,
-
-      dopPays,
-      dealPays,
-      topBonus,
-      totalSalary,
-      rem: 0,
-
-      dealsInfo: dealsInfo.sort((a, b) => a.id - b.id),
-      // .filter((d) => d.toSalary > 0),
-      dealsInfoPrevMounth: dealsInfoPrevMounth.sort((a, b) => a.id - b.id),
-      // .filter((d) => d.toSalary > 0),
-      dopsInfo: dopsInfo.sort((a, b) => a.dealId - b.dealId),
-      // .filter((d) => d.toSalary > 0),
-      dopsInfoPrevMounth: dopsInfoPrevMounth.sort(
-        (a, b) => a.dealId - b.dealId,
-      ),
-      // .filter((d) => d.toSalary > 0),
-      prevPeriodsDealsPays,
-      prevPeriodsDopsPays,
-
-      reports: m.managerReports,
-
-      groupId: m.groupId,
-      isIntern: m.isIntern,
-      fired: m.deletedAt ? true : false,
-    };
+    if (['MOV', 'MOP', 'DO'].includes(m.role.shortName)) {
+      return await this.getMopDatas(user, period, managerId);
+    } else if (['ROP'].includes(m.role.shortName)) {
+      return await this.getRopDatas(user, period, managerId);
+    } else {
+      throw new NotFoundException('Данных нет.');
+    }
   }
+
   /** /commercial-datas/statistics/:groupId */
   async getStat(user: UserDto, period: string, groupId: number) {
     function getDaysInMonth(year: number, month: number): number {

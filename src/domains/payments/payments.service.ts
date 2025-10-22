@@ -6,13 +6,11 @@ import { UserDto } from '../users/dto/user.dto';
 import axios from 'axios';
 import { createHash } from 'crypto';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
-import { DealsService } from '../deals/deals.service';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly dealsService: DealsService,
   ) {}
 
   async create(createPaymentDto: CreatePaymentDto, user: UserDto) {

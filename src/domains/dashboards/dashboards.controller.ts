@@ -39,26 +39,6 @@ export class DashboardsController {
     return this.dashboardsService.getWorkspaces(user);
   }
 
-  @Get('/deals')
-  @ApiResponse({ status: 200, type: [WorkSpaceDto] })
-  @Roles(
-    'ADMIN',
-    'G',
-    'KD',
-    'DO',
-    'ROP',
-    'MOP',
-    'ROV',
-    'MOV',
-    'MTZ',
-    'LOGIST',
-    'MARKETER',
-    'ASSISTANT',
-  )
-  async getDeals(@CurrentUser() user: UserDto) {
-    return this.dashboardsService.getDeals(user);
-  }
-
   @Get('/comercial')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   async getComercialData(

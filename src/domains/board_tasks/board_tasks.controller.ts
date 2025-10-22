@@ -416,11 +416,11 @@ export class TasksController {
       description: `Перемещено #${taskId} → доска ${dto.boardId}`,
       payload: { taskId, toBoardId: dto.boardId },
     });
-    await this.notify.notifyParticipants({
-      taskId: updated.id,
-      actorUserId: user.id,
-      message: `Перемещено на доску ${dto.boardId}`,
-    });
+    // await this.notify.notifyParticipants({
+    //   taskId: updated.id,
+    //   actorUserId: user.id,
+    //   message: `Перемещено на доску ${dto.boardId}`,
+    // });
     return updated;
   }
 
@@ -446,11 +446,11 @@ export class TasksController {
         description: `Убраны метки: ${removedNames.join(', ')}`,
         payload: { added: [], removed: removedNames },
       });
-      await this.notify.notifyParticipants({
-        taskId: task.id,
-        actorUserId: user.id,
-        message: `Убраны метки: ${removedNames.join(', ')}`,
-      });
+      // await this.notify.notifyParticipants({
+      //   taskId: task.id,
+      //   actorUserId: user.id,
+      //   message: `Убраны метки: ${removedNames.join(', ')}`,
+      // });
     }
 
     const hasAdded = !!addedNames?.length;
@@ -473,18 +473,18 @@ export class TasksController {
           .join('; '),
         payload: { added: addedHuman, removed: removedNames, addedNames },
       });
-      await this.notify.notifyParticipants({
-        taskId: task.id,
-        actorUserId: user.id,
-        message: [
-          addedHuman.length ? `Добавлены метки: ${addedHuman.join(', ')}` : '',
-          removedNames.length
-            ? `Удалены метки: ${removedNames.join(', ')}`
-            : '',
-        ]
-          .filter(Boolean)
-          .join('; '),
-      });
+      // await this.notify.notifyParticipants({
+      //   taskId: task.id,
+      //   actorUserId: user.id,
+      //   message: [
+      //     addedHuman.length ? `Добавлены метки: ${addedHuman.join(', ')}` : '',
+      //     removedNames.length
+      //       ? `Удалены метки: ${removedNames.join(', ')}`
+      //       : '',
+      //   ]
+      //     .filter(Boolean)
+      //     .join('; '),
+      // });
     }
 
     return { taskId, tags };
@@ -510,11 +510,11 @@ export class TasksController {
       user.id,
       dto.text,
     );
-    await this.notify.notifyParticipants({
-      taskId,
-      actorUserId: user.id,
-      message: `Оставил комментарий: ${comment.text}`,
-    });
+    // await this.notify.notifyParticipants({
+    //   taskId,
+    //   actorUserId: user.id,
+    //   message: `Оставил комментарий: ${comment.text}`,
+    // });
     // компонент ожидает id, чтобы затем грузить файлы
     return { id: comment.id };
   }
@@ -565,11 +565,11 @@ export class TasksController {
 
     await this.attachmentsService.create(task.id, dbFile.id);
     await this.tasksService.ensureMember(task.id, user.id);
-    await this.notify.notifyParticipants({
-      taskId: comment.task.id,
-      actorUserId: user.id,
-      message: 'Добавлено вложение',
-    });
+    // await this.notify.notifyParticipants({
+    //   taskId: comment.task.id,
+    //   actorUserId: user.id,
+    //   message: 'Добавлено вложение',
+    // });
 
     await this.audit.log({
       userId: user.id,
@@ -688,12 +688,12 @@ export class TasksController {
       description: `${user.fullName} добавил ${newMember.fullName}`,
     });
 
-    await this.notify.notifyParticipants({
-      taskId,
-      actorUserId: user.id,
-      message: `${user.fullName} добавил ${newMember.fullName}`,
-      // link опционально, если не передашь — сгенерится автоматически
-    });
+    // await this.notify.notifyParticipants({
+    //   taskId,
+    //   actorUserId: user.id,
+    //   message: `${user.fullName} добавил ${newMember.fullName}`,
+    //   // link опционально, если не передашь — сгенерится автоматически
+    // });
     return newMember;
   }
   @Delete(':taskId/members/:userId')
@@ -714,11 +714,11 @@ export class TasksController {
       description: `${user.fullName} удалил ${deletedMember.fullName}`,
     });
 
-    await this.notify.notifyParticipants({
-      taskId,
-      actorUserId: user.id,
-      message: `${user.fullName} удалил ${deletedMember.fullName}`,
-    });
+    // await this.notify.notifyParticipants({
+    //   taskId,
+    //   actorUserId: user.id,
+    //   message: `${user.fullName} удалил ${deletedMember.fullName}`,
+    // });
     return deletedMember;
   }
 

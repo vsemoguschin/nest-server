@@ -57,14 +57,9 @@ export class DealsController {
     return this.dealsService.create(createDealDto, user);
   }
 
-  @Get('groups')
-  async getGroups(@CurrentUser() user: UserDto) {
-    return this.dealsService.getGroups(user);
-  }
-
-  @Get('group/:groupId')
+  @Get('')
   @ApiOperation({
-    summary: 'Получить все сделки',
+    summary: 'Получить все сделки группы',
     description:
       'Endpoint: GET /deals?period=YYYY-MM. Получить все сделки за указанный период.',
   })
@@ -85,8 +80,22 @@ export class DealsController {
     @CurrentUser() user: UserDto,
     @Query('from') from: string,
     @Query('to') to: string,
-    @Param('groupId', ParseIntPipe) groupId: number,
+    @Query('groupId') groupId?: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
+    @Query('status') status?: string[] | string,
+    @Query('maketType') maketType?: string[] | string,
+    @Query('source') source?: string[] | string,
+    @Query('adTag') adTag?: string[] | string,
+    @Query('daysGone') daysGone?: string[] | string,
+    @Query('dealers') dealers?: string[] | string,
+    @Query('haveReviews') haveReviews?: string[] | string,
+    @Query('isRegular') isRegular?: string[] | string,
+    @Query('boxsize') boxsize?: string[] | string,
   ): Promise<any> {
+    console.log(boxsize);
     if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
         'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
@@ -97,7 +106,48 @@ export class DealsController {
         'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    return this.dealsService.getList(user, from, to, groupId);
+    const pageNumber = page !== undefined ? Number(page) : undefined;
+    const limitNumber = limit !== undefined ? Number(limit) : undefined;
+
+    const toArray = (value?: string | string[]) => {
+      if (value === undefined) return undefined;
+      const prepared = Array.isArray(value)
+        ? value
+        : value.split(',');
+      const normalized = prepared
+        .map((item) => item?.trim())
+        .filter((item): item is string => !!item);
+      return normalized.length ? normalized : undefined;
+    };
+
+    const numberArray = (value?: string | string[]) =>
+      toArray(value)
+        ?.map((item) => Number(item))
+        .filter((item) => Number.isFinite(item));
+
+    const filters = {
+      status: toArray(status),
+      maketType: toArray(maketType),
+      source: toArray(source),
+      adTag: toArray(adTag),
+      daysGone: toArray(daysGone),
+      dealers: numberArray(dealers),
+      haveReviews: toArray(haveReviews),
+      isRegular: toArray(isRegular),
+      boxsize: toArray(boxsize),
+    };
+
+    return this.dealsService.getList(
+      user,
+      from,
+      to,
+      groupId,
+      pageNumber,
+      limitNumber,
+      sortBy,
+      sortOrder,
+      filters,
+    );
   }
 
   @Get('search')
@@ -121,11 +171,25 @@ export class DealsController {
   async searchDealsByName(
     @CurrentUser() user: UserDto,
     @Query('name') name: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
   ): Promise<any> {
     if (!name || name.trim() === '') {
       throw new BadRequestException('Параметр name обязателен.');
     }
-    return this.dealsService.searchByName(user, name);
+    const pageNumber = page !== undefined ? Number(page) : undefined;
+    const limitNumber = limit !== undefined ? Number(limit) : undefined;
+
+    return this.dealsService.searchByName(
+      user,
+      name,
+      pageNumber,
+      limitNumber,
+      sortBy,
+      sortOrder,
+    );
   }
 
   @Get(':id')
@@ -146,8 +210,11 @@ export class DealsController {
     'MARKETER',
     'ASSISTANT',
   )
-  async getOne(@Param('id', ParseIntPipe) id: number): Promise<DealDto> {
-    return this.dealsService.findOne(id);
+  async getOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserDto,
+  ): Promise<DealDto> {
+    return this.dealsService.findOne(user, id);
   }
 
   @Patch(':id')

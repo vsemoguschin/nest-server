@@ -8,10 +8,14 @@ import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { CreateWorkspaceGroupDto } from '../workspace-groups/dto/create-workspace-group.dto';
 import { UserDto } from '../users/dto/user.dto';
+import { GroupsAccessService } from './groups-access.service';
 
 @Injectable()
 export class GroupsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly groupsAccessService: GroupsAccessService,
+  ) {}
 
   async create(createGroupDto: CreateGroupDto) {
     const workspace = await this.prisma.workSpace.findUnique({
@@ -37,6 +41,24 @@ export class GroupsService {
         workSpaceId: createGroupDto.workSpaceId,
       },
     });
+  }
+  /** получаем доступные пользователю группы */
+  async findAllAvailableGroups(user: UserDto) {
+    const groupsSearch = this.groupsAccessService.buildGroupsScope(user);
+
+    const groups = await this.prisma.group.findMany({
+      where: {
+        ...groupsSearch,
+        workSpace: {
+          department: 'COMMERCIAL',
+        }
+      },
+      select: {
+        id: true,
+        title: true,
+      },
+    });
+    return groups;
   }
 
   async findAll(user: UserDto) {

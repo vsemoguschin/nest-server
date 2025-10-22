@@ -70,6 +70,7 @@ export class CommercialDatasController {
     return this.commercialDatasService.getManagerDatas(user, period, managerId);
   }
 
+
   @Get('/statistics/:groupId')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   async getStat(

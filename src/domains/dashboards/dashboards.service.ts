@@ -159,57 +159,6 @@ export class DashboardsService {
     return workspaces;
   }
 
-  async getDeals(user: UserDto) {
-    console.log(user);
-    let workSpacesSearch = {
-      deletedAt: null as null,
-      id: { gt: 0 } as { gt: number } | number,
-    };
-
-    if (
-      !['ADMIN', 'G', 'KD', 'ROV', 'MOV', 'MARKETER', 'LOGIST'].includes(
-        user.role.shortName,
-      )
-    ) {
-      workSpacesSearch = {
-        id: user.workSpaceId,
-        deletedAt: null,
-      };
-    }
-    const workSpaces = await this.prisma.workSpace.findMany({
-      where: {
-        ...workSpacesSearch,
-        department: { in: ['COMMERCIAL'] },
-      },
-      include: {
-        groups: true,
-      },
-    });
-    const workSpaceIds = workSpaces.map((w) => w.id);
-    const groups = await this.prisma.group.findMany({
-      where: {
-        workSpaceId: {
-          in: workSpaceIds,
-        },
-      },
-    });
-
-    const managers = await this.prisma.user.findMany({
-      where: {
-        workSpaceId: { in: workSpaceIds },
-        role: { shortName: { in: ['MOP', 'DO'] } },
-        deletedAt: null,
-      },
-      include: {
-        workSpace: true,
-      },
-    });
-
-    return { workSpaces, groups, managers };
-  }
-
-
-
   // comercial
   async getComercialData(user: UserDto, period: string) {
     const workspacesSearch =
@@ -720,7 +669,6 @@ export class DashboardsService {
         dopsInfo: dopPaid ? dopsInfo : [],
       };
     });
-
 
     const ropPlan = await this.prisma.managersPlan.findMany({
       where: {
