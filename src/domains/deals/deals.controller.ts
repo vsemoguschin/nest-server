@@ -206,7 +206,7 @@ export class DealsController {
     'ROP',
     'ROV',
     'MOV',
-    'LOGIST',
+    // 'LOGIST',
     'MARKETER',
     'ASSISTANT',
   )

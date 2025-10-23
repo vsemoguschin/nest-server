@@ -10,6 +10,7 @@ type Action =
   | 'UPDATE_TAGS'
   | 'ADD_ATTACHMENTS'
   | 'DEL_ATTACHMENTS'
+  | 'UPDATE_COMMENT'
   | 'ADD_MEMBER'
   | 'DEL_MEMBER'
   | 'MOVE_TO_BOARD'

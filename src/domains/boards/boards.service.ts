@@ -60,6 +60,17 @@ export class BoardsService {
                 cover: true,
                 boardId: true,
                 chatLink: true,
+                deal: {
+                  select: {
+                    deliveries: {
+                      select: {
+                        method: true,
+                        type: true,
+                        track: true,
+                      },
+                    },
+                  },
+                },
 
                 // только имена тегов
                 tags: { select: { name: true } },
@@ -117,13 +128,6 @@ export class BoardsService {
                     lightings: { select: { color: true } },
                   },
                 },
-                deliveries: {
-                  select: {
-                    method: true,
-                    type: true,
-                    track: true,
-                  },
-                },
               },
             },
           },
@@ -153,9 +157,10 @@ export class BoardsService {
             })
             .map((t) => {
               const previewPath = t.attachments[0]?.file.path ?? '';
+
               const warnings = collectTaskWarnings(
                 t.orders,
-                t.deliveries,
+                t.deal?.deliveries ?? [],
                 t.chatLink,
               );
               for (const w of warnings) warningsSet.add(w);
@@ -177,7 +182,7 @@ export class BoardsService {
                   return d.localeCompare(max) > 0 ? d : max;
                 }, ''),
                 warnings,
-                tracks: t.deliveries.map((d) => d.track),
+                tracks: t.deal?.deliveries.map((d) => d.track) ?? [],
               };
             })
             .sort((a, b) => {

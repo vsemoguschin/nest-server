@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -12,6 +14,47 @@ export class CommentsService {
     private readonly prisma: PrismaService,
     private readonly taskFiles: TaskFilesService,
   ) {}
+
+  async updateCommentText(id: number, userId: number, text: string) {
+    const comment = await this.prisma.kanbanTaskComments.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        authorId: true,
+        taskId: true,
+        text: true,
+        updatedAt: true,
+      },
+    });
+    if (!comment) {
+      throw new NotFoundException('Комментарий не найден');
+    }
+    if (comment.authorId !== userId) {
+      throw new ForbiddenException('Только автор может редактировать комментарий');
+    }
+
+    const trimmed = (text ?? '').trim();
+    if (!trimmed.length) {
+      throw new BadRequestException('Текст комментария не может быть пустым');
+    }
+
+    if (trimmed === comment.text) {
+      return {
+        id: comment.id,
+        text: comment.text,
+        taskId: comment.taskId,
+        updatedAt: comment.updatedAt,
+      };
+    }
+
+    const updated = await this.prisma.kanbanTaskComments.update({
+      where: { id },
+      data: { text: trimmed },
+      select: { id: true, text: true, taskId: true, updatedAt: true },
+    });
+
+    return updated;
+  }
 
   /**
    * Полное удаление комментария:

@@ -566,7 +566,7 @@ export class TasksService {
         },
       },
 
-      deal: true
+      deal: true,
     } as const;
 
     let task = await this.prisma.kanbanTask.findFirst({
@@ -1271,7 +1271,7 @@ export class TasksService {
     await this.ensureTask(taskId);
     const items = await this.prisma.taskOrder.findMany({
       where: { taskId, deletedAt: null },
-      orderBy: { id: 'desc' },
+      orderBy: { id: 'asc' },
       include: {
         neons: true,
         lightings: true,
@@ -1282,16 +1282,18 @@ export class TasksService {
 
   /** Список доставок задачи */
   async deliveriesListForTask(taskId: number) {
-    await this.ensureTask(taskId);
-    return this.prisma.delivery.findMany({
-      where: { taskId },
-      orderBy: { id: 'desc' },
+    const { dealId } = await this.ensureTask(taskId);
+    if (!dealId) return [];
+    const delivery = await this.prisma.delivery.findMany({
+      where: { dealId },
+      orderBy: { id: 'asc' },
       include: {
         deal: {
           select: { id: true, title: true, saleDate: true },
         },
       },
     });
+    return delivery;
   }
 
   /** Создать доставку для задачи */

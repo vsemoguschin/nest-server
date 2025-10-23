@@ -1,14 +1,17 @@
 import {
+  Body,
   Controller,
   Delete,
   HttpCode,
   Param,
   ParseIntPipe,
+  Patch,
 } from '@nestjs/common';
 import { CommentsService } from './comments.service';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserDto } from 'src/domains/users/dto/user.dto';
 import { TaskAuditService } from 'src/services/boards/task-audit.service';
+import { UpdateCommentDto } from './dto/update-comment.dto';
 // (опционально) Swagger:
 // import { ApiNoContentResponse, ApiParam, ApiTags } from '@nestjs/swagger';
 
@@ -19,6 +22,32 @@ export class CommentsController {
     private readonly commentsService: CommentsService,
     private readonly audit: TaskAuditService,
   ) {}
+
+  @Patch(':id')
+  async update(
+    @CurrentUser() user: UserDto,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCommentDto,
+  ) {
+    const comment = await this.commentsService.updateCommentText(
+      id,
+      user.id,
+      dto.text,
+    );
+    await this.audit.log({
+      userId: user.id,
+      description: `Изменил комментарий: "${dto.text}" на "${comment.text}"`,
+
+      taskId: comment.taskId,
+      action: 'UPDATE_COMMENT',
+    });
+
+    return {
+      id: comment.id,
+      text: comment.text,
+      updatedAt: comment.updatedAt,
+    };
+  }
 
   // DELETE /comments/:id — удалить комментарий
   // 204 No Content при успехе
