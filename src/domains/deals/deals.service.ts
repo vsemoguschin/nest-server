@@ -895,7 +895,7 @@ export class DealsService {
     if (reviews.length > 0) {
       await Promise.all(
         reviews.map(async (review, i) => {
-          // console.log(review.file); 
+          // console.log(review.file);
           if (review.file[0]?.path) {
             const filePath = review.file[0].path;
             const md = await axios.get(
@@ -1134,7 +1134,7 @@ export class DealsService {
     const managers = await this.prisma.user.findMany({
       where: {
         group: groupsSearch,
-        role: { shortName: { in: ['MOP', 'DO', 'ROP','MOV'] } },
+        role: { shortName: { in: ['MOP', 'DO', 'ROP', 'MOV'] } },
         deletedAt: null,
       },
       select: {

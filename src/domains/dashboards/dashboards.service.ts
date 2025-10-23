@@ -146,6 +146,7 @@ export class DashboardsService {
                 email: true,
                 tg_id: true,
                 avatarUrl: true,
+                
               },
             },
           },
