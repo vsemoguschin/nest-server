@@ -895,7 +895,7 @@ export class DealsService {
     if (reviews.length > 0) {
       await Promise.all(
         reviews.map(async (review, i) => {
-          // console.log(review.file);
+          // console.log(review.file); 
           if (review.file[0]?.path) {
             const filePath = review.file[0].path;
             const md = await axios.get(

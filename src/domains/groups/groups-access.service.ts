@@ -12,6 +12,7 @@ export class GroupsAccessService {
     'MOV',
     'MARKETER',
     'LOGIST',
+    'DO',
   ];
 
   buildGroupsScope(user: UserDto): Prisma.GroupWhereInput {
@@ -24,8 +25,18 @@ export class GroupsAccessService {
       scope.id = user.groupId ?? scope.id;
     }
 
-    if (user.groupId === 18 || user.groupId === 3) {
-      scope.id = { in: [2, 3] };
+    if (
+      user.groupId === 18 ||
+      (user.groupId === 3 && user.role.shortName !== 'DO')
+    ) {
+      scope.id = { in: [18, 3] };
+    }
+
+    if (user.groupId === 3 && user.role.shortName === 'DO') {
+      scope.id = { in: [18, 3, 17, 19, 24] };
+    }
+    if (user.groupId !== 3 && user.role.shortName === 'DO') {
+      scope.id = { in: [2, 16] };
     }
 
     if (user.id === 84 || user.id === 87) {
