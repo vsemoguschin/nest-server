@@ -88,7 +88,7 @@ model User {
   password       String
   info           String    @default("")
   tg             String    @default("")
-  tg_id          Int       @default(0)
+  tg_id          String    @default("")
   status         String    @default("")
   deletedAt  DateTime?  // Поле для мягкого удаления
   createdAt  DateTime   @default(now())

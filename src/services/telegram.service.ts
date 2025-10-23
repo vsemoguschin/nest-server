@@ -41,7 +41,7 @@ export class TelegramService {
       select: { id: true, tg_id: true, fullName: true },
     });
     if (!user) throw new NotFoundException('User not found');
-    if (!user.tg_id || user.tg_id === 0) {
+    if (!user.tg_id || user.tg_id !== '') {
       throw new BadRequestException('User has no Telegram chat id (tg_id)');
     }
 
@@ -110,7 +110,7 @@ export class TelegramService {
     );
   }
 
-  async sendToChat(chatId: number, text: string, disableNotification = false) {
+  async sendToChat(chatId: string, text: string, disableNotification = false) {
     try {
       await axios.post(`${this.apiBase}/sendMessage`, {
         chat_id: chatId,

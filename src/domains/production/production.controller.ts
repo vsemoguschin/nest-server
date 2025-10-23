@@ -280,7 +280,7 @@ export class ProductionController {
   }
 
   @Post('packer-report')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST','MASTER')
   async createPackerReport(
     @Body() createPackerReportDto: CreatePackerReportDto,
   ) {
@@ -288,7 +288,7 @@ export class ProductionController {
   }
 
   @Get('packer/:id/reports')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST', 'MASTER')
   async getPackerReports(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -308,7 +308,7 @@ export class ProductionController {
   }
 
   @Patch('packer-report/:id')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST','MASTER')
   async updatePackerReport(
     @Param('id') id: string,
     @Body() updatePackerReportDto: UpdatePackerReportDto,
@@ -328,7 +328,7 @@ export class ProductionController {
   }
 
   @Post('packer/:packerId/shifts')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST','MASTER')
   async createPackerShifts(
     @Param('packerId', ParseIntPipe) packerId: number,
     @Body() dto: CreatePackerShiftsDto,
@@ -337,7 +337,7 @@ export class ProductionController {
   }
 
   @Get('packer/:packerId/shifts')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST','MASTER')
   async getPackerShifts(
     @Param('packerId', ParseIntPipe) packerId: number,
     @Query('period') period: string,
@@ -351,7 +351,7 @@ export class ProductionController {
   }
 
   @Get('packers')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'MASTER', 'LOGIST')
   async getPackers(@CurrentUser() user: UserDto) {
     return this.productionService.getPackers(user);
   }

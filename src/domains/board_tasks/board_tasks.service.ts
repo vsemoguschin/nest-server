@@ -1072,7 +1072,7 @@ export class TasksService {
       boardId: number;
       subscriptions: {
         user: {
-          tg_id: number | null;
+          tg_id: string;
         };
       }[];
     };

@@ -50,7 +50,7 @@ export class ProductionService {
         ],
       };
     }
-    if (user.id === 153) {
+    if (user.id === 153 || user.id === 129) {
       return {
         tabs: [
           { value: 'masters', label: 'Сборщики' },
@@ -730,7 +730,7 @@ export class ProductionService {
 
   async getMasters(user: UserDto) {
     const userSearch =
-      user.role.shortName === 'MASTER' || user.id === 153 ? user.id : { gt: 0 };
+      user.role.shortName === 'MASTER' || user.id === 153 || user.id === 129 ? user.id : { gt: 0 };
 
     const users = await this.prisma.user.findMany({
       where: {
@@ -738,7 +738,7 @@ export class ProductionService {
         OR: [
           {
             role:
-              user.id === 153
+              user.id === 153 || user.id === 129
                 ? { shortName: 'PACKER' }
                 : { shortName: 'MASTER' },
           },
@@ -919,7 +919,7 @@ export class ProductionService {
     });
 
     const masterOtherReports =
-      userId === 153
+      (userId === 153 || userId === 129)
         ? []
         : await this.prisma.otherReport.findMany({
             where: {
@@ -1474,14 +1474,14 @@ export class ProductionService {
   }
 
   async getPackers(user: UserDto) {
-    const userSearch = ['PACKER', 'LOGIST'].includes(user.role.shortName)
+    const userSearch = ['PACKER', 'LOGIST','MASTER'].includes(user.role.shortName)
       ? user.id
       : { gt: 0 };
 
     const users = await this.prisma.user.findMany({
       where: {
         role: {
-          shortName: { in: ['PACKER', 'LOGIST'] },
+          shortName: { in: ['PACKER', 'LOGIST', 'MASTER'] },
         },
         id: userSearch,
         workSpaceId:

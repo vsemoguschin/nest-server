@@ -14,7 +14,7 @@ type NotifyOpts = {
 
 type ColumnSubscriptionPayload = {
   user: {
-    tg_id: number | null;
+    tg_id: string;
   };
 };
 
@@ -108,8 +108,8 @@ export class TaskNotifyService {
         subscriptions
           .map((sub) => sub.user?.tg_id)
           .filter(
-            (chatId): chatId is number =>
-              typeof chatId === 'number' && chatId > 0,
+            (chatId): chatId is string =>
+              typeof chatId === 'string' && chatId !== '',
           ),
       ),
     );

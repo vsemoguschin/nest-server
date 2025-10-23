@@ -18,7 +18,7 @@ export class NotificationSchedulerService {
   private async notifyAdmins(text: string) {
     // Send only in production to avoid spam in dev
     if (this.env !== 'production') return;
-    const adminIds = [317401874];
+    const adminIds = ['317401874'];
     for (const id of adminIds) {
       try {
         await this.telegramService.sendToChat(id, text);
@@ -99,7 +99,7 @@ export class NotificationSchedulerService {
       // await this.telegramService.sendToChat(chatId, summaryText);
 
       // Вариант 2: Если нужно уведомить конкретных пользователей (например, всех админов)
-      const admins = [317401874, 368152093];
+      const admins = ['317401874', '368152093'];
       for (const admin of admins) {
         await this.telegramService.sendToChat(admin, summaryText);
       }
@@ -196,7 +196,7 @@ export class NotificationSchedulerService {
       // await this.telegramService.sendToChat(chatId, summaryText);
 
       // Вариант 2: Если нужно уведомить конкретных пользователей (например, всех админов)
-      const admins = [317401874, 368152093];
+      const admins = ['317401874', '368152093'];
       // const admins = [317401874];
       for (const admin of admins) {
         await this.telegramService.sendToChat(admin, summaryText);
