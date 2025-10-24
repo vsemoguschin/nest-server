@@ -36,6 +36,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { NotificationSchedulerService } from './notifications/notification-scheduler.service';
 import { BluesalesImportService } from './integrations/bluesales/bluesales-import.service';
 import { TelegramService } from './services/telegram.service';
+import { TbankSyncService } from './services/tbank-sync.service';
 import { AttachmentsModule } from './domains/kanban/attachments/attachments.module';
 import { MembersModule } from './domains/kanban/members/members.module';
 import { CommentsModule } from './domains/kanban/comments/comments.module';
@@ -84,7 +85,13 @@ import { CommercialDatasModule } from './domains/commercial-datas/commercial-dat
     // другие модули
   ],
   controllers: [WorkspaceGroupsController],
-  providers: [ProfileService, TelegramService, NotificationSchedulerService, BluesalesImportService],
+  providers: [
+    ProfileService,
+    TelegramService,
+    TbankSyncService,
+    NotificationSchedulerService,
+    BluesalesImportService,
+  ],
   exports: [NotificationSchedulerService],
 })
 export class AppModule {}

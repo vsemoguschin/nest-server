@@ -59,17 +59,48 @@ export class PlanfactController {
     );
   }
 
-  // @Patch('operations/:operationId/expense-category')
-  // @Roles('ADMIN', 'G', 'KD')
-  // async assignExpenseCategory(
-  //   @Param('operationId') operationId: string,
-  //   @Body('expenseCategoryId') expenseCategoryId: number,
-  // ) {
-  //   return this.planfactService.assignExpenseCategory(
-  //     operationId,
-  //     expenseCategoryId,
-  //   );
-  // }
+  @Get('original-operations')
+  @Roles('ADMIN', 'G', 'KD')
+  async getOriginalOperations(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 50,
+    @Query('accountId') accountId: number,
+  ) {
+    if (!accountId) {
+      throw new BadRequestException('Параметр accountId обязателен');
+    }
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (page < 1) {
+      throw new BadRequestException('Параметр page должен быть больше 0');
+    }
+    if (limit < 1 || limit > 1000) {
+      throw new BadRequestException('Параметр limit должен быть от 1 до 1000');
+    }
+    //  this.planfactService.getOperationsFromRange(
+    //   { from, to },
+    //   limit,
+    //   accountId,
+    // );
+
+    return this.planfactService.getOriginalOperations({
+      from,
+      to,
+      page,
+      limit,
+      accountId,
+    });
+  }
 
   @Post('operation')
   @Roles('ADMIN', 'G', 'KD')
@@ -79,8 +110,14 @@ export class PlanfactController {
 
   @Patch('operation/:operationId')
   @Roles('ADMIN', 'G', 'KD')
-  async updateOperation(@Param('operationId') operationId: string, @Body() updateOperationDto: UpdateOperationDto) {
-    return this.planfactService.updateOperation(operationId, updateOperationDto);
+  async updateOperation(
+    @Param('operationId') operationId: string,
+    @Body() updateOperationDto: UpdateOperationDto,
+  ) {
+    return this.planfactService.updateOperation(
+      operationId,
+      updateOperationDto,
+    );
   }
 
   @Delete('operation/:operationId')
@@ -89,9 +126,29 @@ export class PlanfactController {
     return this.planfactService.deleteOperation(operationId);
   }
 
+  @Patch('original-operation/:operationId/positions')
+  @Roles('ADMIN', 'G', 'KD')
+  async updateOriginalOperationPositions(
+    @Param('operationId') operationId: string,
+    @Body()
+    positionsData: Array<{
+      id?: number;
+      counterPartyId?: number;
+      expenseCategoryId?: number;
+      amount: number;
+    }>,
+  ) {
+    return this.planfactService.updateOriginalOperationPositions(
+      operationId,
+      positionsData,
+    );
+  }
+
   @Post('expense-categories')
   @Roles('ADMIN', 'G', 'KD')
-  async createExpenseCategory(@Body() createExpenseCategoryDto: CreateExpenseCategoryDto) {
+  async createExpenseCategory(
+    @Body() createExpenseCategoryDto: CreateExpenseCategoryDto,
+  ) {
     return this.planfactService.createExpenseCategory(createExpenseCategoryDto);
   }
 
@@ -115,7 +172,9 @@ export class PlanfactController {
 
   @Post('counter-parties')
   @Roles('ADMIN', 'G', 'KD')
-  async createCounterParty(@Body() createCounterPartyDto: CreateCounterPartyDto) {
+  async createCounterParty(
+    @Body() createCounterPartyDto: CreateCounterPartyDto,
+  ) {
     return this.planfactService.createCounterParty(createCounterPartyDto);
   }
 

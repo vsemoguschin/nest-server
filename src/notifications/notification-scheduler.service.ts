@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule'; // Импорт для cron
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from 'src/services/telegram.service';
 import { BluesalesImportService } from '../integrations/bluesales/bluesales-import.service';
+import { TbankSyncService } from '../services/tbank-sync.service';
 
 @Injectable()
 export class NotificationSchedulerService {
@@ -13,6 +14,7 @@ export class NotificationSchedulerService {
     private readonly prisma: PrismaService,
     private readonly telegramService: TelegramService, // Инжектим существующий сервис
     private readonly bluesalesImport: BluesalesImportService,
+    private readonly tbankSync: TbankSyncService,
   ) {}
 
   private async notifyAdmins(text: string) {
@@ -22,8 +24,10 @@ export class NotificationSchedulerService {
     for (const id of adminIds) {
       try {
         await this.telegramService.sendToChat(id, text);
-      } catch (e: any) {
-        this.logger.error(`Failed to notify ${id}: ${e?.message || e}`);
+      } catch (e: unknown) {
+        this.logger.error(
+          `Failed to notify ${id}: ${e instanceof Error ? e.message : e}`,
+        );
       }
     }
   }
@@ -259,7 +263,7 @@ export class NotificationSchedulerService {
       this.logger.log(stateMsg);
 
       // Если нет состояния — импортируем только вчерашний день
-      let startDate = state?.lastDailyImportDate
+      const startDate = state?.lastDailyImportDate
         ? addDaysYmd(state.lastDailyImportDate, 1)
         : yesterdayMsk;
 
@@ -285,12 +289,12 @@ export class NotificationSchedulerService {
             `[dailyCustomers] Day ${cur} import complete, updating sync state...`,
           );
           await this.notifyAdmins(`✅ Импорт дня ${cur} завершён`);
-        } catch (e: any) {
+        } catch (e: unknown) {
           this.logger.error(
-            `[dailyCustomers] Failed to import day ${cur}: ${e?.message || e}`,
+            `[dailyCustomers] Failed to import day ${cur}: ${e instanceof Error ? e.message : e}`,
           );
           await this.notifyAdmins(
-            `❌ Ошибка импорта ${cur}: ${e?.message || e}`,
+            `❌ Ошибка импорта ${cur}: ${e instanceof Error ? e.message : e}`,
           );
           throw e;
         }
@@ -303,17 +307,25 @@ export class NotificationSchedulerService {
         });
         const savedMsg = `[dailyCustomers] Sync state saved: lastDailyImportDate=${state.lastDailyImportDate}`;
         this.logger.log(savedMsg);
-        await this.notifyAdmins(`💾 Обновлено состояние: ${state.lastDailyImportDate}`);
+        await this.notifyAdmins(
+          `💾 Обновлено состояние: ${state.lastDailyImportDate}`,
+        );
 
         cur = addDaysYmd(cur, 1);
       }
 
       const doneMsg = `Daily customers import done. Last date: ${state?.lastDailyImportDate}`;
       this.logger.log(doneMsg);
-      await this.notifyAdmins(`🏁 Импорт завершён. Последняя дата: ${state?.lastDailyImportDate}`);
-    } catch (e: any) {
-      this.logger.error(`Daily customers import failed: ${e?.message || e}`);
-      await this.notifyAdmins(`🔥 Ежедневный импорт упал: ${e?.message || e}`);
+      await this.notifyAdmins(
+        `🏁 Импорт завершён. Последняя дата: ${state?.lastDailyImportDate}`,
+      );
+    } catch (e: unknown) {
+      this.logger.error(
+        `Daily customers import failed: ${e instanceof Error ? e.message : e}`,
+      );
+      await this.notifyAdmins(
+        `🔥 Ежедневный импорт упал: ${e instanceof Error ? e.message : e}`,
+      );
     }
   }
 
@@ -338,9 +350,57 @@ export class NotificationSchedulerService {
       this.logger.log(
         `[autoArchiveOldTasks] cutoff=${cutoff.toISOString()} archived=${res.count} on boards=${BOARD_IDS.join(',')}`,
       );
-    } catch (e: any) {
+    } catch (e: unknown) {
       this.logger.error(
-        `[autoArchiveOldTasks] failed: ${e?.message || String(e)}`,
+        `[autoArchiveOldTasks] failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  // Автоматическая синхронизация операций Т-Банка
+  @Cron('0 0 1 * * *', { timeZone: 'Europe/Moscow' })
+  async syncTbankOperations() {
+    this.logger.log('Starting T-Bank operations sync...');
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip T-Bank sync`);
+      return;
+    }
+
+    try {
+      // Получаем дату последнего обновления из базы
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const syncStatuses = await (this.prisma as any).tbankSyncStatus.findMany({
+        orderBy: {
+          lastOperationDate: 'desc',
+        },
+        take: 1,
+      });
+
+      let fromDate: string;
+      const toDate = new Date().toISOString().split('T')[0]; // Сегодня
+
+      if (syncStatuses.length > 0 && syncStatuses[0].lastOperationDate) {
+        // Начинаем с даты последней операции + 1 день
+        const lastDate = new Date(syncStatuses[0].lastOperationDate);
+        lastDate.setDate(lastDate.getDate() + 1);
+        fromDate = lastDate.toISOString().split('T')[0];
+      } else {
+        // Если нет данных, начинаем с вчерашнего дня
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        fromDate = yesterday.toISOString().split('T')[0];
+      }
+
+      this.logger.log(`Синхронизация операций с ${fromDate} по ${toDate}`);
+
+      // Вызываем сервис синхронизации
+      await this.tbankSync.syncOperations(fromDate, toDate);
+
+      this.logger.log('T-Bank operations sync completed successfully');
+    } catch (error) {
+      this.logger.error(`Error in T-Bank sync: ${error.message}`);
+      await this.notifyAdmins(
+        `🔥 Синхронизация Т-Банка упала: ${error.message}`,
       );
     }
   }

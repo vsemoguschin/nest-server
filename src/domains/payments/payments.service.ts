@@ -9,9 +9,7 @@ import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 
 @Injectable()
 export class PaymentsService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(createPaymentDto: CreatePaymentDto, user: UserDto) {
     const existingDeal = await this.prisma.deal.findUnique({
@@ -35,6 +33,7 @@ export class PaymentsService {
         groupId: existingDeal.groupId,
       },
     });
+    console.log(newPayment);
 
     // Формируем комментарий для аудита
     const auditComment = `Добавил платеж(${newPayment.method}) на сумму ${newPayment.price} руб.`;
@@ -150,6 +149,7 @@ export class PaymentsService {
       isConfirmed: false,
       message: 'Оплата не подтверждена',
       price: 0,
+      paymentId: '',
     };
 
     try {
@@ -157,17 +157,18 @@ export class PaymentsService {
         status?: string;
         merchant?: { successUrl?: string };
       }>(`https://payapi.tbank.ru/api/v1/pf/sessions/${linkEnd}`);
-
       if (data.status === 'SUCCESS' && data.merchant?.successUrl) {
         const successUrl = new URL(data.merchant.successUrl);
         const amountParam = successUrl.searchParams.get('Amount');
-
+        const paymentId = successUrl.searchParams.get('PaymentId') ?? '';
+        console.log(data.status);
         if (amountParam) {
           const amount = Number.parseInt(amountParam, 10);
           if (!Number.isNaN(amount)) {
             result.price = amount / 100;
             result.isConfirmed = true;
             result.message = 'Оплата подтверждена';
+            result.paymentId = paymentId;
           }
         }
       }
@@ -175,6 +176,7 @@ export class PaymentsService {
       return result;
     } catch (error) {
       console.log(error);
+      return result;
       throw new NotFoundException(`Ошибка при проверке оплаты`);
     }
   }

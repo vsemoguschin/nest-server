@@ -342,7 +342,7 @@ export class PlanfactService {
                   op.counterParty,
                 );
 
-                // console.log(op.accountAmount, op.counterParty, counterParty);
+                console.log(op.counterParty);
 
                 let operationType = op.category;
                 // console.log(op);
@@ -498,7 +498,7 @@ export class PlanfactService {
             });
           } catch (error) {
             // console.log(error);
-            throw new Error(`API request failed: ${error.message}`); 
+            throw new Error(`API request failed: ${error.message}`);
           }
         };
 
@@ -2085,6 +2085,138 @@ export class PlanfactService {
           },
         ],
       },
+    };
+  }
+
+  async getOriginalOperations({
+    from,
+    to,
+    page,
+    limit,
+    accountId,
+  }: {
+    from: string;
+    to: string;
+    page: number;
+    limit: number;
+    accountId?: number;
+  }) {
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = {
+      operationDate: {
+        gte: from,
+        lte: to + 'T23:59:59.999Z',
+      },
+    };
+
+    if (accountId) {
+      where.accountId = accountId;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [operations, total] = await Promise.all([
+      (this.prisma as any).originalOperationFromTbank.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: {
+          operationDate: 'desc',
+        },
+        include: {
+          account: {
+            select: {
+              id: true,
+              name: true,
+              accountNumber: true,
+              isReal: true,
+            },
+          },
+          operationPositions: {
+            include: {
+              counterParty: true,
+              expenseCategory: true,
+            },
+          },
+        },
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (this.prisma as any).originalOperationFromTbank.count({ where }),
+    ]);
+
+    return {
+      operations,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
+      },
+    };
+  }
+
+  async updateOriginalOperationPositions(
+    operationId: string,
+    positionsData: Array<{
+      id?: number;
+      counterPartyId?: number;
+      expenseCategoryId?: number;
+      amount: number;
+    }>,
+  ) {
+    // Находим оригинальную операцию
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const originalOperation = await (
+      this.prisma as any
+    ).originalOperationFromTbank.findUnique({
+      where: { operationId },
+      include: {
+        operationPositions: true,
+      },
+    });
+
+    if (!originalOperation) {
+      throw new BadRequestException('Оригинальная операция не найдена');
+    }
+
+    // Проверяем, что сумма всех позиций равна accountAmount операции
+    const totalAmount = positionsData.reduce((sum, pos) => sum + pos.amount, 0);
+    if (totalAmount !== originalOperation.accountAmount) {
+      throw new BadRequestException(
+        `Сумма всех позиций (${totalAmount}) должна быть равна сумме операции (${originalOperation.accountAmount})`,
+      );
+    }
+
+    // Удаляем все существующие позиции
+    await this.prisma.operationPosition.deleteMany({
+      where: {
+        originalOperationId: originalOperation.id,
+      },
+    });
+
+    // Создаем новые позиции
+    const createdPositions = await Promise.all(
+      positionsData.map((positionData) =>
+        this.prisma.operationPosition.create({
+          data: {
+            amount: positionData.amount,
+            originalOperationId: originalOperation.id,
+            counterPartyId: positionData.counterPartyId,
+            expenseCategoryId: positionData.expenseCategoryId,
+          },
+          include: {
+            counterParty: true,
+            expenseCategory: true,
+          },
+        }),
+      ),
+    );
+
+    return {
+      success: true,
+      operationPositions: createdPositions,
     };
   }
 }

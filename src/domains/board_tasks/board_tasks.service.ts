@@ -558,15 +558,17 @@ export class TasksService {
         },
       },
 
-      deliveries: {
-        select: {
-          method: true,
-          type: true,
-          track: true,
+      deal: {
+        include: {
+          deliveries: {
+            select: {
+              method: true,
+              type: true,
+              track: true,
+            },
+          },
         },
       },
-
-      deal: true,
     } as const;
 
     let task = await this.prisma.kanbanTask.findFirst({
@@ -611,7 +613,7 @@ export class TasksService {
 
     const warnings = collectTaskWarnings(
       task.orders,
-      task.deliveries,
+      task.deal?.deliveries ?? [],
       task.chatLink,
     );
 
@@ -635,7 +637,7 @@ export class TasksService {
       warnings,
       deal: task.deal,
       dealId: task.dealId,
-      tracks: task.deliveries.map((d) => d.track).filter((t) => t !== ''),
+      tracks: task.deal?.deliveries.map((d) => d.track).filter((t) => t !== '') ?? [],
       avaliableDeals,
 
       comments: [],
@@ -804,7 +806,9 @@ export class TasksService {
             },
           },
         ],
-        boardId: { in: userBoards },
+        boardId: ['ADMIN', 'KD', 'G'].includes(user.role.shortName)
+          ? { gt: 0 }
+          : { in: userBoards },
       },
       select: { ...searchSelect, attachments: { select: { file: true } } },
       orderBy: { updatedAt: 'desc' },

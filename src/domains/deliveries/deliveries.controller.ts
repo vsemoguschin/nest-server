@@ -33,7 +33,6 @@ export class DeliveriesController {
   constructor(private readonly deliveriesService: DeliveriesService) {}
 
   @Get('/checkTrack')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST')
   async checkTrack(@Query('track') track: string) {
     return this.deliveriesService.checkTrack(track);
   }
@@ -69,7 +68,7 @@ export class DeliveriesController {
   @ApiOperation({ summary: 'Редактировать запись о доставке' })
   @ApiParam({ name: 'id', description: 'ID доставки', type: 'integer' })
   @ApiResponse({ status: 200, description: 'Запись успешно обновлена' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'LOGIST', 'DP')
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: DeliveryUpdateDto,

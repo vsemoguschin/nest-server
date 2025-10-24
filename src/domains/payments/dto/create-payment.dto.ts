@@ -56,6 +56,11 @@ export class CreatePaymentDto {
   @IsOptional()
   paymentId?: string = '';
 
+  @IsString({ message: 'paymentLink должно быть строкой (paymentLink).' })
+  @IsOptional()
+  @IsOptional()
+  paymentLink?: string = '';
+
   // Выбранный терминал
   @IsString()
   @IsOptional()

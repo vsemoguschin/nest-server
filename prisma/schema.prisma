@@ -434,6 +434,7 @@ model Payment {
   period       String      @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
   stutus       String      @default("") 
   paymentId    String      @default("")
+  paymentLink  String      @default("")
   isConfirmed  Boolean     @default(true)
   terminal     String      @default("")
 
@@ -729,6 +730,8 @@ model PlanFactAccount {
   isReal            Boolean  @default(true) // есть доступ по АПИ
 
   operations        Operation[]
+  originalOperations OriginalOperationFromTbank[]
+  syncStatus        TbankSyncStatus?
 }
 
 model Operation {
@@ -786,11 +789,54 @@ model OperationPosition {
   operationId        Int?            // Связь с операцией
   operation          Operation?  @relation(fields: [operationId], references: [id])
 
+  originalOperationId Int?           // Связь с оригинальной операцией из Т-Банка
+  originalOperation   OriginalOperationFromTbank? @relation(fields: [originalOperationId], references: [id])
+
   counterPartyId     Int?
   counterParty       CounterParty?      @relation(fields: [counterPartyId], references: [id])
 
   expenseCategoryId  Int?            // Связь с категорией
   expenseCategory    ExpenseCategory?  @relation(fields: [expenseCategoryId], references: [id])
+}
+
+model OriginalOperationFromTbank {
+  id                 Int       @id @default(autoincrement())
+  operationId        String    @unique
+  operationDate      String
+  typeOfOperation    String
+  category           String
+  description        String
+  payPurpose         String
+  accountAmount       Float
+  counterPartyAccount String
+  counterPartyInn     String
+  counterPartyKpp     String
+  counterPartyBic     String
+  counterPartyBankName String
+  counterPartyTitle   String
+  expenseCategoryId   Int?
+  expenseCategoryName String?
+  
+  accountId          Int
+  account            PlanFactAccount @relation(fields: [accountId], references: [id])
+  
+  operationPositions OperationPosition[]
+  
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model TbankSyncStatus {
+  id                Int      @id @default(autoincrement())
+  accountId         Int      @unique
+  account           PlanFactAccount @relation(fields: [accountId], references: [id])
+  lastSyncDate      DateTime // Последняя дата синхронизации
+  lastOperationDate String   // Дата последней полученной операции (YYYY-MM-DD)
+  totalOperations   Int      @default(0) // Общее количество синхронизированных операций
+  syncStatus        String   @default("success") // success, error, in_progress
+  errorMessage      String?  // Сообщение об ошибке, если есть
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 //// ========= BOARD =========
