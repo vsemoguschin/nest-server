@@ -445,7 +445,7 @@ export class BoardsService {
   /** DELETE /boards/users/:userId  { boardId } */
   async removeUserFromBoard(boardId: number, userId: number) {
     await this.ensureBoard(boardId);
-    await this.ensureUser(userId);
+    // await this.ensureUser(userId);
 
     // не участник?
     const exists = await this.prisma.board.findFirst({

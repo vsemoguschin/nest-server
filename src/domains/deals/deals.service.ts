@@ -1134,7 +1134,7 @@ export class DealsService {
     const managers = await this.prisma.user.findMany({
       where: {
         group: groupsSearch,
-        role: { shortName: { in: ['MOP', 'DO', 'ROP', 'MOV'] } },
+        role: { shortName: { in: ['MOP', 'DO', 'ROP', 'MOV','ROV'] } },
         deletedAt: null,
       },
       select: {

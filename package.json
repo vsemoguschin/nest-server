@@ -27,6 +27,8 @@
     "seed:update-manager-reports": "ts-node src/seeds/seed-update-manager-reports.ts",
     "seed:vkads": "ts-node -r tsconfig-paths/register src/seeds/seed-vkads.ts",
     "seed:workspace:izibuk": "ts-node src/seeds/seed-workspace-izibuk.ts",
+    "seed:tbank-operations": "ts-node src/seeds/seed-tbank-operations.ts",
+    "seed:tbank-operations-with-categories": "ts-node src/seeds/seed-tbank-operations-with-categories.ts",
     "prisma:deploy": "prisma db push && prisma generate"
   },
   "dependencies": {

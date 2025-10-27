@@ -8,10 +8,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
 import { DashboardsService } from '../dashboards/dashboards.service';
 import { UserDto } from '../users/dto/user.dto';
-import { SocksProxyAgent } from 'socks-proxy-agent';
-import { CounterParty } from '@prisma/client';
 import { CreateOperationDto } from './dto/create-operation.dto';
-import { v4 as uuidv4 } from 'uuid';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
@@ -60,6 +57,45 @@ export interface CounterPartyFromApi {
   bankName: string;
   bankBic: string;
   corrAccount: string;
+}
+
+export interface CounterPartyType {
+  id: number;
+  title: string;
+}
+
+export interface ExpenseCategoryType {
+  id: number;
+  name: string;
+}
+
+export interface OperationPositionType {
+  id: number;
+  counterPartyId: number | null;
+  expenseCategoryId: number | null;
+  amount: number;
+  counterParty?: CounterPartyType;
+  expenseCategory?: ExpenseCategoryType;
+}
+
+export interface OriginalOperationType {
+  id: number;
+  operationId: string;
+  operationDate: string;
+  accountAmount: number;
+  operationPositions: OperationPositionType[];
+  typeOfOperation: string;
+}
+
+interface ExtendedPrismaClient {
+  originalOperationFromTbank: {
+    findMany: (args: unknown) => Promise<OriginalOperationType[]>;
+    findUnique: (args: unknown) => Promise<OriginalOperationType>;
+    upsert: (args: unknown) => Promise<OriginalOperationType>;
+  };
+  tbankSyncStatus: {
+    upsert: (args: unknown) => Promise<unknown>;
+  };
 }
 
 @Injectable()
@@ -265,7 +301,7 @@ export class PlanfactService {
     name: string;
     bankName: string;
     bankBic: string;
-  }): Promise<CounterParty> {
+  }) {
     // console.log(counterPartyData);
     const existingCounterParty = await this.prisma.counterParty.findFirst({
       where: { account: counterPartyData.account },
@@ -659,10 +695,11 @@ export class PlanfactService {
   }
 
   async getExpenseCategories(operationType?: string) {
-    const types =
-      operationType === 'Поступление'
+    const types = operationType
+      ? operationType === 'Credit'
         ? ['Доходы', 'Активы', 'Обязательства', 'Капитал']
-        : ['Расходы', 'Активы', 'Обязательства', 'Капитал'];
+        : ['Расходы', 'Активы', 'Обязательства', 'Капитал']
+      : [];
 
     const categories = await this.prisma.expenseCategory.findMany({
       where: {
@@ -777,7 +814,7 @@ export class PlanfactService {
   }
 
   async getBankAccounts() {
-    const bankAccounts = ['40802810800000977213', '40802810900002414658']; // Список банковских счетов
+    // const bankAccounts = ['40802810800000977213', '40802810900002414658']; // Список банковских счетов
 
     // const response = await axios.get(
     //   'https://business.tbank.ru/openapi/api/v4/bank-accounts',
@@ -1646,7 +1683,7 @@ export class PlanfactService {
   }
 
   async getPLDatas2(period: string, user: UserDto) {
-    const periods = getLastMonths(period, 4);
+    // const periods = getLastMonths(period, 4);
 
     const deals = await this.prisma.deal.findMany({
       where: {
@@ -1817,8 +1854,8 @@ export class PlanfactService {
         const {
           totalSalary,
           salaryCorrections,
-          prevPeriodsDealsPays,
-          prevPeriodsDopsPays,
+          // prevPeriodsDealsPays,
+          // prevPeriodsDopsPays,
         } = u;
         const salaryCorrectionMinus = salaryCorrections
           .filter((c) => c.type === 'Вычет')
@@ -2094,12 +2131,16 @@ export class PlanfactService {
     page,
     limit,
     accountId,
+    distributionFilter,
+    counterPartyId,
   }: {
     from: string;
     to: string;
     page: number;
     limit: number;
     accountId?: number;
+    distributionFilter?: string;
+    counterPartyId?: number;
   }) {
     const skip = (page - 1) * limit;
 
@@ -2114,35 +2155,97 @@ export class PlanfactService {
       where.accountId = accountId;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [operations, total] = await Promise.all([
-      (this.prisma as any).originalOperationFromTbank.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: {
-          operationDate: 'desc',
+    if (counterPartyId) {
+      where.operationPositions = {
+        some: {
+          counterPartyId: counterPartyId,
         },
-        include: {
-          account: {
-            select: {
-              id: true,
-              name: true,
-              accountNumber: true,
-              isReal: true,
-            },
-          },
-          operationPositions: {
-            include: {
-              counterParty: true,
-              expenseCategory: true,
-            },
+      };
+    }
+
+    // Получаем все операции без пагинации для фильтрации
+    const allOperations = await (
+      this.prisma as unknown as ExtendedPrismaClient
+    ).originalOperationFromTbank.findMany({
+      where,
+      orderBy: {
+        operationDate: 'desc',
+      },
+      include: {
+        account: {
+          select: {
+            id: true,
+            name: true,
+            accountNumber: true,
+            isReal: true,
           },
         },
-      }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (this.prisma as any).originalOperationFromTbank.count({ where }),
-    ]);
+        operationPositions: {
+          include: {
+            counterParty: true,
+            expenseCategory: true,
+          },
+        },
+      },
+    });
+
+    // Применяем фильтр по наличию статей
+    let filteredOperations = allOperations;
+
+    if (distributionFilter === 'hasCat') {
+      // Операции у которых ВСЕ позиции имеют статьи
+      filteredOperations = allOperations.filter(
+        (operation) =>
+          operation.operationPositions.length > 0 &&
+          operation.operationPositions.every(
+            (position) => position.expenseCategoryId !== null,
+          ),
+      );
+    } else if (distributionFilter === 'hasntCat') {
+      // Операции у которых ХОТЯ БЫ ОДНА позиция без статьи
+      filteredOperations = allOperations.filter((operation) =>
+        operation.operationPositions.some(
+          (position) => position.expenseCategoryId === null,
+        ),
+      );
+    }
+    // Если distributionFilter === 'all' или не передан - показываем все операции
+
+    // Применяем пагинацию к отфильтрованным операциям
+    const total = filteredOperations.length;
+    const operations = filteredOperations.slice(skip, skip + limit);
+
+    // Логирование для отладки - проверяем первые несколько операций
+    if (operations.length > 0) {
+      console.log(`=== ПРОВЕРКА ЗАГРУЗКИ ОПЕРАЦИЙ ===`);
+      console.log(`Всего операций: ${total}, возвращаем: ${operations.length}`);
+
+      // Проверяем первые 3 операции
+      operations.slice(0, 3).forEach((op, index) => {
+        console.log(`Операция ${index + 1}:`, {
+          operationId: op.operationId,
+          typeOfOperation: op.typeOfOperation,
+          positionsCount: op.operationPositions.length,
+          positionsWithCategories: op.operationPositions.filter(
+            (p) => p.expenseCategoryId !== null,
+          ).length,
+          positionsWithoutCategories: op.operationPositions.filter(
+            (p) => p.expenseCategoryId === null,
+          ).length,
+        });
+
+        // Показываем детали позиций
+        op.operationPositions.forEach((pos, posIndex) => {
+          console.log(`  Позиция ${posIndex + 1}:`, {
+            id: pos.id,
+            counterPartyId: pos.counterPartyId,
+            expenseCategoryId: pos.expenseCategoryId,
+            expenseCategoryName: pos.expenseCategory?.name || 'null',
+          });
+        });
+      });
+      console.log(`=== КОНЕЦ ПРОВЕРКИ ===`);
+    }
 
     return {
       operations,
@@ -2167,9 +2270,8 @@ export class PlanfactService {
     }>,
   ) {
     // Находим оригинальную операцию
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const originalOperation = await (
-      this.prisma as any
+      this.prisma as unknown as ExtendedPrismaClient
     ).originalOperationFromTbank.findUnique({
       where: { operationId },
       include: {
@@ -2218,5 +2320,554 @@ export class PlanfactService {
       success: true,
       operationPositions: createdPositions,
     };
+  }
+
+  async assignExpenseCategoriesToCounterParty(
+    counterPartyId: number,
+    categoriesData: {
+      incomeExpenseCategoryId?: number;
+      outcomeExpenseCategoryId?: number;
+    },
+  ) {
+    console.log(counterPartyId);
+    // Проверяем существование контрагента
+    const counterParty = await this.prisma.counterParty.findUnique({
+      where: { id: counterPartyId },
+      include: {
+        incomeExpenseCategory: true,
+        outcomeExpenseCategory: true,
+      },
+    });
+
+    if (!counterParty) {
+      throw new NotFoundException(
+        `Контрагент с ID ${counterPartyId} не найден`,
+      );
+    }
+
+    // Проверяем существование категорий если они указаны
+    if (categoriesData.incomeExpenseCategoryId) {
+      const incomeCategory = await this.prisma.expenseCategory.findUnique({
+        where: { id: categoriesData.incomeExpenseCategoryId },
+      });
+      if (!incomeCategory) {
+        throw new NotFoundException(
+          `Категория расходов с ID ${categoriesData.incomeExpenseCategoryId} не найдена`,
+        );
+      }
+    }
+
+    if (categoriesData.outcomeExpenseCategoryId) {
+      const outcomeCategory = await this.prisma.expenseCategory.findUnique({
+        where: { id: categoriesData.outcomeExpenseCategoryId },
+      });
+      if (!outcomeCategory) {
+        throw new NotFoundException(
+          `Категория расходов с ID ${categoriesData.outcomeExpenseCategoryId} не найдена`,
+        );
+      }
+    }
+
+    // Обновляем контрагента с новыми категориями
+    const updatedCounterParty = await this.prisma.counterParty.update({
+      where: { id: counterPartyId },
+      data: {
+        incomeExpenseCategoryId: categoriesData.incomeExpenseCategoryId,
+        outcomeExpenseCategoryId: categoriesData.outcomeExpenseCategoryId,
+      },
+      include: {
+        incomeExpenseCategory: true,
+        outcomeExpenseCategory: true,
+      },
+    });
+
+    // Находим все операции этого контрагента
+    const positions = await this.prisma.operationPosition.findMany({
+      where: {
+        counterPartyId: counterPartyId,
+      },
+      include: {
+        originalOperation: true,
+      },
+    });
+
+    console.log(`=== ОБНОВЛЕНИЕ КОНТРАГЕНТА ${counterPartyId} ===`);
+    console.log(`Входные данные:`, {
+      incomeExpenseCategoryId: categoriesData.incomeExpenseCategoryId,
+      outcomeExpenseCategoryId: categoriesData.outcomeExpenseCategoryId,
+    });
+    console.log(`Найдено позиций: ${positions.length}`);
+
+    // Группируем позиции по типам операций для статистики
+    const creditPositions = positions.filter(
+      (p) => p.originalOperation?.typeOfOperation === 'Credit',
+    );
+    const debitPositions = positions.filter(
+      (p) => p.originalOperation?.typeOfOperation === 'Debit',
+    );
+    const unknownPositions = positions.filter(
+      (p) =>
+        !['Credit', 'Debit'].includes(
+          p.originalOperation?.typeOfOperation || '',
+        ),
+    );
+
+    console.log(`Статистика позиций:`, {
+      Credit: creditPositions.length,
+      Debit: debitPositions.length,
+      Unknown: unknownPositions.length,
+    });
+
+    let updatedPositionsCount = 0;
+
+    // Обновляем позиции операций в зависимости от типа операции
+    for (const position of positions) {
+      let newExpenseCategoryId: number | null = null;
+
+      if (position.originalOperation?.typeOfOperation === 'Credit') {
+        // Входящая операция - используем входящую категорию (или null если не передана)
+        newExpenseCategoryId = categoriesData.incomeExpenseCategoryId || null;
+      } else if (position.originalOperation?.typeOfOperation === 'Debit') {
+        // Исходящая операция - используем исходящую категорию (или null если не передана)
+        newExpenseCategoryId = categoriesData.outcomeExpenseCategoryId || null;
+      }
+
+      // Обновляем позицию всегда (даже если категория null)
+      await this.prisma.operationPosition.update({
+        where: { id: position.id },
+        data: { expenseCategoryId: newExpenseCategoryId },
+      });
+      updatedPositionsCount++;
+    }
+
+    console.log(`Результат обновления:`, {
+      totalUpdated: updatedPositionsCount,
+      creditUpdated: creditPositions.length,
+      debitUpdated: debitPositions.length,
+      unknownUpdated: unknownPositions.length,
+    });
+    console.log(`=== КОНЕЦ ОБНОВЛЕНИЯ КОНТРАГЕНТА ${counterPartyId} ===`);
+
+    return {
+      success: true,
+      counterParty: updatedCounterParty,
+      updatedPositionsCount,
+      message: `Обновлено ${updatedPositionsCount} позиций операций для контрагента "${counterParty.title}"`,
+    };
+  }
+
+  async assignExpenseCategoriesToCounterPartyByAccount(
+    counterPartyAccount: string,
+    categoriesData: {
+      incomeExpenseCategoryId?: number;
+      outcomeExpenseCategoryId?: number;
+    },
+  ) {
+    // Находим контрагента по номеру счета
+    const counterParty = await this.prisma.counterParty.findFirst({
+      where: {
+        account: counterPartyAccount,
+      },
+      include: {
+        incomeExpenseCategory: true,
+        outcomeExpenseCategory: true,
+      },
+    });
+
+    if (!counterParty) {
+      throw new NotFoundException(
+        `Контрагент с номером счета "${counterPartyAccount}" не найден`,
+      );
+    }
+
+    console.log(
+      `=== ОБНОВЛЕНИЕ КОНТРАГЕНТА ПО СЧЕТУ ${counterPartyAccount} ===`,
+    );
+    console.log(
+      `Найден контрагент: ID=${counterParty.id}, Title="${counterParty.title}"`,
+    );
+
+    // Используем существующий метод с найденным ID
+    return this.assignExpenseCategoriesToCounterParty(
+      counterParty.id,
+      categoriesData,
+    );
+  }
+
+  // Методы для синхронизации операций Т-Банка с категориями
+  async getOrCreateCounterPartyWithCategories(counterPartyData: {
+    account: string;
+    inn: string;
+    kpp: string;
+    name: string;
+    bankName: string;
+    bankBic: string;
+  }) {
+    const existingCounterParty = await this.prisma.counterParty.findFirst({
+      where: { account: counterPartyData.account },
+      include: {
+        incomeExpenseCategory: true,
+        outcomeExpenseCategory: true,
+      },
+    });
+
+    if (existingCounterParty) {
+      return existingCounterParty;
+    }
+
+    const counterParty = await this.prisma.counterParty.create({
+      data: {
+        title: counterPartyData.name || 'Неизвестный контрагент',
+        type: 'Получатель',
+        inn: counterPartyData.inn || '',
+        kpp: counterPartyData.kpp || '',
+        account: counterPartyData.account || '',
+        bankBic: counterPartyData.bankBic || '',
+        bankName: counterPartyData.bankName || '',
+        contrAgentGroup: 'Контрагенты без группы',
+      },
+      include: {
+        incomeExpenseCategory: true,
+        outcomeExpenseCategory: true,
+      },
+    });
+
+    return counterParty;
+  }
+
+  async fetchOperationsFromTbankWithCategories(
+    accountNumber: string,
+    from: string,
+    to: string,
+    limit: number = 1000,
+    categories?: string[],
+    inns?: string[],
+  ) {
+    const allOperations: OperationFromApi[] = [];
+    let cursor: string | undefined = undefined;
+    let hasMore = true;
+
+    try {
+      while (hasMore) {
+        const params: Record<string, string | number | boolean | string[]> = {
+          accountNumber,
+          operationStatus: 'Transaction',
+          from: new Date(from).toISOString(),
+          to: new Date(to + 'T23:59:59.999Z').toISOString(),
+          withBalances: cursor ? false : true,
+          limit: Math.min(limit, 5000),
+        };
+
+        if (categories && categories.length > 0) {
+          params.categories = categories;
+        }
+        if (inns && inns.length > 0) {
+          params.inns = inns;
+        }
+
+        if (cursor) {
+          params.cursor = cursor;
+        }
+
+        const response = await axios.get(
+          'https://business.tbank.ru/openapi/api/v1/statement',
+          {
+            proxy: false,
+            headers: {
+              Authorization: 'Bearer ' + tToken,
+              'Content-Type': 'application/json',
+            },
+            params,
+            maxBodyLength: Infinity,
+          },
+        );
+
+        const operations = response.data.operations || [];
+        allOperations.push(...operations);
+
+        cursor = response.data.nextCursor;
+        hasMore = !!cursor && operations.length > 0;
+
+        if (hasMore) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
+        console.log(
+          `Получено ${operations.length} операций, всего: ${allOperations.length}`,
+        );
+      }
+
+      return allOperations;
+    } catch (error) {
+      console.error(
+        `Ошибка при получении операций для счета ${accountNumber}:`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async saveOriginalOperationsWithCategories(
+    operations: OperationFromApi[],
+    accountId: number,
+  ) {
+    let savedCount = 0;
+    let lastOperationDate = '';
+
+    for (const op of operations) {
+      try {
+        // Создаем или находим контрагента с категориями
+        const counterParty = await this.getOrCreateCounterPartyWithCategories({
+          account: op.counterParty.account || '',
+          inn: op.counterParty.inn || '',
+          kpp: op.counterParty.kpp || '',
+          name: op.counterParty.name || '',
+          bankName: op.counterParty.bankName || '',
+          bankBic: op.counterParty.bankBic || '',
+        });
+
+        // Всегда делаем upsert для операции
+        const originalOperation = await (
+          this.prisma as unknown as ExtendedPrismaClient
+        ).originalOperationFromTbank.upsert({
+          where: { operationId: op.operationId },
+          update: {
+            operationDate: op.operationDate,
+            typeOfOperation: op.typeOfOperation || 'Unknown',
+            category: op.category || '',
+            description: op.description || '',
+            payPurpose: op.payPurpose || '',
+            accountAmount: op.accountAmount,
+            counterPartyAccount: op.counterParty.account || '',
+            counterPartyInn: op.counterParty.inn || '',
+            counterPartyKpp: op.counterParty.kpp || '',
+            counterPartyBic: op.counterParty.bankBic || '',
+            counterPartyBankName: op.counterParty.bankName || '',
+            counterPartyTitle: op.counterParty.name || '',
+            expenseCategoryId: op.expenseCategoryId,
+            expenseCategoryName: op.expenseCategoryName,
+            accountId: accountId,
+          },
+          create: {
+            operationId: op.operationId,
+            operationDate: op.operationDate,
+            typeOfOperation: op.typeOfOperation || 'Unknown',
+            category: op.category || '',
+            description: op.description || '',
+            payPurpose: op.payPurpose || '',
+            accountAmount: op.accountAmount,
+            counterPartyAccount: op.counterParty.account || '',
+            counterPartyInn: op.counterParty.inn || '',
+            counterPartyKpp: op.counterParty.kpp || '',
+            counterPartyBic: op.counterParty.bankBic || '',
+            counterPartyBankName: op.counterParty.bankName || '',
+            counterPartyTitle: op.counterParty.name || '',
+            expenseCategoryId: op.expenseCategoryId,
+            expenseCategoryName: op.expenseCategoryName,
+            accountId: accountId,
+          },
+        });
+
+        // Проверяем, есть ли уже позиции у операции
+        const existingPositions = await this.prisma.operationPosition.findMany({
+          where: {
+            originalOperationId: originalOperation.id,
+          },
+        });
+
+        if (existingPositions.length > 0) {
+          console.log(
+            `Операция ${op.operationId} уже имеет позиции, пропускаем создание позиций`,
+          );
+          savedCount++;
+          continue;
+        }
+
+        // Определяем категорию на основе типа операции и контрагента
+        let expenseCategoryId: number | null = null;
+
+        if (
+          op.typeOfOperation === 'Credit' &&
+          counterParty.incomeExpenseCategory
+        ) {
+          // Входящая операция - используем входящую категорию контрагента
+          expenseCategoryId = counterParty.incomeExpenseCategory.id;
+          console.log(
+            `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+          );
+        } else if (
+          op.typeOfOperation === 'Debit' &&
+          counterParty.outcomeExpenseCategory
+        ) {
+          // Исходящая операция - используем исходящую категорию контрагента
+          expenseCategoryId = counterParty.outcomeExpenseCategory.id;
+          console.log(
+            `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+          );
+        } else {
+          console.log(
+            `Операция ${op.operationId}: у контрагента "${counterParty.title}" нет соответствующей категории для типа операции "${op.typeOfOperation}"`,
+          );
+        }
+
+        // Создаем позицию (только если её еще нет)
+        await this.prisma.operationPosition.create({
+          data: {
+            amount: op.accountAmount,
+            originalOperationId: originalOperation.id,
+            counterPartyId: counterParty.id,
+            expenseCategoryId: expenseCategoryId,
+          },
+        });
+
+        savedCount++;
+        // Обновляем дату последней операции (сортируем по дате)
+        if (op.operationDate > lastOperationDate) {
+          lastOperationDate = op.operationDate;
+        }
+      } catch (error) {
+        console.error(
+          `Ошибка при сохранении операции ${op.operationId}:`,
+          error,
+        );
+      }
+    }
+
+    // Обновляем статус синхронизации
+    await this.updateSyncStatus(
+      accountId,
+      lastOperationDate,
+      savedCount,
+      'success',
+    );
+
+    return { savedCount, lastOperationDate };
+  }
+
+  async updateSyncStatus(
+    accountId: number,
+    lastOperationDate: string,
+    totalOperations: number,
+    status: 'success' | 'error' | 'in_progress',
+    errorMessage?: string,
+  ) {
+    try {
+      await (
+        this.prisma as unknown as ExtendedPrismaClient
+      ).tbankSyncStatus.upsert({
+        where: { accountId },
+        update: {
+          lastSyncDate: new Date(),
+          lastOperationDate: lastOperationDate.slice(0, 10), // YYYY-MM-DD
+          totalOperations: {
+            increment: totalOperations,
+          },
+          syncStatus: status,
+          errorMessage: errorMessage || null,
+        },
+        create: {
+          accountId,
+          lastSyncDate: new Date(),
+          lastOperationDate: lastOperationDate.slice(0, 10), // YYYY-MM-DD
+          totalOperations,
+          syncStatus: status,
+          errorMessage: errorMessage || null,
+        },
+      });
+    } catch (error) {
+      console.error(
+        `Ошибка при обновлении статуса синхронизации для аккаунта ${accountId}:`,
+        error,
+      );
+    }
+  }
+
+  async syncTbankOperations(from?: string, to?: string) {
+    console.log('Starting T-Bank operations sync with categories...');
+
+    try {
+      // Параметры по умолчанию - сегодняшний день
+      const today = new Date();
+      const fromDate = from || today.toISOString().split('T')[0];
+      const toDate = to || today.toISOString().split('T')[0];
+
+      console.log(`Синхронизация операций с ${fromDate} по ${toDate}`);
+
+      if (!tToken) {
+        throw new Error('TB_TOKEN не установлен в переменных окружения');
+      }
+
+      // Получаем все аккаунты с доступом к API
+      const accounts = await this.prisma.planFactAccount.findMany({
+        where: {
+          isReal: true,
+        },
+      });
+
+      console.log(`Найдено ${accounts.length} аккаунтов с API доступом`);
+
+      let totalSaved = 0;
+      for (const account of accounts) {
+        console.log(
+          `Обрабатываем аккаунт: ${account.name} (${account.accountNumber})`,
+        );
+
+        try {
+          // Устанавливаем статус "в процессе"
+          await this.updateSyncStatus(account.id, '', 0, 'in_progress');
+
+          const operations = await this.fetchOperationsFromTbankWithCategories(
+            account.accountNumber,
+            fromDate,
+            toDate,
+            1000,
+          );
+
+          console.log(
+            `Получено ${operations.length} операций для аккаунта ${account.name}`,
+          );
+
+          if (operations.length > 0) {
+            const result = await this.saveOriginalOperationsWithCategories(
+              operations,
+              account.id,
+            );
+            console.log(
+              `Сохранено ${result.savedCount} операций для аккаунта ${account.name}. Последняя операция: ${result.lastOperationDate}`,
+            );
+            totalSaved += result.savedCount;
+          } else {
+            // Обновляем статус даже если операций нет
+            await this.updateSyncStatus(account.id, '', 0, 'success');
+            console.log(`Операций не найдено для аккаунта ${account.name}`);
+          }
+        } catch (error) {
+          console.error(
+            `Ошибка при обработке аккаунта ${account.name}:`,
+            error,
+          );
+          // Устанавливаем статус ошибки
+          await this.updateSyncStatus(
+            account.id,
+            '',
+            0,
+            'error',
+            error instanceof Error ? error.message : 'Неизвестная ошибка',
+          );
+        }
+      }
+
+      console.log(
+        `Синхронизация завершена. Всего сохранено: ${totalSaved} операций`,
+      );
+      return {
+        success: true,
+        totalSaved,
+        message: `Синхронизация завершена. Сохранено: ${totalSaved} операций`,
+      };
+    } catch (error) {
+      console.error('Ошибка выполнения синхронизации:', error);
+      throw error;
+    }
   }
 }

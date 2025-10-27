@@ -67,6 +67,8 @@ export class PlanfactController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
     @Query('accountId') accountId: number,
+    @Query('distributionFilter') distributionFilter?: string,
+    @Query('counterPartyId') counterPartyId?: number,
   ) {
     if (!accountId) {
       throw new BadRequestException('Параметр accountId обязателен');
@@ -87,11 +89,14 @@ export class PlanfactController {
     if (limit < 1 || limit > 1000) {
       throw new BadRequestException('Параметр limit должен быть от 1 до 1000');
     }
-    //  this.planfactService.getOperationsFromRange(
-    //   { from, to },
-    //   limit,
-    //   accountId,
-    // );
+    if (
+      distributionFilter &&
+      !['all', 'hasCat', 'hasntCat'].includes(distributionFilter)
+    ) {
+      throw new BadRequestException(
+        'Параметр distributionFilter должен быть одним из: all, hasCat, hasntCat',
+      );
+    }
 
     return this.planfactService.getOriginalOperations({
       from,
@@ -99,6 +104,8 @@ export class PlanfactController {
       page,
       limit,
       accountId,
+      distributionFilter,
+      counterPartyId,
     });
   }
 
@@ -202,5 +209,33 @@ export class PlanfactController {
       );
     }
     return this.planfactService.getPLDatas(period, user);
+  }
+
+  @Patch('counter-parties/expense-categories')
+  @Roles('ADMIN', 'G', 'KD')
+  async assignExpenseCategoriesToCounterParty(
+    @Body()
+    categoriesData: {
+      counterPartyAccount: string;
+      incomeExpenseCategoryId?: number;
+      outcomeExpenseCategoryId?: number;
+    },
+  ) {
+    if (!categoriesData.counterPartyAccount) {
+      throw new BadRequestException('Параметр counterPartyAccount обязателен');
+    }
+    if (
+      !categoriesData.incomeExpenseCategoryId &&
+      !categoriesData.outcomeExpenseCategoryId
+    ) {
+      throw new BadRequestException(
+        'Необходимо указать хотя бы одну категорию (incomeExpenseCategoryId или outcomeExpenseCategoryId)',
+      );
+    }
+
+    return this.planfactService.assignExpenseCategoriesToCounterPartyByAccount(
+      categoriesData.counterPartyAccount,
+      categoriesData,
+    );
   }
 }

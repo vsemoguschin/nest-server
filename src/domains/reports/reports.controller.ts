@@ -33,7 +33,7 @@ export class ReportsController {
   }
 
   @Get('groups-list')
-  @Roles('ADMIN', 'G', 'KD', 'DO')
+  @Roles('ADMIN', 'G', 'KD', 'DO','ROP')
   async getGroups(@CurrentUser() user: UserDto) {
     return this.reportService.getGroups(user);
   }
@@ -113,7 +113,7 @@ export class ReportsController {
   // }
 
   @Get('rops/range')
-  @Roles('ADMIN', 'G', 'KD', 'DO')
+  @Roles('ADMIN', 'G', 'KD', 'DO','ROP')
   async getRopsReportsFromRange(
     @CurrentUser() user: UserDto,
     @Query('from') from: string,
