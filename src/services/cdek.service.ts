@@ -119,7 +119,6 @@ export class CdekService {
   }> {
     const token = await this.getAccessToken();
     const entity = await this.getOrderInfo(cdek_number, token);
-    // console.log(entity);
     const { status, sendDate, deliveredDate } = this.parseOrderStatus(entity);
 
     const price = entity?.delivery_detail?.total_sum || 0;
@@ -149,7 +148,6 @@ export class CdekService {
                 headers: { Authorization: `Bearer ${token}` },
               },
             );
-            // console.log(data);
 
             // Проверка на наличие registries
             if (!data?.registries) {
@@ -159,8 +157,6 @@ export class CdekService {
             const orders = data.registries.flatMap((r) => r.orders || []); // Защита от undefined
             const tracks = orders.map((o) => o.cdek_number).filter(Boolean); // Фильтрация undefined/null
             const sum = data.registries.reduce((acc, r) => acc + r.sum, 0);
-            // console.log(date, 'sum reg', sum);
-
             return { date, tracks, orders, sum };
           } catch (error) {
             console.error(`Ошибка для даты ${date}:`, error);
@@ -180,7 +176,7 @@ export class CdekService {
         .filter((item) => !item.error)
         .flatMap((item) => item.tracks);
       // console.log('Результаты:', successfulResults);
-
+      // console.log(successfulResults)
       return {
         tracks: successfulResults,
         sum: res.reduce((a, b) => a + b.sum, 0),

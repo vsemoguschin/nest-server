@@ -100,7 +100,7 @@ export class TaskNotifyService {
     const url = link || this.buildTaskUrl(boardId, taskId);
     const text =
       `<b>${columnTitle || 'Колонка'}</b>\n` +
-      `Новая карточка - "${taskTitle || 'Задача'}"\n` +
+      `"${taskTitle || 'Задача'}"\n` +
       `<a href="${url}">Открыть карточку</a>`;
 
     const chatIds = Array.from(

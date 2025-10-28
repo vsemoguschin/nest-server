@@ -552,6 +552,10 @@ model Supplie {
   invoice         String?
   track           String?
   positions       SuppliePosition[]
+  
+  // Связь с операцией Т-Банка (один к одному, может отсутствовать)
+  // operationId     Int?     @unique
+  // operation       OriginalOperationFromTbank? @relation(fields: [operationId], references: [id])
 }
 
 model SuppliePosition {
@@ -821,6 +825,9 @@ model OriginalOperationFromTbank {
   account            PlanFactAccount @relation(fields: [accountId], references: [id])
   
   operationPositions OperationPosition[]
+  
+  // Связь с поставкой (один к одному, может отсутствовать)
+  // supplie            Supplie?
   
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt

@@ -52,14 +52,87 @@ interface OperationFromApi {
 
 const tToken = process.env.TB_TOKEN;
 
-async function getOrCreateCounterParty(counterPartyData: {
-  account: string;
-  inn: string;
-  kpp: string;
-  name: string;
-  bankName: string;
-  bankBic: string;
-}) {
+// Функция для определения категории на основе условий
+function determineExpenseCategory(
+  typeOfOperation: string,
+  category: string,
+  payPurpose: string,
+  counterPartyTitle: string,
+): { incomeCategoryId: number | null; outcomeCategoryId: number | null } {
+  let incomeCategoryId: number | null = null;
+  let outcomeCategoryId: number | null = null;
+
+  // Логика для операций Credit (входящие)
+  if (typeOfOperation === 'Credit') {
+    // 1. Проверка на "Пополнение по операции СБП Терминал"
+    // Ищем каждое слово из фразы в payPurpose
+    const sbpWords = ['пополнение', 'операции', 'сбп', 'терминал'];
+    if (
+      payPurpose &&
+      sbpWords.every((word) => payPurpose.toLowerCase().includes(word))
+    ) {
+      incomeCategoryId = 2;
+    }
+    // 2. Проверка на "Перевод средств по договору 7035739486"
+    // Ищем ключевые слова из фразы
+    else if (
+      payPurpose &&
+      ['перевод', 'средств', 'договору', '7035739486'].every((word) =>
+        payPurpose.toLowerCase().includes(word),
+      )
+    ) {
+      incomeCategoryId = 4;
+    }
+    // 3. Проверка на начало counterPartyTitle с "ООО", "ИП", "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ" или "Индивидуальный предприниматель" (независимо от регистра)
+    else if (
+      counterPartyTitle &&
+      (counterPartyTitle.toLowerCase().startsWith('ооо') ||
+        counterPartyTitle.toLowerCase().startsWith('ип') ||
+        counterPartyTitle
+          .toLowerCase()
+          .startsWith('общество с ограниченной ответственностью') ||
+        counterPartyTitle
+          .toLowerCase()
+          .startsWith('индивидуальный предприниматель'))
+    ) {
+      // Список исключений - контрагенты, которые НЕ должны получать категорию 1
+      const exceptions = [
+        'индивидуальный предприниматель мазунин максим евгеньевич',
+        'общество с ограниченной ответственностью "экспресс курьер"',
+        'общество с ограниченной ответственностью "рвб"',
+      ];
+
+      // Проверяем, не является ли контрагент исключением
+      const isException = exceptions.some((exception) =>
+        counterPartyTitle.toLowerCase().includes(exception.toLowerCase()),
+      );
+
+      if (!isException) {
+        incomeCategoryId = 1;
+      }
+    }
+  }
+
+  // Логика для операций Debit (исходящие)
+  if (typeOfOperation === 'Debit' && category === 'fee') {
+    outcomeCategoryId = 48;
+  }
+
+  return { incomeCategoryId, outcomeCategoryId };
+}
+
+async function getOrCreateCounterParty(
+  counterPartyData: {
+    account: string;
+    inn: string;
+    kpp: string;
+    name: string;
+    bankName: string;
+    bankBic: string;
+  },
+  incomeExpenseCategoryId?: number | null,
+  outcomeExpenseCategoryId?: number | null,
+) {
   const existingCounterParty = await prisma.counterParty.findFirst({
     where: { account: counterPartyData.account },
     include: {
@@ -69,6 +142,60 @@ async function getOrCreateCounterParty(counterPartyData: {
   });
 
   if (existingCounterParty) {
+    // Если у контрагента нет категории и мы определили категорию, присваиваем её
+    const updateData: {
+      incomeExpenseCategoryId?: number;
+      outcomeExpenseCategoryId?: number;
+    } = {};
+    let categoryAssigned = false;
+
+    if (
+      !existingCounterParty.incomeExpenseCategory &&
+      incomeExpenseCategoryId
+    ) {
+      updateData.incomeExpenseCategoryId = incomeExpenseCategoryId;
+      categoryAssigned = true;
+    }
+
+    if (
+      !existingCounterParty.outcomeExpenseCategory &&
+      outcomeExpenseCategoryId
+    ) {
+      updateData.outcomeExpenseCategoryId = outcomeExpenseCategoryId;
+      categoryAssigned = true;
+    }
+
+    if (categoryAssigned) {
+      const updatedCounterParty = await prisma.counterParty.update({
+        where: { id: existingCounterParty.id },
+        data: updateData,
+        include: {
+          incomeExpenseCategory: true,
+          outcomeExpenseCategory: true,
+        },
+      });
+
+      const categoryInfo: string[] = [];
+      if (updateData.incomeExpenseCategoryId) {
+        categoryInfo.push(
+          `входящая категория ${updateData.incomeExpenseCategoryId}`,
+        );
+      }
+      if (updateData.outcomeExpenseCategoryId) {
+        categoryInfo.push(
+          `исходящая категория ${updateData.outcomeExpenseCategoryId}`,
+        );
+      }
+
+      console.log(
+        `Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+      );
+      await notifyAdmins(
+        `✅ Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+      );
+
+      return updatedCounterParty;
+    }
     return existingCounterParty;
   }
 
@@ -82,12 +209,31 @@ async function getOrCreateCounterParty(counterPartyData: {
       bankBic: counterPartyData.bankBic || '',
       bankName: counterPartyData.bankName || '',
       contrAgentGroup: 'Контрагенты без группы',
+      incomeExpenseCategoryId: incomeExpenseCategoryId || null,
+      outcomeExpenseCategoryId: outcomeExpenseCategoryId || null,
     },
     include: {
       incomeExpenseCategory: true,
       outcomeExpenseCategory: true,
     },
   });
+
+  if (incomeExpenseCategoryId || outcomeExpenseCategoryId) {
+    const categoryInfo: string[] = [];
+    if (incomeExpenseCategoryId) {
+      categoryInfo.push(`входящая категория ${incomeExpenseCategoryId}`);
+    }
+    if (outcomeExpenseCategoryId) {
+      categoryInfo.push(`исходящая категория ${outcomeExpenseCategoryId}`);
+    }
+
+    console.log(
+      `Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+    );
+    await notifyAdmins(
+      `✅ Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+    );
+  }
 
   return counterParty;
 }
@@ -176,15 +322,27 @@ async function saveOriginalOperations(
 
   for (const op of operations) {
     try {
-      // Создаем или находим контрагента
-      const counterParty = await getOrCreateCounterParty({
-        account: op.counterParty.account || '',
-        inn: op.counterParty.inn || '',
-        kpp: op.counterParty.kpp || '',
-        name: op.counterParty.name || '',
-        bankName: op.counterParty.bankName || '',
-        bankBic: op.counterParty.bankBic || '',
-      });
+      // Определяем категорию на основе условий перед созданием контрагента
+      const { incomeCategoryId, outcomeCategoryId } = determineExpenseCategory(
+        op.typeOfOperation,
+        op.category,
+        op.payPurpose,
+        op.counterParty.name,
+      );
+
+      // Создаем или находим контрагента с определенной категорией
+      const counterParty = await getOrCreateCounterParty(
+        {
+          account: op.counterParty.account || '',
+          inn: op.counterParty.inn || '',
+          kpp: op.counterParty.kpp || '',
+          name: op.counterParty.name || '',
+          bankName: op.counterParty.bankName || '',
+          bankBic: op.counterParty.bankBic || '',
+        },
+        incomeCategoryId,
+        outcomeCategoryId,
+      );
 
       // Всегда делаем upsert для операции
       const originalOperation = await prisma.originalOperationFromTbank.upsert({
@@ -268,7 +426,7 @@ async function saveOriginalOperations(
         await notifyAdmins(
           `✅ Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
         );
-      } else {
+      } else if (!expenseCategoryId) {
         console.log(
           `Операция ${op.operationId}: у контрагента "${counterParty.title}" нет соответствующей категории для типа операции "${op.typeOfOperation}"`,
         );
@@ -336,6 +494,42 @@ async function updateSyncStatus(
   }
 }
 
+async function upsertPlanFactAccount() {
+  try {
+    const account = await prisma.planFactAccount.upsert({
+      where: { accountNumber: '40802810600008448575' },
+      update: {
+        name: 'Копилка',
+        accountNumber: '40802810600008448575',
+      },
+      create: {
+        name: 'Копилка',
+        accountNumber: '40802810600008448575',
+        balance: 0,
+        type: '',
+        balanceStartDate: '',
+        comment: '',
+        isReal: true,
+      },
+    });
+
+    console.log(
+      `PlanFactAccount успешно создан/обновлен: ${account.name} (${account.accountNumber})`,
+    );
+    await notifyAdmins(
+      `✅ PlanFactAccount успешно создан/обновлен: ${account.name} (${account.accountNumber})`,
+    );
+
+    return account;
+  } catch (error) {
+    console.error('Ошибка при создании/обновлении PlanFactAccount:', error);
+    await notifyAdmins(
+      `❌ Ошибка при создании/обновлении PlanFactAccount: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`,
+    );
+    throw error;
+  }
+}
+
 async function getSyncStatus() {
   try {
     const statuses = (await extendedPrisma.tbankSyncStatus.findMany({
@@ -383,22 +577,25 @@ async function main() {
     return;
   }
 
+  // Создаем/обновляем PlanFactAccount "Копилка"
+  await upsertPlanFactAccount();
+
   // СЕКЦИЯ ОЧИСТКИ ДАННЫХ - ЗАКОММЕНТИРОВАТЬ ДЛЯ ОТКЛЮЧЕНИЯ
   // Раскомментируйте этот блок, если нужно очистить все данные перед синхронизацией
 
-    // console.log('Очистка всех данных...');
-    // await prisma.operationPosition.deleteMany({
-    //   where: {
-    //     originalOperationId: {
-    //       not: null,
-    //     },
-    //   },
-    // });
-    // await prisma.originalOperationFromTbank.deleteMany({});
-    // await prisma.tbankSyncStatus.deleteMany({});
-    // await prisma.counterParty.deleteMany({});
-    // console.log('Все данные очищены');
-    // await prisma.$disconnect();
+  console.log('Очистка всех данных...');
+  await prisma.operationPosition.deleteMany({
+    where: {
+      originalOperationId: {
+        not: null,
+      },
+    },
+  });
+  await prisma.originalOperationFromTbank.deleteMany({});
+  await prisma.tbankSyncStatus.deleteMany({});
+  await prisma.counterParty.deleteMany({});
+  console.log('Все данные очищены');
+  await prisma.$disconnect();
 
   // ---------------
 

@@ -3,6 +3,26 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from './telegram.service';
 import axios from 'axios';
 
+interface OperationFromApi {
+  operationId: string;
+  operationDate: string;
+  typeOfOperation: string;
+  category: string;
+  description: string;
+  payPurpose: string;
+  accountAmount: number;
+  counterParty: {
+    account: string;
+    inn: string;
+    kpp: string;
+    bankBic: string;
+    bankName: string;
+    name: string;
+  };
+  expenseCategoryId: number | null;
+  expenseCategoryName: string | null;
+}
+
 @Injectable()
 export class TbankSyncService {
   private readonly logger = new Logger(TbankSyncService.name);
@@ -13,6 +33,75 @@ export class TbankSyncService {
     private readonly telegramService: TelegramService,
   ) {}
 
+  // Функция для определения категории на основе условий
+  private determineExpenseCategory(
+    typeOfOperation: string,
+    category: string,
+    payPurpose: string,
+    counterPartyTitle: string,
+  ): { incomeCategoryId: number | null; outcomeCategoryId: number | null } {
+    let incomeCategoryId: number | null = null;
+    let outcomeCategoryId: number | null = null;
+
+    // Логика для операций Credit (входящие)
+    if (typeOfOperation === 'Credit') {
+      // 1. Проверка на "Пополнение по операции СБП Терминал"
+      // Ищем каждое слово из фразы в payPurpose
+      const sbpWords = ['пополнение', 'операции', 'сбп', 'терминал'];
+      if (
+        payPurpose &&
+        sbpWords.every((word) => payPurpose.toLowerCase().includes(word))
+      ) {
+        incomeCategoryId = 2;
+      }
+      // 2. Проверка на "Перевод средств по договору 7035739486"
+      // Ищем ключевые слова из фразы
+      else if (
+        payPurpose &&
+        ['перевод', 'средств', 'договору', '7035739486'].every((word) =>
+          payPurpose.toLowerCase().includes(word),
+        )
+      ) {
+        incomeCategoryId = 4;
+      }
+      // 3. Проверка на начало counterPartyTitle с "ООО", "ИП", "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ" или "Индивидуальный предприниматель" (независимо от регистра)
+      else if (
+        counterPartyTitle &&
+        (counterPartyTitle.toLowerCase().startsWith('ооо') ||
+          counterPartyTitle.toLowerCase().startsWith('ип') ||
+          counterPartyTitle
+            .toLowerCase()
+            .startsWith('общество с ограниченной ответственностью') ||
+          counterPartyTitle
+            .toLowerCase()
+            .startsWith('индивидуальный предприниматель'))
+      ) {
+        // Список исключений - контрагенты, которые НЕ должны получать категорию 1
+        const exceptions = [
+          'индивидуальный предприниматель мазунин максим евгеньевич',
+          'общество с ограниченной ответственностью "экспресс курьер"',
+          'общество с ограниченной ответственностью "рвб"',
+        ];
+
+        // Проверяем, не является ли контрагент исключением
+        const isException = exceptions.some((exception) =>
+          counterPartyTitle.toLowerCase().includes(exception.toLowerCase()),
+        );
+
+        if (!isException) {
+          incomeCategoryId = 1;
+        }
+      }
+    }
+
+    // Логика для операций Debit (исходящие)
+    if (typeOfOperation === 'Debit' && category === 'fee') {
+      outcomeCategoryId = 48;
+    }
+
+    return { incomeCategoryId, outcomeCategoryId };
+  }
+
   private async notifyAdmins(text: string) {
     // Send only in production to avoid spam in dev
     if (this.env !== 'production') return;
@@ -20,25 +109,89 @@ export class TbankSyncService {
     for (const id of adminIds) {
       try {
         await this.telegramService.sendToChat(id, text);
-      } catch (e: any) {
-        this.logger.error(`Failed to notify ${id}: ${e?.message || e}`);
+      } catch (e: unknown) {
+        this.logger.error(
+          `Failed to notify ${id}: ${e instanceof Error ? e.message : e}`,
+        );
       }
     }
   }
 
-  async getOrCreateCounterParty(counterPartyData: {
-    account: string;
-    inn: string;
-    kpp: string;
-    name: string;
-    bankName: string;
-    bankBic: string;
-  }) {
+  async getOrCreateCounterParty(
+    counterPartyData: {
+      account: string;
+      inn: string;
+      kpp: string;
+      name: string;
+      bankName: string;
+      bankBic: string;
+    },
+    incomeExpenseCategoryId?: number | null,
+    outcomeExpenseCategoryId?: number | null,
+  ) {
     const existingCounterParty = await this.prisma.counterParty.findFirst({
       where: { account: counterPartyData.account },
+      include: {
+        incomeExpenseCategory: true,
+        outcomeExpenseCategory: true,
+      },
     });
 
     if (existingCounterParty) {
+      // Если у контрагента нет категории и мы определили категорию, присваиваем её
+      const updateData: {
+        incomeExpenseCategoryId?: number;
+        outcomeExpenseCategoryId?: number;
+      } = {};
+      let categoryAssigned = false;
+
+      if (
+        !existingCounterParty.incomeExpenseCategory &&
+        incomeExpenseCategoryId
+      ) {
+        updateData.incomeExpenseCategoryId = incomeExpenseCategoryId;
+        categoryAssigned = true;
+      }
+
+      if (
+        !existingCounterParty.outcomeExpenseCategory &&
+        outcomeExpenseCategoryId
+      ) {
+        updateData.outcomeExpenseCategoryId = outcomeExpenseCategoryId;
+        categoryAssigned = true;
+      }
+
+      if (categoryAssigned) {
+        const updatedCounterParty = await this.prisma.counterParty.update({
+          where: { id: existingCounterParty.id },
+          data: updateData,
+          include: {
+            incomeExpenseCategory: true,
+            outcomeExpenseCategory: true,
+          },
+        });
+
+        const categoryInfo: string[] = [];
+        if (updateData.incomeExpenseCategoryId) {
+          categoryInfo.push(
+            `входящая категория ${updateData.incomeExpenseCategoryId}`,
+          );
+        }
+        if (updateData.outcomeExpenseCategoryId) {
+          categoryInfo.push(
+            `исходящая категория ${updateData.outcomeExpenseCategoryId}`,
+          );
+        }
+
+        this.logger.log(
+          `Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+        );
+        await this.notifyAdmins(
+          `✅ Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+        );
+
+        return updatedCounterParty;
+      }
       return existingCounterParty;
     }
 
@@ -52,8 +205,31 @@ export class TbankSyncService {
         bankBic: counterPartyData.bankBic || '',
         bankName: counterPartyData.bankName || '',
         contrAgentGroup: 'Контрагенты без группы',
+        incomeExpenseCategoryId: incomeExpenseCategoryId || null,
+        outcomeExpenseCategoryId: outcomeExpenseCategoryId || null,
+      },
+      include: {
+        incomeExpenseCategory: true,
+        outcomeExpenseCategory: true,
       },
     });
+
+    if (incomeExpenseCategoryId || outcomeExpenseCategoryId) {
+      const categoryInfo: string[] = [];
+      if (incomeExpenseCategoryId) {
+        categoryInfo.push(`входящая категория ${incomeExpenseCategoryId}`);
+      }
+      if (outcomeExpenseCategoryId) {
+        categoryInfo.push(`исходящая категория ${outcomeExpenseCategoryId}`);
+      }
+
+      this.logger.log(
+        `Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+      );
+      await this.notifyAdmins(
+        `✅ Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+      );
+    }
 
     return counterParty;
   }
@@ -71,7 +247,7 @@ export class TbankSyncService {
       throw new Error('TB_TOKEN не установлен в переменных окружения');
     }
 
-    const allOperations: any[] = [];
+    const allOperations: OperationFromApi[] = [];
     let cursor: string | undefined = undefined;
     let hasMore = true;
 
@@ -135,25 +311,49 @@ export class TbankSyncService {
     }
   }
 
-  async saveOriginalOperations(operations: any[], accountId: number) {
+  async saveOriginalOperations(
+    operations: OperationFromApi[],
+    accountId: number,
+  ) {
     let savedCount = 0;
     let lastOperationDate = '';
 
     for (const op of operations) {
       try {
-        // Создаем или находим контрагента
-        const counterParty = await this.getOrCreateCounterParty({
-          account: op.counterParty.account || '',
-          inn: op.counterParty.inn || '',
-          kpp: op.counterParty.kpp || '',
-          name: op.counterParty.name || '',
-          bankName: op.counterParty.bankName || '',
-          bankBic: op.counterParty.bankBic || '',
-        });
+        // Определяем категорию на основе условий перед созданием контрагента
+        const { incomeCategoryId, outcomeCategoryId } =
+          this.determineExpenseCategory(
+            op.typeOfOperation,
+            op.category,
+            op.payPurpose,
+            op.counterParty.name,
+          );
+
+        // Создаем или находим контрагента с определенной категорией
+        const counterParty = await this.getOrCreateCounterParty(
+          {
+            account: op.counterParty.account || '',
+            inn: op.counterParty.inn || '',
+            kpp: op.counterParty.kpp || '',
+            name: op.counterParty.name || '',
+            bankName: op.counterParty.bankName || '',
+            bankBic: op.counterParty.bankBic || '',
+          },
+          incomeCategoryId,
+          outcomeCategoryId,
+        );
 
         // Всегда делаем upsert для операции
         const originalOperation = await (
-          this.prisma as any
+          this.prisma as unknown as {
+            originalOperationFromTbank: {
+              upsert: (args: {
+                where: { operationId: string };
+                update: Record<string, unknown>;
+                create: Record<string, unknown>;
+              }) => Promise<{ id: number }>;
+            };
+          }
         ).originalOperationFromTbank.upsert({
           where: { operationId: op.operationId },
           update: {
@@ -208,12 +408,46 @@ export class TbankSyncService {
           continue;
         }
 
+        // Определяем категорию на основе типа операции и контрагента
+        let expenseCategoryId: number | null = null;
+
+        if (
+          op.typeOfOperation === 'Credit' &&
+          counterParty.incomeExpenseCategory
+        ) {
+          // Входящая операция - используем входящую категорию контрагента
+          expenseCategoryId = counterParty.incomeExpenseCategory.id;
+          this.logger.log(
+            `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+          );
+          await this.notifyAdmins(
+            `✅ Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+          );
+        } else if (
+          op.typeOfOperation === 'Debit' &&
+          counterParty.outcomeExpenseCategory
+        ) {
+          // Исходящая операция - используем исходящую категорию контрагента
+          expenseCategoryId = counterParty.outcomeExpenseCategory.id;
+          this.logger.log(
+            `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+          );
+          await this.notifyAdmins(
+            `✅ Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+          );
+        } else if (!expenseCategoryId) {
+          this.logger.log(
+            `Операция ${op.operationId}: у контрагента "${counterParty.title}" нет соответствующей категории для типа операции "${op.typeOfOperation}"`,
+          );
+        }
+
         // Создаем позицию (только если её еще нет)
         await this.prisma.operationPosition.create({
           data: {
             amount: op.accountAmount,
             originalOperationId: originalOperation.id,
             counterPartyId: counterParty.id,
+            expenseCategoryId: expenseCategoryId,
           },
         });
 
@@ -248,7 +482,17 @@ export class TbankSyncService {
     errorMessage?: string,
   ) {
     try {
-      await (this.prisma as any).tbankSyncStatus.upsert({
+      await (
+        this.prisma as unknown as {
+          tbankSyncStatus: {
+            upsert: (args: {
+              where: { accountId: number };
+              update: Record<string, unknown>;
+              create: Record<string, unknown>;
+            }) => Promise<unknown>;
+          };
+        }
+      ).tbankSyncStatus.upsert({
         where: { accountId },
         update: {
           lastSyncDate: new Date(),

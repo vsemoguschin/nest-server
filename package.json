@@ -29,6 +29,7 @@
     "seed:workspace:izibuk": "ts-node src/seeds/seed-workspace-izibuk.ts",
     "seed:tbank-operations": "ts-node src/seeds/seed-tbank-operations.ts",
     "seed:tbank-operations-with-categories": "ts-node src/seeds/seed-tbank-operations-with-categories.ts",
+    "seed:view-tbank-operations": "ts-node src/seeds/seed-view-tbank-operations.ts",
     "prisma:deploy": "prisma db push && prisma generate"
   },
   "dependencies": {

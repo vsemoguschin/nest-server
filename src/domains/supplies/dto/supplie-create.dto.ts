@@ -115,4 +115,4 @@ export class SupplieCreateDto {
   @Type(() => SuppliePositionCreateDto)
   @IsNotEmpty({ message: 'Массив позиций не может быть пустым.' })
   positions: SuppliePositionCreateDto[];
-}
+} 

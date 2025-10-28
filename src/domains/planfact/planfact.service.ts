@@ -85,6 +85,7 @@ export interface OriginalOperationType {
   accountAmount: number;
   operationPositions: OperationPositionType[];
   typeOfOperation: string;
+  category: string;
 }
 
 interface ExtendedPrismaClient {
@@ -2211,41 +2212,18 @@ export class PlanfactService {
     }
     // Если distributionFilter === 'all' или не передан - показываем все операции
 
+    // Исключаем операции с категориями selfTransferInner и selfTransferOuter только для фильтров hasCat и hasntCat
+    if (distributionFilter === 'hasCat' || distributionFilter === 'hasntCat') {
+      filteredOperations = filteredOperations.filter(
+        (operation) =>
+          operation.category !== 'selfTransferInner' &&
+          operation.category !== 'selfTransferOuter',
+      );
+    }
+
     // Применяем пагинацию к отфильтрованным операциям
     const total = filteredOperations.length;
     const operations = filteredOperations.slice(skip, skip + limit);
-
-    // Логирование для отладки - проверяем первые несколько операций
-    if (operations.length > 0) {
-      console.log(`=== ПРОВЕРКА ЗАГРУЗКИ ОПЕРАЦИЙ ===`);
-      console.log(`Всего операций: ${total}, возвращаем: ${operations.length}`);
-
-      // Проверяем первые 3 операции
-      operations.slice(0, 3).forEach((op, index) => {
-        console.log(`Операция ${index + 1}:`, {
-          operationId: op.operationId,
-          typeOfOperation: op.typeOfOperation,
-          positionsCount: op.operationPositions.length,
-          positionsWithCategories: op.operationPositions.filter(
-            (p) => p.expenseCategoryId !== null,
-          ).length,
-          positionsWithoutCategories: op.operationPositions.filter(
-            (p) => p.expenseCategoryId === null,
-          ).length,
-        });
-
-        // Показываем детали позиций
-        op.operationPositions.forEach((pos, posIndex) => {
-          console.log(`  Позиция ${posIndex + 1}:`, {
-            id: pos.id,
-            counterPartyId: pos.counterPartyId,
-            expenseCategoryId: pos.expenseCategoryId,
-            expenseCategoryName: pos.expenseCategory?.name || 'null',
-          });
-        });
-      });
-      console.log(`=== КОНЕЦ ПРОВЕРКИ ===`);
-    }
 
     return {
       operations,

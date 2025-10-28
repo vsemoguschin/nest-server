@@ -9,6 +9,8 @@ import { TbankSyncService } from '../services/tbank-sync.service';
 export class NotificationSchedulerService {
   private readonly logger = new Logger(NotificationSchedulerService.name);
   private readonly env = process.env.NODE_ENV as 'development' | 'production';
+  private isTbankSyncRunning = false; // Защита от повторного выполнения T-Bank синхронизации
+  private isCustomerImportRunning = false; // Защита от повторного выполнения импорта клиентов
 
   constructor(
     private readonly prisma: PrismaService,
@@ -223,29 +225,45 @@ export class NotificationSchedulerService {
   // Импорт «только новых клиентов» за прошедший день, с надёжным восстановлением пропущенных дат
   @Cron('5 0 3 * * *', { timeZone: 'Europe/Moscow' })
   async importNewCustomersDaily() {
-    if (this.env === 'development') {
-      this.logger.debug(`[dev] skip importNewCustomersDaily`);
+    // Защита от повторного выполнения
+    if (this.isCustomerImportRunning) {
+      this.logger.warn(
+        '[Customer Import] Import is already running, skipping...',
+      );
       return;
     }
-    const key = 'dailyCustomers';
-    const ymdInMoscow = (d: Date) =>
-      new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Europe/Moscow',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(d);
-    const addDaysYmd = (ymd: string, days: number) => {
-      const [y, m, d] = ymd.split('-').map((v) => parseInt(v, 10));
-      const dt = new Date(Date.UTC(y, m - 1, d));
-      dt.setUTCDate(dt.getUTCDate() + days);
-      const y2 = dt.getUTCFullYear();
-      const m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
-      const d2 = String(dt.getUTCDate()).padStart(2, '0');
-      return `${y2}-${m2}-${d2}`;
-    };
+
+    this.isCustomerImportRunning = true;
+    const startTime = new Date();
 
     try {
+      this.logger.log(
+        `[Customer Import] Starting import at ${startTime.toISOString()}`,
+      );
+
+      if (this.env === 'development') {
+        this.logger.debug(`[dev] skip importNewCustomersDaily`);
+        return;
+      }
+
+      const key = 'dailyCustomers';
+      const ymdInMoscow = (d: Date) =>
+        new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Europe/Moscow',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(d);
+      const addDaysYmd = (ymd: string, days: number) => {
+        const [y, m, d] = ymd.split('-').map((v) => parseInt(v, 10));
+        const dt = new Date(Date.UTC(y, m - 1, d));
+        dt.setUTCDate(dt.getUTCDate() + days);
+        const y2 = dt.getUTCFullYear();
+        const m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
+        const d2 = String(dt.getUTCDate()).padStart(2, '0');
+        return `${y2}-${m2}-${d2}`;
+      };
+
       this.logger.log('[dailyCustomers] Start daily customers import');
       await this.notifyAdmins('▶️ Старт ежедневного импорта клиентов');
       // вчера по Москве
@@ -280,45 +298,119 @@ export class NotificationSchedulerService {
 
       // Идём по дням до вчера включительно
       let cur = startDate;
+      const failedDays: string[] = [];
+      let successCount = 0;
+
       while (cur <= yesterdayMsk) {
         this.logger.log(`[dailyCustomers] Importing day ${cur}...`);
         await this.notifyAdmins(`⬇️ Импорт дня ${cur}...`);
-        try {
-          await this.bluesalesImport.importDay(cur);
-          this.logger.log(
-            `[dailyCustomers] Day ${cur} import complete, updating sync state...`,
-          );
-          await this.notifyAdmins(`✅ Импорт дня ${cur} завершён`);
-        } catch (e: unknown) {
-          this.logger.error(
-            `[dailyCustomers] Failed to import day ${cur}: ${e instanceof Error ? e.message : e}`,
-          );
-          await this.notifyAdmins(
-            `❌ Ошибка импорта ${cur}: ${e instanceof Error ? e.message : e}`,
-          );
-          throw e;
+
+        let dayImported = false;
+        let retryCount = 0;
+        const maxRetries = 3;
+
+        while (!dayImported && retryCount < maxRetries) {
+          try {
+            await this.bluesalesImport.importDay(cur);
+            this.logger.log(
+              `[dailyCustomers] Day ${cur} import complete, updating sync state...`,
+            );
+            await this.notifyAdmins(`✅ Импорт дня ${cur} завершён`);
+            successCount++;
+            dayImported = true;
+          } catch (e: unknown) {
+            retryCount++;
+            this.logger.error(
+              `[dailyCustomers] Failed to import day ${cur} (attempt ${retryCount}/${maxRetries}): ${e instanceof Error ? e.message : e}`,
+            );
+            await this.notifyAdmins(
+              `❌ Ошибка импорта ${cur} (попытка ${retryCount}/${maxRetries}): ${e instanceof Error ? e.message : e}`,
+            );
+
+            // Если это критическая ошибка (например, проблемы с API), прерываем
+            if (e instanceof Error && e.message.includes('status code 500')) {
+              this.logger.error(
+                `[dailyCustomers] Critical error for day ${cur}, stopping import`,
+              );
+              await this.notifyAdmins(
+                `🔥 Критическая ошибка для ${cur}, остановка импорта`,
+              );
+              failedDays.push(cur);
+              break;
+            }
+
+            // Если исчерпаны попытки, добавляем в неудачные
+            if (retryCount >= maxRetries) {
+              this.logger.error(
+                `[dailyCustomers] Max retries reached for day ${cur}, marking as failed`,
+              );
+              await this.notifyAdmins(
+                `⚠️ Исчерпаны попытки для дня ${cur}, помечаем как неудачный`,
+              );
+              failedDays.push(cur);
+              break;
+            }
+
+            // Ждем перед повторной попыткой
+            if (retryCount < maxRetries) {
+              this.logger.warn(
+                `[dailyCustomers] Retrying day ${cur} in 5 seconds...`,
+              );
+              await this.notifyAdmins(
+                `🔄 Повторная попытка для дня ${cur} через 5 сек...`,
+              );
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+          }
         }
 
-        // Обновляем прогресс после каждого дня
-        state = await this.prisma.crmSyncState.upsert({
-          where: { key },
-          update: { lastDailyImportDate: cur },
-          create: { key, lastDailyImportDate: cur },
-        });
-        const savedMsg = `[dailyCustomers] Sync state saved: lastDailyImportDate=${state.lastDailyImportDate}`;
-        this.logger.log(savedMsg);
-        await this.notifyAdmins(
-          `💾 Обновлено состояние: ${state.lastDailyImportDate}`,
-        );
+        // Обновляем прогресс только при успешном импорте
+        if (dayImported) {
+          state = await this.prisma.crmSyncState.upsert({
+            where: { key },
+            update: { lastDailyImportDate: cur },
+            create: { key, lastDailyImportDate: cur },
+          });
+          const savedMsg = `[dailyCustomers] Sync state saved: lastDailyImportDate=${state.lastDailyImportDate}`;
+          this.logger.log(savedMsg);
+          await this.notifyAdmins(
+            `💾 Обновлено состояние: ${state.lastDailyImportDate}`,
+          );
+        } else {
+          this.logger.warn(
+            `[dailyCustomers] Day ${cur} failed, not updating sync state`,
+          );
+          await this.notifyAdmins(
+            `⚠️ День ${cur} не удался, состояние не обновлено`,
+          );
+          // Если день не удался, останавливаем импорт
+          break;
+        }
 
         cur = addDaysYmd(cur, 1);
       }
 
-      const doneMsg = `Daily customers import done. Last date: ${state?.lastDailyImportDate}`;
+      // Формируем итоговое сообщение
+      const totalDays = failedDays.length + successCount;
+      let doneMsg = `Daily customers import completed. Success: ${successCount}/${totalDays}`;
+      if (failedDays.length > 0) {
+        doneMsg += `, Failed: ${failedDays.join(', ')}`;
+      }
+      doneMsg += `. Last processed: ${state?.lastDailyImportDate}`;
+
       this.logger.log(doneMsg);
-      await this.notifyAdmins(
-        `🏁 Импорт завершён. Последняя дата: ${state?.lastDailyImportDate}`,
-      );
+
+      let notifyMsg = `🏁 Импорт завершён. Успешно: ${successCount}/${totalDays}`;
+      if (failedDays.length > 0) {
+        notifyMsg += `, Ошибки: ${failedDays.join(', ')}`;
+      }
+      notifyMsg += `. Последняя дата: ${state?.lastDailyImportDate}`;
+
+      await this.notifyAdmins(notifyMsg);
+
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      this.logger.log(`[Customer Import] Import completed in ${duration}ms`);
     } catch (e: unknown) {
       this.logger.error(
         `Daily customers import failed: ${e instanceof Error ? e.message : e}`,
@@ -326,6 +418,8 @@ export class NotificationSchedulerService {
       await this.notifyAdmins(
         `🔥 Ежедневный импорт упал: ${e instanceof Error ? e.message : e}`,
       );
+    } finally {
+      this.isCustomerImportRunning = false;
     }
   }
 
@@ -357,51 +451,49 @@ export class NotificationSchedulerService {
     }
   }
 
-  // Автоматическая синхронизация операций Т-Банка
-  @Cron('0 0 4 * * *', { timeZone: 'Europe/Moscow' })
+  // Автоматическая синхронизация операций Т-Банка каждый час с 8 утра до полуночи
+  @Cron('0 0 8-23 * * *', { timeZone: 'Europe/Moscow' })
   async syncTbankOperations() {
-    this.logger.log('Starting T-Bank operations sync...');
-    if (this.env === 'development') {
-      this.logger.debug(`[dev] skip T-Bank sync`);
+    // Защита от повторного выполнения
+    if (this.isTbankSyncRunning) {
+      this.logger.warn('[T-Bank] Sync is already running, skipping...');
       return;
     }
 
+    this.isTbankSyncRunning = true;
+    const startTime = new Date();
+
     try {
-      // Получаем дату последнего обновления из базы
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const syncStatuses = await (this.prisma as any).tbankSyncStatus.findMany({
-        orderBy: {
-          lastOperationDate: 'desc',
-        },
-        take: 1,
-      });
+      this.logger.log(
+        `[T-Bank] Starting operations sync at ${startTime.toISOString()}`,
+      );
 
-      let fromDate: string;
-      const toDate = new Date().toISOString().split('T')[0]; // Сегодня
-
-      if (syncStatuses.length > 0 && syncStatuses[0].lastOperationDate) {
-        // Начинаем с даты последней операции + 1 день
-        const lastDate = new Date(syncStatuses[0].lastOperationDate);
-        lastDate.setDate(lastDate.getDate() + 1);
-        fromDate = lastDate.toISOString().split('T')[0];
-      } else {
-        // Если нет данных, начинаем с вчерашнего дня
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        fromDate = yesterday.toISOString().split('T')[0];
+      if (this.env === 'development') {
+        this.logger.debug(`[dev] skip T-Bank sync`);
+        return;
       }
+
+      // Используем текущую дату как fromDate
+      const fromDate = new Date().toISOString().split('T')[0];
+      const toDate = fromDate; // Синхронизируем только текущий день
 
       this.logger.log(`Синхронизация операций с ${fromDate} по ${toDate}`);
 
       // Вызываем сервис синхронизации
       await this.tbankSync.syncOperations(fromDate, toDate);
 
-      this.logger.log('T-Bank operations sync completed successfully');
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      this.logger.log(
+        `[T-Bank] Operations sync completed successfully in ${duration}ms`,
+      );
     } catch (error) {
       this.logger.error(`Error in T-Bank sync: ${error.message}`);
       await this.notifyAdmins(
         `🔥 Синхронизация Т-Банка упала: ${error.message}`,
       );
+    } finally {
+      this.isTbankSyncRunning = false;
     }
   }
 }
