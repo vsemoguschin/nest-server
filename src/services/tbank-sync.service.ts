@@ -186,9 +186,6 @@ export class TbankSyncService {
         this.logger.log(
           `Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
         );
-        await this.notifyAdmins(
-          `✅ Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
-        );
 
         return updatedCounterParty;
       }
@@ -225,9 +222,6 @@ export class TbankSyncService {
 
       this.logger.log(
         `Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
-      );
-      await this.notifyAdmins(
-        `✅ Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
       );
     }
 
@@ -400,6 +394,55 @@ export class TbankSyncService {
           },
         });
 
+        // Обязательная проверка для selfTransferOuter операций с конкретным счетом
+        // Выполняется независимо от наличия позиций
+        if (
+          op.category === 'selfTransferOuter' &&
+          op.counterParty.account === '40802810600008448575'
+        ) {
+          const mustHaveCategoryId = 137;
+
+          if (existingPositions.length > 0) {
+            // Обновляем все существующие позиции
+            await this.prisma.operationPosition.updateMany({
+              where: {
+                originalOperationId: originalOperation.id,
+              },
+              data: {
+                expenseCategoryId: mustHaveCategoryId,
+              },
+            });
+            this.logger.log(
+              `Операция ${op.operationId}: обновлена категория 137 для ${existingPositions.length} существующих позиций (selfTransferOuter с счетом 40802810600008448575)`,
+            );
+            await this.notifyAdmins(
+              `✅ Операция ${op.operationId}: обновлена категория 137 для ${existingPositions.length} существующих позиций (selfTransferOuter с счетом 40802810600008448575)`,
+            );
+          } else {
+            // Создаем новую позицию с обязательной категорией
+            await this.prisma.operationPosition.create({
+              data: {
+                amount: op.accountAmount,
+                originalOperationId: originalOperation.id,
+                counterPartyId: counterParty.id,
+                expenseCategoryId: mustHaveCategoryId,
+              },
+            });
+            this.logger.log(
+              `Операция ${op.operationId}: присвоена категория 137 для selfTransferOuter операции с счетом 40802810600008448575`,
+            );
+            await this.notifyAdmins(
+              `✅ Операция ${op.operationId}: присвоена категория 137 для selfTransferOuter операции с счетом 40802810600008448575`,
+            );
+          }
+          savedCount++;
+          if (op.operationDate > lastOperationDate) {
+            lastOperationDate = op.operationDate;
+          }
+          continue;
+        }
+
+        // Если позиции уже есть, пропускаем создание новых
         if (existingPositions.length > 0) {
           this.logger.log(
             `Операция ${op.operationId} уже имеет позиции, пропускаем создание позиций`,
@@ -420,9 +463,6 @@ export class TbankSyncService {
           this.logger.log(
             `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
           );
-          await this.notifyAdmins(
-            `✅ Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-          );
         } else if (
           op.typeOfOperation === 'Debit' &&
           counterParty.outcomeExpenseCategory
@@ -431,9 +471,6 @@ export class TbankSyncService {
           expenseCategoryId = counterParty.outcomeExpenseCategory.id;
           this.logger.log(
             `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-          );
-          await this.notifyAdmins(
-            `✅ Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
           );
         } else if (!expenseCategoryId) {
           this.logger.log(

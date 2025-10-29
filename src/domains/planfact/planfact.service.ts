@@ -661,6 +661,125 @@ export class PlanfactService {
     return this.prisma.counterParty.findMany();
   }
 
+  async getCounterPartiesFilters({
+    from,
+    to,
+    accountId,
+  }: {
+    from: string;
+    to: string;
+    accountId: number;
+  }) {
+    // Получаем все операции по датам и accountId
+    const operations = await this.prisma.originalOperationFromTbank.findMany({
+      where: {
+        operationDate: {
+          gte: from,
+          lte: to + 'T23:59:59.999Z',
+        },
+        accountId: accountId,
+      },
+      select: {
+        counterPartyAccount: true,
+      },
+    });
+
+    // Собираем уникальные accountNumber
+    const uniqueAccountNumbers = Array.from(
+      new Set(
+        operations
+          .map((op) => op.counterPartyAccount)
+          .filter((account) => account && account.trim() !== ''),
+      ),
+    );
+
+    // Находим контрагентов по accountNumber
+    const counterParties = await this.prisma.counterParty.findMany({
+      where: {
+        account: {
+          in: uniqueAccountNumbers,
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+      },
+      orderBy: {
+        title: 'asc',
+      },
+    });
+
+    // Возвращаем массив {id, name}
+    return counterParties.map((cp) => ({
+      id: cp.id,
+      name: cp.title,
+    }));
+  }
+
+  async getExpenseCategoriesFilters({
+    from,
+    to,
+    accountId,
+  }: {
+    from: string;
+    to: string;
+    accountId: number;
+  }) {
+    // Получаем все операции по датам и accountId с позициями
+    const operations = await this.prisma.originalOperationFromTbank.findMany({
+      where: {
+        operationDate: {
+          gte: from,
+          lte: to + 'T23:59:59.999Z',
+        },
+        accountId: accountId,
+      },
+      select: {
+        operationPositions: {
+          select: {
+            expenseCategoryId: true,
+          },
+        },
+      },
+    });
+
+    // Собираем уникальные expenseCategoryId из всех позиций
+    const uniqueCategoryIds = Array.from(
+      new Set(
+        operations
+          .flatMap((op) => op.operationPositions)
+          .map((pos) => pos.expenseCategoryId)
+          .filter((id): id is number => id !== null && id !== undefined),
+      ),
+    );
+
+    if (uniqueCategoryIds.length === 0) {
+      return [];
+    }
+
+    // Находим категории по expenseCategoryId
+    const expenseCategories = await this.prisma.expenseCategory.findMany({
+      where: {
+        id: {
+          in: uniqueCategoryIds,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    // Возвращаем массив {id, name}
+    return expenseCategories.map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+    }));
+  }
+
   async createExpenseCategory(dto: CreateExpenseCategoryDto) {
     // Проверяем, существует ли родительская категория, если указан parentId
     console.log(dto);
@@ -2134,6 +2253,8 @@ export class PlanfactService {
     accountId,
     distributionFilter,
     counterPartyId,
+    expenseCategoryId,
+    typeOfOperation,
   }: {
     from: string;
     to: string;
@@ -2141,7 +2262,9 @@ export class PlanfactService {
     limit: number;
     accountId?: number;
     distributionFilter?: string;
-    counterPartyId?: number;
+    counterPartyId?: number[];
+    expenseCategoryId?: number[];
+    typeOfOperation?: string;
   }) {
     const skip = (page - 1) * limit;
 
@@ -2156,12 +2279,79 @@ export class PlanfactService {
       where.accountId = accountId;
     }
 
-    if (counterPartyId) {
-      where.operationPositions = {
-        some: {
-          counterPartyId: counterPartyId,
+    if (typeOfOperation) {
+      if (typeOfOperation === 'Transfer') {
+        where.category = {
+          in: ['selfTransferInner', 'selfTransferOuter'],
+        };
+      } else {
+        where.typeOfOperation = typeOfOperation;
+        // Исключаем transfer операции для Credit и Debit
+        if (typeOfOperation === 'Credit') {
+          where.category = {
+            not: 'selfTransferInner',
+          };
+        } else if (typeOfOperation === 'Debit') {
+          where.category = {
+            not: 'selfTransferOuter',
+          };
+        }
+      }
+    }
+
+    // Формируем условия для фильтрации по позициям операций
+    const positionConditions: Record<string, unknown>[] = [];
+
+    if (counterPartyId && counterPartyId.length > 0) {
+      positionConditions.push({
+        counterPartyId: {
+          in: counterPartyId,
         },
-      };
+      });
+    }
+
+    if (expenseCategoryId && expenseCategoryId.length > 0) {
+      // Если expenseCategoryId содержит 0, ищем позиции с null
+      if (expenseCategoryId.includes(0)) {
+        const categoryIds = expenseCategoryId.filter((id) => id !== 0);
+        if (categoryIds.length > 0) {
+          // Если есть другие ID кроме 0, используем OR для null или других ID
+          positionConditions.push({
+            OR: [
+              { expenseCategoryId: null },
+              { expenseCategoryId: { in: categoryIds } },
+            ],
+          });
+        } else {
+          // Если только 0, ищем только null
+          positionConditions.push({
+            expenseCategoryId: null,
+          });
+        }
+      } else {
+        // Обычная логика - фильтр по ID
+        positionConditions.push({
+          expenseCategoryId: {
+            in: expenseCategoryId,
+          },
+        });
+      }
+    }
+
+    // Если есть условия по позициям, применяем их
+    if (positionConditions.length > 0) {
+      if (positionConditions.length === 1) {
+        where.operationPositions = {
+          some: positionConditions[0],
+        };
+      } else {
+        // Если несколько условий, объединяем через AND
+        where.operationPositions = {
+          some: {
+            AND: positionConditions,
+          },
+        };
+      }
     }
 
     // Получаем все операции без пагинации для фильтрации
@@ -2235,6 +2425,285 @@ export class PlanfactService {
         hasNext: page * limit < total,
         hasPrev: page > 1,
       },
+    };
+  }
+
+  async getOriginalOperationsTotals({
+    from,
+    to,
+    accountId,
+    counterPartyId,
+    expenseCategoryId,
+    typeOfOperation,
+  }: {
+    from: string;
+    to: string;
+    accountId?: number;
+    counterPartyId?: number[];
+    expenseCategoryId?: number[];
+    typeOfOperation?: string;
+  }) {
+    const where: Record<string, unknown> = {
+      operationDate: {
+        gte: from,
+        lte: to + 'T23:59:59.999Z',
+      },
+    };
+
+    if (accountId) {
+      where.accountId = accountId;
+    }
+
+    if (typeOfOperation) {
+      if (typeOfOperation === 'Transfer') {
+        where.category = {
+          in: ['selfTransferInner', 'selfTransferOuter'],
+        };
+      } else {
+        where.typeOfOperation = typeOfOperation;
+      }
+    }
+
+    // Формируем условия для фильтрации по позициям операций
+    const positionConditions: Record<string, unknown>[] = [];
+
+    if (counterPartyId && counterPartyId.length > 0) {
+      positionConditions.push({
+        counterPartyId: {
+          in: counterPartyId,
+        },
+      });
+    }
+
+    if (expenseCategoryId && expenseCategoryId.length > 0) {
+      positionConditions.push({
+        expenseCategoryId: {
+          in: expenseCategoryId,
+        },
+      });
+    }
+
+    // Если есть условия по позициям, применяем их
+    if (positionConditions.length > 0) {
+      if (positionConditions.length === 1) {
+        where.operationPositions = {
+          some: positionConditions[0],
+        };
+      } else {
+        // Если несколько условий, объединяем через AND
+        where.operationPositions = {
+          some: {
+            AND: positionConditions,
+          },
+        };
+      }
+    }
+
+    // Получаем все операции для подсчета тоталов
+    const allOperations = await this.prisma.originalOperationFromTbank.findMany(
+      {
+        where,
+        include: {
+          operationPositions: {
+            include: {
+              counterParty: {
+                include: {
+                  incomeExpenseCategory: true,
+                  outcomeExpenseCategory: true,
+                },
+              },
+              expenseCategory: true,
+            },
+          },
+        },
+      },
+    );
+
+    // Подсчитываем тоталы по контрагентам и категориям
+    const counterPartyTotalsMap = new Map<
+      number,
+      {
+        title: string;
+        debit: number;
+        credit: number;
+        transfer: number;
+        incomeExpenseCategory?: { id: number; name: string } | null;
+        outcomeExpenseCategory?: { id: number; name: string } | null;
+      }
+    >();
+    const expenseCategoryTotalsMap = new Map<
+      number,
+      { title: string; debit: number; credit: number; transfer: number }
+    >();
+
+    // Отдельная запись для нераспределенных позиций
+    const unallocatedTotal = {
+      title: 'Нераспределенные',
+      debit: 0,
+      credit: 0,
+      transfer: 0,
+    };
+
+    // Проходим по всем операциям и их позициям
+    for (const operation of allOperations) {
+      // Проверка на transfer операции
+      const isTransfer =
+        operation.category === 'selfTransferInner' ||
+        operation.category === 'selfTransferOuter';
+
+      for (const position of operation.operationPositions) {
+        // Подсчет по контрагентам с разделением на debit и credit
+        if (position.counterPartyId && position.counterParty) {
+          const existing = counterPartyTotalsMap.get(position.counterPartyId);
+          if (existing) {
+            if (isTransfer) {
+              existing.transfer += position.amount;
+            } else {
+              if (operation.typeOfOperation === 'Debit') {
+                existing.debit += position.amount;
+              } else if (operation.typeOfOperation === 'Credit') {
+                existing.credit += position.amount;
+              }
+            }
+          } else {
+            const debit =
+              !isTransfer && operation.typeOfOperation === 'Debit'
+                ? position.amount
+                : 0;
+            const credit =
+              !isTransfer && operation.typeOfOperation === 'Credit'
+                ? position.amount
+                : 0;
+            const transfer = isTransfer ? position.amount : 0;
+            counterPartyTotalsMap.set(position.counterPartyId, {
+              title: position.counterParty.title,
+              debit,
+              credit,
+              transfer,
+              incomeExpenseCategory: position.counterParty.incomeExpenseCategory
+                ? {
+                    id: position.counterParty.incomeExpenseCategory.id,
+                    name: position.counterParty.incomeExpenseCategory.name,
+                  }
+                : null,
+              outcomeExpenseCategory: position.counterParty
+                .outcomeExpenseCategory
+                ? {
+                    id: position.counterParty.outcomeExpenseCategory.id,
+                    name: position.counterParty.outcomeExpenseCategory.name,
+                  }
+                : null,
+            });
+          }
+        }
+
+        // Подсчет по категориям с разделением на debit и credit
+        if (position.expenseCategoryId && position.expenseCategory) {
+          const existing = expenseCategoryTotalsMap.get(
+            position.expenseCategoryId,
+          );
+          if (existing) {
+            if (isTransfer) {
+              existing.transfer += position.amount;
+            } else {
+              if (operation.typeOfOperation === 'Debit') {
+                existing.debit += position.amount;
+              } else if (operation.typeOfOperation === 'Credit') {
+                existing.credit += position.amount;
+              }
+            }
+          } else {
+            const debit =
+              !isTransfer && operation.typeOfOperation === 'Debit'
+                ? position.amount
+                : 0;
+            const credit =
+              !isTransfer && operation.typeOfOperation === 'Credit'
+                ? position.amount
+                : 0;
+            const transfer = isTransfer ? position.amount : 0;
+            expenseCategoryTotalsMap.set(position.expenseCategoryId, {
+              title: position.expenseCategory.name,
+              debit,
+              credit,
+              transfer,
+            });
+          }
+        } else {
+          // Позиции без категории идут в "Нераспределенные"
+          if (isTransfer) {
+            unallocatedTotal.transfer += position.amount;
+          } else {
+            if (operation.typeOfOperation === 'Debit') {
+              unallocatedTotal.debit += position.amount;
+            } else if (operation.typeOfOperation === 'Credit') {
+              unallocatedTotal.credit += position.amount;
+            }
+          }
+        }
+      }
+    }
+
+    // Преобразуем Map в массивы, округляем значения до сотых и сортируем по значению от большего к меньшему
+    const counterPartyTotals = Array.from(counterPartyTotalsMap.entries())
+      .map(([counterPartyId, item]) => ({
+        counterPartyId,
+        title: item.title,
+        debit: Number.parseFloat(item.debit.toFixed(2)),
+        credit: Number.parseFloat(item.credit.toFixed(2)),
+        transfer: Number.parseFloat(item.transfer.toFixed(2)),
+        ...(item.incomeExpenseCategory && {
+          incomeExpenseCategory: item.incomeExpenseCategory,
+        }),
+        ...(item.outcomeExpenseCategory && {
+          outcomeExpenseCategory: item.outcomeExpenseCategory,
+        }),
+      }))
+      .sort((a, b) => {
+        // Сортируем по сумме debit + credit от большего к меньшему
+        const totalA = a.debit + a.credit;
+        const totalB = b.debit + b.credit;
+        return totalB - totalA;
+      });
+    const expenseCategoryTotals: Array<{
+      expenseCategoryId: number | null;
+      title: string;
+      debit: number;
+      credit: number;
+      transfer: number;
+    }> = Array.from(expenseCategoryTotalsMap.entries())
+      .map(([expenseCategoryId, item]) => ({
+        expenseCategoryId,
+        title: item.title,
+        debit: Number.parseFloat(item.debit.toFixed(2)),
+        credit: Number.parseFloat(item.credit.toFixed(2)),
+        transfer: Number.parseFloat(item.transfer.toFixed(2)),
+      }))
+      .sort((a, b) => {
+        // Сортируем по сумме debit + credit от большего к меньшему
+        const totalA = a.debit + a.credit;
+        const totalB = b.debit + b.credit;
+        return totalB - totalA;
+      });
+
+    // Добавляем "Нераспределенные" в конец массива, если есть суммы
+    if (
+      unallocatedTotal.debit !== 0 ||
+      unallocatedTotal.credit !== 0 ||
+      unallocatedTotal.transfer !== 0
+    ) {
+      expenseCategoryTotals.push({
+        expenseCategoryId: null,
+        title: unallocatedTotal.title,
+        debit: Number.parseFloat(unallocatedTotal.debit.toFixed(2)),
+        credit: Number.parseFloat(unallocatedTotal.credit.toFixed(2)),
+        transfer: Number.parseFloat(unallocatedTotal.transfer.toFixed(2)),
+      });
+    }
+
+    return {
+      counterPartyTotals,
+      expenseCategoryTotals,
     };
   }
 

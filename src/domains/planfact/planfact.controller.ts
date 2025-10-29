@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseArrayPipe,
   Patch,
   Post,
   Query,
@@ -68,7 +69,17 @@ export class PlanfactController {
     @Query('limit') limit: number = 50,
     @Query('accountId') accountId: number,
     @Query('distributionFilter') distributionFilter?: string,
-    @Query('counterPartyId') counterPartyId?: number,
+    @Query(
+      'counterPartyId',
+      new ParseArrayPipe({ items: Number, optional: true, separator: ',' }),
+    )
+    counterPartyId?: number[],
+    @Query(
+      'expenseCategoryId',
+      new ParseArrayPipe({ items: Number, optional: true, separator: ',' }),
+    )
+    expenseCategoryId?: number[],
+    @Query('typeOfOperation') typeOfOperation?: string,
   ) {
     if (!accountId) {
       throw new BadRequestException('Параметр accountId обязателен');
@@ -97,6 +108,30 @@ export class PlanfactController {
         'Параметр distributionFilter должен быть одним из: all, hasCat, hasntCat',
       );
     }
+    if (
+      counterPartyId &&
+      counterPartyId.some((id) => !Number.isInteger(id) || id < 1)
+    ) {
+      throw new BadRequestException(
+        'Параметр counterPartyId должен содержать только положительные целые числа',
+      );
+    }
+    if (
+      expenseCategoryId &&
+      expenseCategoryId.some((id) => !Number.isInteger(id) || id < 0)
+    ) {
+      throw new BadRequestException(
+        'Параметр expenseCategoryId должен содержать только неотрицательные целые числа',
+      );
+    }
+    if (
+      typeOfOperation &&
+      !['Debit', 'Credit', 'Transfer'].includes(typeOfOperation)
+    ) {
+      throw new BadRequestException(
+        'Параметр typeOfOperation должен быть одним из: Debit, Credit, Transfer',
+      );
+    }
 
     return this.planfactService.getOriginalOperations({
       from,
@@ -106,6 +141,71 @@ export class PlanfactController {
       accountId,
       distributionFilter,
       counterPartyId,
+      expenseCategoryId,
+      typeOfOperation,
+    });
+  }
+
+  @Get('original-operations-totals')
+  @Roles('ADMIN', 'G', 'KD')
+  async getOriginalOperationsTotals(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('accountId') accountId: number,
+    @Query(
+      'counterPartyId',
+      new ParseArrayPipe({ items: Number, optional: true, separator: ',' }),
+    )
+    counterPartyId?: number[],
+    @Query(
+      'expenseCategoryId',
+      new ParseArrayPipe({ items: Number, optional: true, separator: ',' }),
+    )
+    expenseCategoryId?: number[],
+    @Query('typeOfOperation') typeOfOperation?: string,
+  ) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (
+      counterPartyId &&
+      counterPartyId.some((id) => !Number.isInteger(id) || id < 1)
+    ) {
+      throw new BadRequestException(
+        'Параметр counterPartyId должен содержать только положительные целые числа',
+      );
+    }
+    if (
+      expenseCategoryId &&
+      expenseCategoryId.some((id) => !Number.isInteger(id) || id < 0)
+    ) {
+      throw new BadRequestException(
+        'Параметр expenseCategoryId должен содержать только неотрицательные целые числа',
+      );
+    }
+    if (
+      typeOfOperation &&
+      !['Debit', 'Credit', 'Transfer'].includes(typeOfOperation)
+    ) {
+      throw new BadRequestException(
+        'Параметр typeOfOperation должен быть одним из: Debit, Credit, Transfer',
+      );
+    }
+
+    return this.planfactService.getOriginalOperationsTotals({
+      from,
+      to,
+      accountId,
+      counterPartyId,
+      expenseCategoryId,
+      typeOfOperation,
     });
   }
 
@@ -175,6 +275,62 @@ export class PlanfactController {
   @Roles('ADMIN', 'G', 'KD')
   async getCounterParties() {
     return this.planfactService.getCounterParties();
+  }
+
+  @Get('counter-parties-filters')
+  @Roles('ADMIN', 'G', 'KD')
+  async getCounterPartiesFilters(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('accountId') accountId: number,
+  ) {
+    if (!accountId) {
+      throw new BadRequestException('Параметр accountId обязателен');
+    }
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+
+    return this.planfactService.getCounterPartiesFilters({
+      from,
+      to,
+      accountId,
+    });
+  }
+
+  @Get('expense-category-filters')
+  @Roles('ADMIN', 'G', 'KD')
+  async getExpenseCategoriesFilters(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('accountId') accountId: number,
+  ) {
+    if (!accountId) {
+      throw new BadRequestException('Параметр accountId обязателен');
+    }
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+
+    return this.planfactService.getExpenseCategoriesFilters({
+      from,
+      to,
+      accountId,
+    });
   }
 
   @Post('counter-parties')

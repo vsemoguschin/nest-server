@@ -391,6 +391,52 @@ async function saveOriginalOperations(
         },
       });
 
+      // Обязательная проверка для selfTransferOuter операций с конкретным счетом
+      // Выполняется независимо от наличия позиций
+      if (
+        op.category === 'selfTransferOuter' &&
+        op.counterParty.account === '40802810600008448575'
+      ) {
+        const mustHaveCategoryId = 137;
+
+        if (existingPositions.length > 0) {
+          // Обновляем все существующие позиции
+          await prisma.operationPosition.updateMany({
+            where: {
+              originalOperationId: originalOperation.id,
+            },
+            data: {
+              expenseCategoryId: mustHaveCategoryId,
+            },
+          });
+          console.log(
+            `Операция ${op.operationId}: обновлена категория 137 для ${existingPositions.length} существующих позиций (selfTransferOuter с счетом 40802810600008448575)`,
+          );
+          await notifyAdmins(
+            `✅ Операция ${op.operationId}: обновлена категория 137 для ${existingPositions.length} существующих позиций (selfTransferOuter с счетом 40802810600008448575)`,
+          );
+        } else {
+          // Создаем новую позицию с обязательной категорией
+          await prisma.operationPosition.create({
+            data: {
+              amount: op.accountAmount,
+              originalOperationId: originalOperation.id,
+              counterPartyId: counterParty.id,
+              expenseCategoryId: mustHaveCategoryId,
+            },
+          });
+          console.log(
+            `Операция ${op.operationId}: присвоена категория 137 для selfTransferOuter операции с счетом 40802810600008448575`,
+          );
+          await notifyAdmins(
+            `✅ Операция ${op.operationId}: присвоена категория 137 для selfTransferOuter операции с счетом 40802810600008448575`,
+          );
+        }
+        savedCount++;
+        continue;
+      }
+
+      // Если позиции уже есть, пропускаем создание новых
       if (existingPositions.length > 0) {
         console.log(
           `Операция ${op.operationId} уже имеет позиции, пропускаем создание позиций`,
@@ -583,19 +629,19 @@ async function main() {
   // СЕКЦИЯ ОЧИСТКИ ДАННЫХ - ЗАКОММЕНТИРОВАТЬ ДЛЯ ОТКЛЮЧЕНИЯ
   // Раскомментируйте этот блок, если нужно очистить все данные перед синхронизацией
 
-  console.log('Очистка всех данных...');
-  await prisma.operationPosition.deleteMany({
-    where: {
-      originalOperationId: {
-        not: null,
-      },
-    },
-  });
-  await prisma.originalOperationFromTbank.deleteMany({});
-  await prisma.tbankSyncStatus.deleteMany({});
-  await prisma.counterParty.deleteMany({});
-  console.log('Все данные очищены');
-  await prisma.$disconnect();
+  // console.log('Очистка всех данных...');
+  // await prisma.operationPosition.deleteMany({
+  //   where: {
+  //     originalOperationId: {
+  //       not: null,
+  //     },
+  //   },
+  // });
+  // await prisma.originalOperationFromTbank.deleteMany({});
+  // await prisma.tbankSyncStatus.deleteMany({});
+  // await prisma.counterParty.deleteMany({});
+  // console.log('Все данные очищены');
+  // await prisma.$disconnect();
 
   // ---------------
 
