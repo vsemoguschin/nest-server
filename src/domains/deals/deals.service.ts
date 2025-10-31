@@ -51,7 +51,8 @@ type DealSortKey =
   | 'totalPrice'
   | 'price'
   | 'dopsPrice'
-  | 'remainder';
+  | 'remainder'
+  | 'receivedPayments';
 
 type SortOrder = 'asc' | 'desc';
 
@@ -100,6 +101,9 @@ export class DealsService {
         return 'dopsPrice';
       case 'remainder':
         return 'remainder';
+      case 'receivedpayments':
+      case 'recievedpayments':
+        return 'receivedPayments';
       case 'saledate':
       default:
         return 'saleDate';
@@ -111,7 +115,12 @@ export class DealsService {
   }
 
   private requiresManualSorting(sortKey: DealSortKey) {
-    return ['totalPrice', 'dopsPrice', 'remainder'].includes(sortKey);
+    return [
+      'totalPrice',
+      'dopsPrice',
+      'remainder',
+      'receivedPayments',
+    ].includes(sortKey);
   }
 
   private getOrderByForSortKey(
@@ -316,6 +325,11 @@ export class DealsService {
           return compareNumbers(
             getNumeric(a.remainder),
             getNumeric(b.remainder),
+          );
+        case 'receivedPayments':
+          return compareNumbers(
+            getNumeric(a.recievedPayments),
+            getNumeric(b.recievedPayments),
           );
         default:
           return 0;
@@ -1109,13 +1123,13 @@ export class DealsService {
       },
     });
     const sources = await this.prisma.dealSource.findMany({
-      where: {
-        workSpace: {
-          groups: {
-            some: groupsSearch,
-          },
-        },
-      },
+      // where: {
+      //   workSpace: {
+      //     groups: {
+      //       some: groupsSearch,
+      //     },
+      //   },
+      // },
       select: {
         title: true,
       },
@@ -1134,7 +1148,7 @@ export class DealsService {
     const managers = await this.prisma.user.findMany({
       where: {
         group: groupsSearch,
-        role: { shortName: { in: ['MOP', 'DO', 'ROP', 'MOV','ROV'] } },
+        role: { shortName: { in: ['MOP', 'DO', 'ROP', 'MOV', 'ROV'] } },
         deletedAt: null,
       },
       select: {

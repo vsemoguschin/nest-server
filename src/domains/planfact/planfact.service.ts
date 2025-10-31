@@ -13,6 +13,7 @@ import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
 import { subMonths, format } from 'date-fns';
+import { contains } from 'class-validator';
 
 function getLastMonths(dateStr: string, m: number): string[] {
   // Парсим входную строку в объект Date (предполагаем формат YYYY-MM)
@@ -668,7 +669,7 @@ export class PlanfactService {
   }: {
     from: string;
     to: string;
-    accountId: number;
+    accountId?: number;
   }) {
     // Получаем все операции по датам и accountId
     const operations = await this.prisma.originalOperationFromTbank.findMany({
@@ -677,7 +678,7 @@ export class PlanfactService {
           gte: from,
           lte: to + 'T23:59:59.999Z',
         },
-        accountId: accountId,
+        ...(accountId ? { accountId } : {}),
       },
       select: {
         counterPartyAccount: true,
@@ -723,7 +724,7 @@ export class PlanfactService {
   }: {
     from: string;
     to: string;
-    accountId: number;
+    accountId?: number;
   }) {
     // Получаем все операции по датам и accountId с позициями
     const operations = await this.prisma.originalOperationFromTbank.findMany({
@@ -732,7 +733,7 @@ export class PlanfactService {
           gte: from,
           lte: to + 'T23:59:59.999Z',
         },
-        accountId: accountId,
+        ...(accountId ? { accountId } : {}),
       },
       select: {
         operationPositions: {
@@ -2268,33 +2269,69 @@ export class PlanfactService {
   }) {
     const skip = (page - 1) * limit;
 
-    const where: Record<string, unknown> = {
-      operationDate: {
-        gte: from,
-        lte: to + 'T23:59:59.999Z',
+    // Получаем список реальных аккаунтов для фильтрации перемещений
+    const realAccounts = await this.prisma.planFactAccount.findMany({
+      where: {
+        isReal: true,
       },
-    };
+      select: {
+        accountNumber: true,
+      },
+    });
+    const realAccountNumbers = realAccounts.map((acc) => acc.accountNumber);
+
+    // Собираем все условия в массив
+    const conditions: Record<string, unknown>[] = [
+      {
+        operationDate: {
+          gte: from,
+          lte: to + 'T23:59:59.999Z',
+        },
+      },
+      {
+        payPurpose: {
+          not: {
+            contains: 'Овернайт',
+          },
+        },
+      },
+    ];
 
     if (accountId) {
-      where.accountId = accountId;
+      conditions.push({
+        accountId,
+      });
     }
 
     if (typeOfOperation) {
       if (typeOfOperation === 'Transfer') {
-        where.category = {
-          in: ['selfTransferInner', 'selfTransferOuter'],
-        };
+        // Для Transfer операций фильтруем по counterPartyAccount в реальных аккаунтах
+        if (realAccountNumbers.length > 0) {
+          conditions.push({
+            counterPartyAccount: {
+              in: realAccountNumbers,
+            },
+          });
+        } else {
+          // Если нет реальных аккаунтов, возвращаем пустой результат
+          conditions.push({
+            id: -1, // Невозможное условие
+          });
+        }
       } else {
-        where.typeOfOperation = typeOfOperation;
+        conditions.push({
+          typeOfOperation,
+        });
         // Исключаем transfer операции для Credit и Debit
-        if (typeOfOperation === 'Credit') {
-          where.category = {
-            not: 'selfTransferInner',
-          };
-        } else if (typeOfOperation === 'Debit') {
-          where.category = {
-            not: 'selfTransferOuter',
-          };
+        // Операция считается перемещением, если counterPartyAccount в списке реальных аккаунтов
+        if (realAccountNumbers.length > 0) {
+          conditions.push({
+            NOT: {
+              counterPartyAccount: {
+                in: realAccountNumbers,
+              },
+            },
+          });
         }
       }
     }
@@ -2338,21 +2375,22 @@ export class PlanfactService {
       }
     }
 
-    // Если есть условия по позициям, применяем их
+    // Если есть условия по позициям, добавляем их к условиям
     if (positionConditions.length > 0) {
-      if (positionConditions.length === 1) {
-        where.operationPositions = {
-          some: positionConditions[0],
-        };
-      } else {
-        // Если несколько условий, объединяем через AND
-        where.operationPositions = {
-          some: {
-            AND: positionConditions,
-          },
-        };
-      }
+      const positionFilter =
+        positionConditions.length === 1
+          ? positionConditions[0]
+          : { AND: positionConditions };
+      conditions.push({
+        operationPositions: {
+          some: positionFilter,
+        },
+      });
     }
+
+    // Формируем финальный where объект
+    const where: Record<string, unknown> =
+      conditions.length === 1 ? conditions[0] : { AND: conditions };
 
     // Получаем все операции без пагинации для фильтрации
     const allOperations = await (
@@ -2380,12 +2418,26 @@ export class PlanfactService {
       },
     });
 
+    // Добавляем поле isTransferOperation к операциям
+    const operationsWithTransferFlag = allOperations.map((operation) => {
+      const operationAny = operation as unknown as {
+        counterPartyAccount?: string | null;
+      };
+      const isTransferOperation =
+        operationAny.counterPartyAccount &&
+        realAccountNumbers.includes(operationAny.counterPartyAccount);
+      return {
+        ...operation,
+        isTransferOperation: !!isTransferOperation,
+      };
+    });
+
     // Применяем фильтр по наличию статей
-    let filteredOperations = allOperations;
+    let filteredOperations = operationsWithTransferFlag;
 
     if (distributionFilter === 'hasCat') {
       // Операции у которых ВСЕ позиции имеют статьи
-      filteredOperations = allOperations.filter(
+      filteredOperations = operationsWithTransferFlag.filter(
         (operation) =>
           operation.operationPositions.length > 0 &&
           operation.operationPositions.every(
@@ -2394,7 +2446,7 @@ export class PlanfactService {
       );
     } else if (distributionFilter === 'hasntCat') {
       // Операции у которых ХОТЯ БЫ ОДНА позиция без статьи
-      filteredOperations = allOperations.filter((operation) =>
+      filteredOperations = operationsWithTransferFlag.filter((operation) =>
         operation.operationPositions.some(
           (position) => position.expenseCategoryId === null,
         ),
@@ -2432,16 +2484,16 @@ export class PlanfactService {
     from,
     to,
     accountId,
-    counterPartyId,
-    expenseCategoryId,
-    typeOfOperation,
+    // counterPartyId,
+    // expenseCategoryId,
+    // typeOfOperation,
   }: {
     from: string;
     to: string;
     accountId?: number;
-    counterPartyId?: number[];
-    expenseCategoryId?: number[];
-    typeOfOperation?: string;
+    // counterPartyId?: number[];
+    // expenseCategoryId?: number[];
+    // typeOfOperation?: string;
   }) {
     const where: Record<string, unknown> = {
       operationDate: {
@@ -2454,34 +2506,34 @@ export class PlanfactService {
       where.accountId = accountId;
     }
 
-    if (typeOfOperation) {
-      if (typeOfOperation === 'Transfer') {
-        where.category = {
-          in: ['selfTransferInner', 'selfTransferOuter'],
-        };
-      } else {
-        where.typeOfOperation = typeOfOperation;
-      }
-    }
+    // if (typeOfOperation) {
+    //   if (typeOfOperation === 'Transfer') {
+    //     where.category = {
+    //       in: ['selfTransferInner', 'selfTransferOuter'],
+    //     };
+    //   } else {
+    //     where.typeOfOperation = typeOfOperation;
+    //   }
+    // }
 
     // Формируем условия для фильтрации по позициям операций
     const positionConditions: Record<string, unknown>[] = [];
 
-    if (counterPartyId && counterPartyId.length > 0) {
-      positionConditions.push({
-        counterPartyId: {
-          in: counterPartyId,
-        },
-      });
-    }
+    // if (counterPartyId && counterPartyId.length > 0) {
+    //   positionConditions.push({
+    //     counterPartyId: {
+    //       in: counterPartyId,
+    //     },
+    //   });
+    // }
 
-    if (expenseCategoryId && expenseCategoryId.length > 0) {
-      positionConditions.push({
-        expenseCategoryId: {
-          in: expenseCategoryId,
-        },
-      });
-    }
+    // if (expenseCategoryId && expenseCategoryId.length > 0) {
+    //   positionConditions.push({
+    //     expenseCategoryId: {
+    //       in: expenseCategoryId,
+    //     },
+    //   });
+    // }
 
     // Если есть условия по позициям, применяем их
     if (positionConditions.length > 0) {
@@ -2544,42 +2596,80 @@ export class PlanfactService {
       transfer: 0,
     };
 
+    // Тоталы для переводов между своими счетами
+    const selfTransferTotals = {
+      title: 'Перемещения(не учитываются)',
+      debit: 0,
+      credit: 0,
+      transfer: 0,
+    };
+
+    // Тоталы для transfer операций (не попадают в другие тоталы)
+    let selfTransferInnerTotal = 0;
+    let selfTransferOuterTotal = 0;
+
+    // Находим все аккаунты с isReal=true и получаем массив accountNumber
+    const realAccounts = await this.prisma.planFactAccount.findMany({
+      where: {
+        isReal: true,
+      },
+      select: {
+        accountNumber: true,
+      },
+    });
+    const realAccountNumbers = realAccounts.map((acc) => acc.accountNumber);
+
     // Проходим по всем операциям и их позициям
     for (const operation of allOperations) {
-      // Проверка на transfer операции
-      const isTransfer =
-        operation.category === 'selfTransferInner' ||
-        operation.category === 'selfTransferOuter';
+      // Собираем тоталы transfer операций отдельно
+      // Проверяем, если counterPartyAccount равен одному из реальных аккаунтов
+      const isSelfTransferByAccount =
+        operation.counterPartyAccount &&
+        realAccountNumbers.includes(operation.counterPartyAccount);
+
+      let isTransferOperation = false;
+
+      if (isSelfTransferByAccount) {
+        // Распределяем по typeOfOperation: Debit -> selfTransferOuter, Credit -> selfTransferInner
+        if (operation.typeOfOperation === 'Debit') {
+          selfTransferOuterTotal += operation.accountAmount;
+          selfTransferTotals.debit += operation.accountAmount;
+        } else if (operation.typeOfOperation === 'Credit') {
+          selfTransferInnerTotal += operation.accountAmount;
+          selfTransferTotals.credit += operation.accountAmount;
+        }
+        isTransferOperation = true;
+      }
+
+      // Пропускаем transfer операции - они не должны попадать в другие тоталы
+      if (isTransferOperation) {
+        continue;
+      }
+
+      if (operation.payPurpose.includes('Овернайт')) {
+        continue;
+      }
 
       for (const position of operation.operationPositions) {
         // Подсчет по контрагентам с разделением на debit и credit
         if (position.counterPartyId && position.counterParty) {
           const existing = counterPartyTotalsMap.get(position.counterPartyId);
           if (existing) {
-            if (isTransfer) {
-              existing.transfer += position.amount;
-            } else {
-              if (operation.typeOfOperation === 'Debit') {
-                existing.debit += position.amount;
-              } else if (operation.typeOfOperation === 'Credit') {
-                existing.credit += position.amount;
-              }
+            if (operation.typeOfOperation === 'Debit') {
+              existing.debit += position.amount;
+            } else if (operation.typeOfOperation === 'Credit') {
+              existing.credit += position.amount;
             }
           } else {
             const debit =
-              !isTransfer && operation.typeOfOperation === 'Debit'
-                ? position.amount
-                : 0;
+              operation.typeOfOperation === 'Debit' ? position.amount : 0;
             const credit =
-              !isTransfer && operation.typeOfOperation === 'Credit'
-                ? position.amount
-                : 0;
-            const transfer = isTransfer ? position.amount : 0;
+              operation.typeOfOperation === 'Credit' ? position.amount : 0;
             counterPartyTotalsMap.set(position.counterPartyId, {
               title: position.counterParty.title,
               debit,
               credit,
-              transfer,
+              transfer: 0,
               incomeExpenseCategory: position.counterParty.incomeExpenseCategory
                 ? {
                     id: position.counterParty.incomeExpenseCategory.id,
@@ -2603,42 +2693,29 @@ export class PlanfactService {
             position.expenseCategoryId,
           );
           if (existing) {
-            if (isTransfer) {
-              existing.transfer += position.amount;
-            } else {
-              if (operation.typeOfOperation === 'Debit') {
-                existing.debit += position.amount;
-              } else if (operation.typeOfOperation === 'Credit') {
-                existing.credit += position.amount;
-              }
+            if (operation.typeOfOperation === 'Debit') {
+              existing.debit += position.amount;
+            } else if (operation.typeOfOperation === 'Credit') {
+              existing.credit += position.amount;
             }
           } else {
             const debit =
-              !isTransfer && operation.typeOfOperation === 'Debit'
-                ? position.amount
-                : 0;
+              operation.typeOfOperation === 'Debit' ? position.amount : 0;
             const credit =
-              !isTransfer && operation.typeOfOperation === 'Credit'
-                ? position.amount
-                : 0;
-            const transfer = isTransfer ? position.amount : 0;
+              operation.typeOfOperation === 'Credit' ? position.amount : 0;
             expenseCategoryTotalsMap.set(position.expenseCategoryId, {
               title: position.expenseCategory.name,
               debit,
               credit,
-              transfer,
+              transfer: 0,
             });
           }
         } else {
           // Позиции без категории идут в "Нераспределенные"
-          if (isTransfer) {
-            unallocatedTotal.transfer += position.amount;
-          } else {
-            if (operation.typeOfOperation === 'Debit') {
-              unallocatedTotal.debit += position.amount;
-            } else if (operation.typeOfOperation === 'Credit') {
-              unallocatedTotal.credit += position.amount;
-            }
+          if (operation.typeOfOperation === 'Debit') {
+            unallocatedTotal.debit += position.amount;
+          } else if (operation.typeOfOperation === 'Credit') {
+            unallocatedTotal.credit += position.amount;
           }
         }
       }
@@ -2700,10 +2777,52 @@ export class PlanfactService {
         transfer: Number.parseFloat(unallocatedTotal.transfer.toFixed(2)),
       });
     }
+    // if (
+    //   selfTransferTotals.debit !== 0 ||
+    //   selfTransferTotals.credit !== 0 ||
+    //   selfTransferTotals.transfer !== 0
+    // ) {
+    //   expenseCategoryTotals.push({
+    //     expenseCategoryId: null,
+    //     title: selfTransferTotals.title,
+    //     debit: Number.parseFloat(selfTransferTotals.debit.toFixed(2)),
+    //     credit: Number.parseFloat(selfTransferTotals.credit.toFixed(2)),
+    //     transfer: Number.parseFloat(selfTransferTotals.transfer.toFixed(2)),
+    //   });
+    // }
+
+    // Вычисляем mainTotals из expenseCategoryTotals, исключая перемещения
+    const mainTotals = expenseCategoryTotals.reduce(
+      (acc, category) => {
+        // Пропускаем категорию "Перемещения" при подсчете основных итогов
+        if (category.title !== 'Перемещения(не учитываются)') {
+          acc.debit += category.debit;
+          acc.credit += category.credit;
+        }
+        return acc;
+      },
+      { debit: 0, credit: 0 },
+    );
+
+    // Вычисляем чистую прибыль и рентабельность
+    const netProfit = mainTotals.credit - mainTotals.debit;
+    const profitability =
+      mainTotals.credit !== 0 ? (netProfit / mainTotals.credit) * 100 : 0;
 
     return {
       counterPartyTotals,
       expenseCategoryTotals,
+      transfersTotals: {
+        selfTransferInner: Number.parseFloat(selfTransferInnerTotal.toFixed(2)),
+        selfTransferOuter: Number.parseFloat(selfTransferOuterTotal.toFixed(2)),
+      },
+      mainTotals: {
+        debit: Number.parseFloat(mainTotals.debit.toFixed(2)),
+        credit: Number.parseFloat(mainTotals.credit.toFixed(2)),
+        transfer: Number.parseFloat(selfTransferTotals.transfer.toFixed(2)),
+        netProfit: Number.parseFloat(netProfit.toFixed(2)),
+        profitability: Number.parseFloat(profitability.toFixed(2)),
+      },
     };
   }
 
@@ -2766,6 +2885,38 @@ export class PlanfactService {
     return {
       success: true,
       operationPositions: createdPositions,
+    };
+  }
+
+  async removeExpenseCategoryFromPosition(positionId: number) {
+    // Проверяем существование позиции
+    const position = await this.prisma.operationPosition.findUnique({
+      where: { id: positionId },
+      include: {
+        counterParty: true,
+        expenseCategory: true,
+      },
+    });
+
+    if (!position) {
+      throw new NotFoundException(`Позиция с ID ${positionId} не найдена`);
+    }
+
+    // Удаляем expenseCategoryId
+    const updatedPosition = await this.prisma.operationPosition.update({
+      where: { id: positionId },
+      data: {
+        expenseCategoryId: null,
+      },
+      include: {
+        counterParty: true,
+        expenseCategory: true,
+      },
+    });
+
+    return {
+      success: true,
+      operationPosition: updatedPosition,
     };
   }
 

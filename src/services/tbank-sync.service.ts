@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AutoCategoryRulesService } from '../domains/auto-category-rules/auto-category-rules.service';
 import { TelegramService } from './telegram.service';
 import axios from 'axios';
 
@@ -31,70 +32,18 @@ export class TbankSyncService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegramService: TelegramService,
+    private readonly autoRules: AutoCategoryRulesService,
   ) {}
 
   // Функция для определения категории на основе условий
   private determineExpenseCategory(
     typeOfOperation: string,
     category: string,
-    payPurpose: string,
-    counterPartyTitle: string,
   ): { incomeCategoryId: number | null; outcomeCategoryId: number | null } {
-    let incomeCategoryId: number | null = null;
+    const incomeCategoryId: number | null = null;
     let outcomeCategoryId: number | null = null;
 
-    // Логика для операций Credit (входящие)
-    if (typeOfOperation === 'Credit') {
-      // 1. Проверка на "Пополнение по операции СБП Терминал"
-      // Ищем каждое слово из фразы в payPurpose
-      const sbpWords = ['пополнение', 'операции', 'сбп', 'терминал'];
-      if (
-        payPurpose &&
-        sbpWords.every((word) => payPurpose.toLowerCase().includes(word))
-      ) {
-        incomeCategoryId = 2;
-      }
-      // 2. Проверка на "Перевод средств по договору 7035739486"
-      // Ищем ключевые слова из фразы
-      else if (
-        payPurpose &&
-        ['перевод', 'средств', 'договору', '7035739486'].every((word) =>
-          payPurpose.toLowerCase().includes(word),
-        )
-      ) {
-        incomeCategoryId = 4;
-      }
-      // 3. Проверка на начало counterPartyTitle с "ООО", "ИП", "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ" или "Индивидуальный предприниматель" (независимо от регистра)
-      else if (
-        counterPartyTitle &&
-        (counterPartyTitle.toLowerCase().startsWith('ооо') ||
-          counterPartyTitle.toLowerCase().startsWith('ип') ||
-          counterPartyTitle
-            .toLowerCase()
-            .startsWith('общество с ограниченной ответственностью') ||
-          counterPartyTitle
-            .toLowerCase()
-            .startsWith('индивидуальный предприниматель'))
-      ) {
-        // Список исключений - контрагенты, которые НЕ должны получать категорию 1
-        const exceptions = [
-          'индивидуальный предприниматель мазунин максим евгеньевич',
-          'общество с ограниченной ответственностью "экспресс курьер"',
-          'общество с ограниченной ответственностью "рвб"',
-        ];
-
-        // Проверяем, не является ли контрагент исключением
-        const isException = exceptions.some((exception) =>
-          counterPartyTitle.toLowerCase().includes(exception.toLowerCase()),
-        );
-
-        if (!isException) {
-          incomeCategoryId = 1;
-        }
-      }
-    }
-
-    // Логика для операций Debit (исходящие)
+    // Оставляем только правило комиссии (не по payPurpose)
     if (typeOfOperation === 'Debit' && category === 'fee') {
       outcomeCategoryId = 48;
     }
@@ -312,16 +261,108 @@ export class TbankSyncService {
     let savedCount = 0;
     let lastOperationDate = '';
 
+    // Подготовим правила из БД для payPurpose
+    const rules: Array<{
+      id: number;
+      enabled: boolean;
+      priority: number;
+      name: string;
+      operationType: string;
+      keywords: string[];
+      expenseCategoryId: number;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }> = await (this.prisma as any).autoCategoryRule.findMany({
+      where: { enabled: true },
+      orderBy: [{ priority: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        enabled: true,
+        priority: true,
+        name: true,
+        operationType: true,
+        keywords: true,
+        expenseCategoryId: true,
+      },
+    });
+
+    const matchInOrder = (haystack: string, words: string[]) => {
+      const text = (haystack || '').toLowerCase();
+      let from = 0;
+      for (const w of words) {
+        const needle = (w || '').toLowerCase().trim();
+        if (!needle) return false;
+        const idx = text.indexOf(needle, from);
+        if (idx === -1) return false;
+        from = idx + needle.length;
+      }
+      return true;
+    };
+
+    this.logger.log(
+      `✅ Загружено ${rules.length} правил из БД для автокатегоризации`,
+    );
+
+    const applyRules = (op: OperationFromApi): number | null => {
+      for (const rule of rules) {
+        if (
+          rule.operationType !== 'Any' &&
+          rule.operationType !== op.typeOfOperation
+        ) {
+          continue;
+        }
+        if (matchInOrder(op.payPurpose || '', rule.keywords)) {
+          return rule.expenseCategoryId; // первый матч
+        }
+      }
+      return null;
+    };
+
     for (const op of operations) {
       try {
         // Определяем категорию на основе условий перед созданием контрагента
-        const { incomeCategoryId, outcomeCategoryId } =
-          this.determineExpenseCategory(
-            op.typeOfOperation,
-            op.category,
-            op.payPurpose,
-            op.counterParty.name,
-          );
+        let incomeCategoryId: number | null = null;
+        const { outcomeCategoryId } = this.determineExpenseCategory(
+          op.typeOfOperation,
+          op.category,
+        );
+
+        // Сначала пробуем правила БД для incomeCategoryId (приоритет выше counterPartyTitle хардкода)
+        if (op.typeOfOperation === 'Credit') {
+          const matchedCategoryId = applyRules(op);
+          if (matchedCategoryId) {
+            incomeCategoryId = matchedCategoryId;
+          }
+        }
+
+        // Проверка на начало counterPartyTitle с ООО/ИП/etc (только для Credit операций)
+        if (
+          !incomeCategoryId &&
+          op.typeOfOperation === 'Credit' &&
+          op.counterParty.name
+        ) {
+          const counterPartyTitle = op.counterParty.name.toLowerCase();
+          if (
+            counterPartyTitle.startsWith('ооо') ||
+            counterPartyTitle.startsWith('ип') ||
+            counterPartyTitle.startsWith(
+              'общество с ограниченной ответственностью',
+            ) ||
+            counterPartyTitle.startsWith('индивидуальный предприниматель')
+          ) {
+            // Список исключений
+            const exceptions = [
+              'индивидуальный предприниматель мазунин максим евгеньевич',
+              'общество с ограниченной ответственностью "экспресс курьер"',
+              'общество с ограниченной ответственностью "рвб"',
+            ];
+            const isException = exceptions.some((exception) =>
+              counterPartyTitle.includes(exception.toLowerCase()),
+            );
+            if (!isException) {
+              incomeCategoryId = 1;
+            }
+          }
+        }
 
         // Создаем или находим контрагента с определенной категорией
         const counterParty = await this.getOrCreateCounterParty(
@@ -394,54 +435,6 @@ export class TbankSyncService {
           },
         });
 
-        // Обязательная проверка для selfTransferOuter операций с конкретным счетом
-        // Выполняется независимо от наличия позиций
-        if (
-          op.category === 'selfTransferOuter' &&
-          op.counterParty.account === '40802810600008448575'
-        ) {
-          const mustHaveCategoryId = 137;
-
-          if (existingPositions.length > 0) {
-            // Обновляем все существующие позиции
-            await this.prisma.operationPosition.updateMany({
-              where: {
-                originalOperationId: originalOperation.id,
-              },
-              data: {
-                expenseCategoryId: mustHaveCategoryId,
-              },
-            });
-            this.logger.log(
-              `Операция ${op.operationId}: обновлена категория 137 для ${existingPositions.length} существующих позиций (selfTransferOuter с счетом 40802810600008448575)`,
-            );
-            await this.notifyAdmins(
-              `✅ Операция ${op.operationId}: обновлена категория 137 для ${existingPositions.length} существующих позиций (selfTransferOuter с счетом 40802810600008448575)`,
-            );
-          } else {
-            // Создаем новую позицию с обязательной категорией
-            await this.prisma.operationPosition.create({
-              data: {
-                amount: op.accountAmount,
-                originalOperationId: originalOperation.id,
-                counterPartyId: counterParty.id,
-                expenseCategoryId: mustHaveCategoryId,
-              },
-            });
-            this.logger.log(
-              `Операция ${op.operationId}: присвоена категория 137 для selfTransferOuter операции с счетом 40802810600008448575`,
-            );
-            await this.notifyAdmins(
-              `✅ Операция ${op.operationId}: присвоена категория 137 для selfTransferOuter операции с счетом 40802810600008448575`,
-            );
-          }
-          savedCount++;
-          if (op.operationDate > lastOperationDate) {
-            lastOperationDate = op.operationDate;
-          }
-          continue;
-        }
-
         // Если позиции уже есть, пропускаем создание новых
         if (existingPositions.length > 0) {
           this.logger.log(
@@ -451,31 +444,32 @@ export class TbankSyncService {
           continue;
         }
 
-        // Определяем категорию на основе типа операции и контрагента
+        // Определяем категорию: 1) правила БД по payPurpose (приоритет); 2) по типу операции/категории контрагента
         let expenseCategoryId: number | null = null;
 
-        if (
-          op.typeOfOperation === 'Credit' &&
-          counterParty.incomeExpenseCategory
-        ) {
-          // Входящая операция - используем входящую категорию контрагента
-          expenseCategoryId = counterParty.incomeExpenseCategory.id;
-          this.logger.log(
-            `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-          );
-        } else if (
-          op.typeOfOperation === 'Debit' &&
-          counterParty.outcomeExpenseCategory
-        ) {
-          // Исходящая операция - используем исходящую категорию контрагента
-          expenseCategoryId = counterParty.outcomeExpenseCategory.id;
-          this.logger.log(
-            `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-          );
-        } else if (!expenseCategoryId) {
-          this.logger.log(
-            `Операция ${op.operationId}: у контрагента "${counterParty.title}" нет соответствующей категории для типа операции "${op.typeOfOperation}"`,
-          );
+        // Если incomeCategoryId уже определен по правилам БД выше - используем его
+        if (incomeCategoryId) {
+          expenseCategoryId = incomeCategoryId;
+        } else {
+          // Для Credit - используем входящую категорию контрагента
+          if (
+            op.typeOfOperation === 'Credit' &&
+            counterParty.incomeExpenseCategory
+          ) {
+            expenseCategoryId = counterParty.incomeExpenseCategory.id;
+            this.logger.log(
+              `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+            );
+          } else if (
+            op.typeOfOperation === 'Debit' &&
+            counterParty.outcomeExpenseCategory
+          ) {
+            // Для Debit - используем исходящую категорию контрагента
+            expenseCategoryId = counterParty.outcomeExpenseCategory.id;
+            this.logger.log(
+              `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+            );
+          }
         }
 
         // Создаем позицию (только если её еще нет)

@@ -56,64 +56,11 @@ const tToken = process.env.TB_TOKEN;
 function determineExpenseCategory(
   typeOfOperation: string,
   category: string,
-  payPurpose: string,
-  counterPartyTitle: string,
 ): { incomeCategoryId: number | null; outcomeCategoryId: number | null } {
-  let incomeCategoryId: number | null = null;
+  const incomeCategoryId: number | null = null;
   let outcomeCategoryId: number | null = null;
 
-  // Логика для операций Credit (входящие)
-  if (typeOfOperation === 'Credit') {
-    // 1. Проверка на "Пополнение по операции СБП Терминал"
-    // Ищем каждое слово из фразы в payPurpose
-    const sbpWords = ['пополнение', 'операции', 'сбп', 'терминал'];
-    if (
-      payPurpose &&
-      sbpWords.every((word) => payPurpose.toLowerCase().includes(word))
-    ) {
-      incomeCategoryId = 2;
-    }
-    // 2. Проверка на "Перевод средств по договору 7035739486"
-    // Ищем ключевые слова из фразы
-    else if (
-      payPurpose &&
-      ['перевод', 'средств', 'договору', '7035739486'].every((word) =>
-        payPurpose.toLowerCase().includes(word),
-      )
-    ) {
-      incomeCategoryId = 4;
-    }
-    // 3. Проверка на начало counterPartyTitle с "ООО", "ИП", "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ" или "Индивидуальный предприниматель" (независимо от регистра)
-    else if (
-      counterPartyTitle &&
-      (counterPartyTitle.toLowerCase().startsWith('ооо') ||
-        counterPartyTitle.toLowerCase().startsWith('ип') ||
-        counterPartyTitle
-          .toLowerCase()
-          .startsWith('общество с ограниченной ответственностью') ||
-        counterPartyTitle
-          .toLowerCase()
-          .startsWith('индивидуальный предприниматель'))
-    ) {
-      // Список исключений - контрагенты, которые НЕ должны получать категорию 1
-      const exceptions = [
-        'индивидуальный предприниматель мазунин максим евгеньевич',
-        'общество с ограниченной ответственностью "экспресс курьер"',
-        'общество с ограниченной ответственностью "рвб"',
-      ];
-
-      // Проверяем, не является ли контрагент исключением
-      const isException = exceptions.some((exception) =>
-        counterPartyTitle.toLowerCase().includes(exception.toLowerCase()),
-      );
-
-      if (!isException) {
-        incomeCategoryId = 1;
-      }
-    }
-  }
-
-  // Логика для операций Debit (исходящие)
+  // Оставляем только правило комиссии (не по payPurpose)
   if (typeOfOperation === 'Debit' && category === 'fee') {
     outcomeCategoryId = 48;
   }
@@ -190,9 +137,9 @@ async function getOrCreateCounterParty(
       console.log(
         `Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
       );
-      await notifyAdmins(
-        `✅ Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
-      );
+      // await notifyAdmins(
+      //   `✅ Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+      // );
 
       return updatedCounterParty;
     }
@@ -230,9 +177,9 @@ async function getOrCreateCounterParty(
     console.log(
       `Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
     );
-    await notifyAdmins(
-      `✅ Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
-    );
+    // await notifyAdmins(
+    //   `✅ Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
+    // );
   }
 
   return counterParty;
@@ -319,16 +266,116 @@ async function saveOriginalOperations(
 ) {
   let savedCount = 0;
   let lastOperationDate = '';
+  // Подготовим правила из БД для payPurpose
+  const rules: Array<{
+    id: number;
+    enabled: boolean;
+    priority: number;
+    name: string;
+    operationType: string;
+    keywords: string[];
+    expenseCategoryId: number;
+  }> = (await extendedPrisma.autoCategoryRule.findMany({
+    where: { enabled: true },
+    orderBy: [{ priority: 'asc' }, { id: 'asc' }],
+    select: {
+      id: true,
+      enabled: true,
+      priority: true,
+      name: true,
+      operationType: true,
+      keywords: true,
+      expenseCategoryId: true,
+    },
+  })) as Array<{
+    id: number;
+    enabled: boolean;
+    priority: number;
+    name: string;
+    operationType: string;
+    keywords: string[];
+    expenseCategoryId: number;
+  }>;
+
+  const matchInOrder = (haystack: string, words: string[]) => {
+    const text = (haystack || '').toLowerCase();
+    let from = 0;
+    for (const w of words) {
+      const needle = (w || '').toLowerCase().trim();
+      if (!needle) return false;
+      const idx = text.indexOf(needle, from);
+      if (idx === -1) return false;
+      from = idx + needle.length;
+    }
+    return true;
+  };
+
+  console.log(
+    `✅ Загружено ${rules.length} правил из БД для автокатегоризации`,
+  );
+
+  const applyRules = (op: OperationFromApi): number | null => {
+    for (const rule of rules) {
+      if (
+        rule.operationType !== 'Any' &&
+        rule.operationType !== op.typeOfOperation
+      ) {
+        continue;
+      }
+      const matched = matchInOrder(op.payPurpose || '', rule.keywords);
+      if (matched) {
+        return rule.expenseCategoryId; // первый матч
+      }
+    }
+    return null;
+  };
 
   for (const op of operations) {
     try {
       // Определяем категорию на основе условий перед созданием контрагента
-      const { incomeCategoryId, outcomeCategoryId } = determineExpenseCategory(
+      let incomeCategoryId: number | null = null;
+      const { outcomeCategoryId } = determineExpenseCategory(
         op.typeOfOperation,
         op.category,
-        op.payPurpose,
-        op.counterParty.name,
       );
+
+      // Сначала пробуем правила БД для incomeCategoryId (приоритет выше counterPartyTitle хардкода)
+      if (op.typeOfOperation === 'Credit') {
+        const matchedCategoryId = applyRules(op);
+        if (matchedCategoryId) {
+          incomeCategoryId = matchedCategoryId;
+        }
+      }
+
+      // Проверка на начало counterPartyTitle с ООО/ИП/etc (только для Credit операций)
+      if (
+        !incomeCategoryId &&
+        op.typeOfOperation === 'Credit' &&
+        op.counterParty.name
+      ) {
+        const counterPartyTitle = op.counterParty.name.toLowerCase();
+        if (
+          counterPartyTitle.startsWith('ооо') ||
+          counterPartyTitle.startsWith('ип') ||
+          counterPartyTitle.startsWith(
+            'общество с ограниченной ответственностью',
+          ) ||
+          counterPartyTitle.startsWith('индивидуальный предприниматель')
+        ) {
+          // Список исключений
+          const exceptions = [
+            'индивидуальный предприниматель мазунин максим евгеньевич',
+            'общество с ограниченной ответственностью "экспресс курьер"',
+            'общество с ограниченной ответственностью "рвб"',
+          ];
+          const isException = exceptions.some((exception) =>
+            counterPartyTitle.includes(exception.toLowerCase()),
+          );
+          if (!isException) {
+            incomeCategoryId = 1;
+          }
+        }
+      }
 
       // Создаем или находим контрагента с определенной категорией
       const counterParty = await getOrCreateCounterParty(
@@ -391,52 +438,7 @@ async function saveOriginalOperations(
         },
       });
 
-      // Обязательная проверка для selfTransferOuter операций с конкретным счетом
-      // Выполняется независимо от наличия позиций
-      if (
-        op.category === 'selfTransferOuter' &&
-        op.counterParty.account === '40802810600008448575'
-      ) {
-        const mustHaveCategoryId = 137;
-
-        if (existingPositions.length > 0) {
-          // Обновляем все существующие позиции
-          await prisma.operationPosition.updateMany({
-            where: {
-              originalOperationId: originalOperation.id,
-            },
-            data: {
-              expenseCategoryId: mustHaveCategoryId,
-            },
-          });
-          console.log(
-            `Операция ${op.operationId}: обновлена категория 137 для ${existingPositions.length} существующих позиций (selfTransferOuter с счетом 40802810600008448575)`,
-          );
-          await notifyAdmins(
-            `✅ Операция ${op.operationId}: обновлена категория 137 для ${existingPositions.length} существующих позиций (selfTransferOuter с счетом 40802810600008448575)`,
-          );
-        } else {
-          // Создаем новую позицию с обязательной категорией
-          await prisma.operationPosition.create({
-            data: {
-              amount: op.accountAmount,
-              originalOperationId: originalOperation.id,
-              counterPartyId: counterParty.id,
-              expenseCategoryId: mustHaveCategoryId,
-            },
-          });
-          console.log(
-            `Операция ${op.operationId}: присвоена категория 137 для selfTransferOuter операции с счетом 40802810600008448575`,
-          );
-          await notifyAdmins(
-            `✅ Операция ${op.operationId}: присвоена категория 137 для selfTransferOuter операции с счетом 40802810600008448575`,
-          );
-        }
-        savedCount++;
-        continue;
-      }
-
-      // Если позиции уже есть, пропускаем создание новых
+      // Если позиции уже есть, пропускаем создание новых (но далее правилом можем обновить)
       if (existingPositions.length > 0) {
         console.log(
           `Операция ${op.operationId} уже имеет позиции, пропускаем создание позиций`,
@@ -445,50 +447,48 @@ async function saveOriginalOperations(
         continue;
       }
 
-      // Определяем категорию на основе типа операции и контрагента
+      // Определяем категорию: 1) правила БД по payPurpose (приоритет); 2) по типу операции/категории контрагента
       let expenseCategoryId: number | null = null;
 
-      if (
-        op.typeOfOperation === 'Credit' &&
-        counterParty.incomeExpenseCategory
-      ) {
-        // Входящая операция - используем входящую категорию контрагента
-        expenseCategoryId = counterParty.incomeExpenseCategory.id;
-        console.log(
-          `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-        );
-        await notifyAdmins(
-          `✅ Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-        );
-      } else if (
-        op.typeOfOperation === 'Debit' &&
-        counterParty.outcomeExpenseCategory
-      ) {
-        // Исходящая операция - используем исходящую категорию контрагента
-        expenseCategoryId = counterParty.outcomeExpenseCategory.id;
-        console.log(
-          `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-        );
-        await notifyAdmins(
-          `✅ Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-        );
-      } else if (!expenseCategoryId) {
-        console.log(
-          `Операция ${op.operationId}: у контрагента "${counterParty.title}" нет соответствующей категории для типа операции "${op.typeOfOperation}"`,
-        );
+      // Если incomeCategoryId уже определен по правилам БД выше - используем его
+      if (incomeCategoryId) {
+        expenseCategoryId = incomeCategoryId;
+      } else {
+        // Для Credit - используем входящую категорию контрагента
+        if (
+          op.typeOfOperation === 'Credit' &&
+          counterParty.incomeExpenseCategory
+        ) {
+          expenseCategoryId = counterParty.incomeExpenseCategory.id;
+          console.log(
+            `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+          );
+        } else if (
+          op.typeOfOperation === 'Debit' &&
+          counterParty.outcomeExpenseCategory
+        ) {
+          // Для Debit - используем исходящую категорию контрагента
+          expenseCategoryId = counterParty.outcomeExpenseCategory.id;
+          console.log(
+            `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+          );
+        }
       }
 
-      // Создаем позицию (только если её еще нет)
-      await prisma.operationPosition.create({
-        data: {
-          amount: op.accountAmount,
-          originalOperationId: originalOperation.id,
-          counterPartyId: counterParty.id,
-          expenseCategoryId: expenseCategoryId,
-        },
-      });
+      // Если позиции нет — создадим
+      if (existingPositions.length === 0) {
+        await prisma.operationPosition.create({
+          data: {
+            amount: op.accountAmount,
+            originalOperationId: originalOperation.id,
+            counterPartyId: counterParty.id,
+            expenseCategoryId: expenseCategoryId,
+          },
+        });
+        savedCount++;
+      }
 
-      savedCount++;
+      // Применение внешних правил автоклассификации отключено
       // Обновляем дату последней операции (сортируем по дате)
       if (op.operationDate > lastOperationDate) {
         lastOperationDate = op.operationDate;
@@ -540,42 +540,6 @@ async function updateSyncStatus(
   }
 }
 
-async function upsertPlanFactAccount() {
-  try {
-    const account = await prisma.planFactAccount.upsert({
-      where: { accountNumber: '40802810600008448575' },
-      update: {
-        name: 'Копилка',
-        accountNumber: '40802810600008448575',
-      },
-      create: {
-        name: 'Копилка',
-        accountNumber: '40802810600008448575',
-        balance: 0,
-        type: '',
-        balanceStartDate: '',
-        comment: '',
-        isReal: true,
-      },
-    });
-
-    console.log(
-      `PlanFactAccount успешно создан/обновлен: ${account.name} (${account.accountNumber})`,
-    );
-    await notifyAdmins(
-      `✅ PlanFactAccount успешно создан/обновлен: ${account.name} (${account.accountNumber})`,
-    );
-
-    return account;
-  } catch (error) {
-    console.error('Ошибка при создании/обновлении PlanFactAccount:', error);
-    await notifyAdmins(
-      `❌ Ошибка при создании/обновлении PlanFactAccount: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`,
-    );
-    throw error;
-  }
-}
-
 async function getSyncStatus() {
   try {
     const statuses = (await extendedPrisma.tbankSyncStatus.findMany({
@@ -623,9 +587,6 @@ async function main() {
     return;
   }
 
-  // Создаем/обновляем PlanFactAccount "Копилка"
-  await upsertPlanFactAccount();
-
   // СЕКЦИЯ ОЧИСТКИ ДАННЫХ - ЗАКОММЕНТИРОВАТЬ ДЛЯ ОТКЛЮЧЕНИЯ
   // Раскомментируйте этот блок, если нужно очистить все данные перед синхронизацией
 
@@ -635,9 +596,20 @@ async function main() {
   //     originalOperationId: {
   //       not: null,
   //     },
+  //     originalOperation: {
+  //       operationDate: {
+  //         startsWith: '2025-10-31'
+  //       }
+  //     }
   //   },
   // });
-  // await prisma.originalOperationFromTbank.deleteMany({});
+  // await prisma.originalOperationFromTbank.deleteMany({
+  //   where: {
+  //     operationDate: {
+  //       startsWith: '2025-10-31'
+  //     }
+  //   }
+  // });
   // await prisma.tbankSyncStatus.deleteMany({});
   // await prisma.counterParty.deleteMany({});
   // console.log('Все данные очищены');
@@ -652,6 +624,7 @@ async function main() {
   const limit = parseInt(process.argv[4]) || 1000;
   const categories = process.argv[5] ? process.argv[5].split(',') : undefined; // Категории операций
   const inns = process.argv[6] ? process.argv[6].split(',') : undefined; // ИНН контрагентов
+  // const reapply = false;
 
   console.log(`Получение операций с ${from} по ${to}, лимит: ${limit}`);
   await notifyAdmins(
@@ -663,6 +636,7 @@ async function main() {
   }
 
   try {
+    // Ретро-применение правил отключено
     // Получаем все аккаунты с доступом к API
     const accounts = await prisma.planFactAccount.findMany({
       where: {

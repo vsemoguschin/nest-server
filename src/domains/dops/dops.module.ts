@@ -4,6 +4,6 @@ import { DopsService } from './dops.service';
 
 @Module({
   controllers: [DopsController],
-  providers: [DopsService]
+  providers: [DopsService],
 })
 export class DopsModule {}

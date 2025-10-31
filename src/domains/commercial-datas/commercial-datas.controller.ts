@@ -71,6 +71,21 @@ export class CommercialDatasController {
   }
 
 
+
+  @Get('/stat/all')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  async getStatAllGroups(
+    @CurrentUser() user: UserDto,
+    @Query('period') period: string,
+  ): Promise<any> {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.commercialDatasService.getStatAllGroups(user, period);
+  }
+
   @Get('/statistics/:groupId')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   async getStat(

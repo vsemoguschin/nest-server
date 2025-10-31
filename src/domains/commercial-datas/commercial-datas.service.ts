@@ -2844,8 +2844,815 @@ export class CommercialDatasService {
 
     data.users = data.users.sort((a, b) => b.sales - a.sales).slice(0, 10);
 
-    const topManagers = group.users;
+    return data;
+  }
+
+  /** /commercial-datas/statistics - статистика по всем группам */
+  async getStatAllGroups(user: UserDto, period: string) {
+    // Получаем все группы
+    const groups = await this.prisma.group.findMany({
+      where: {
+        deletedAt: null,
+        workSpace: {
+          department: 'COMMERCIAL',
+        },
+        deals: {
+          some: {},
+        },
+      },
+      include: {
+        workSpace: true,
+      },
+    });
+
+    if (groups.length === 0) {
+      throw new NotFoundException('Группы не найдены.');
+    }
+
+    // Получаем данные для каждой группы
+    const groupsDataPromises = groups.map(async (group) => {
+      return this.processGroupForAllGroups(group.id, period);
+    });
+
+    const groupsData = await Promise.all(groupsDataPromises);
+
+    // Агрегируем данные
+    return this.aggregateAllGroupsData(groupsData, period);
+  }
+
+  private async processGroupForAllGroups(
+    groupId: number,
+    period: string,
+  ): Promise<WorkSpaceData> {
+    function getDaysInMonth(year: number, month: number): number {
+      return new Date(year, month, 0).getDate();
+    }
+
+    const group = await this.prisma.group.findUnique({
+      where: {
+        id: groupId,
+      },
+      include: {
+        workSpace: true,
+        deals: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            reservation: false,
+            deletedAt: null,
+          },
+          include: {
+            payments: true,
+            dealers: {
+              include: {
+                user: true,
+              },
+            },
+            client: true,
+            deliveries: true,
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: period,
+                },
+              },
+            },
+          },
+        },
+        dops: {
+          where: {
+            saleDate: {
+              startsWith: period,
+            },
+            deal: {
+              reservation: false,
+              status: { not: 'Возврат' },
+              deletedAt: null,
+            },
+          },
+        },
+        users: {
+          include: {
+            managersPlans: {
+              where: {
+                period,
+              },
+            },
+            role: true,
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: period,
+                },
+                deal: {
+                  reservation: false,
+                  status: { not: 'Возврат' },
+                  deletedAt: null,
+                },
+              },
+            },
+          },
+        },
+        adSources: {
+          include: {
+            adExpenses: {
+              where: {
+                date: {
+                  startsWith: period,
+                },
+              },
+            },
+          },
+        },
+        reports: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
+        adExpenses: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+          },
+        },
+      },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Группа не найдена.');
+    }
+
+    // Доставки заказов группы
+    const groupDeliveries = await this.prisma.delivery.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+        deal: {
+          status: { not: 'Возврат' },
+          reservation: false,
+          deletedAt: null,
+          groupId,
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
+          },
+        },
+      },
+    });
+
+    // Отправленные доставки
+    const sendDeliveries = await this.prisma.delivery.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+        status: 'Отправлена',
+        deal: {
+          status: { not: 'Возврат' },
+          reservation: false,
+          deletedAt: null,
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
+          },
+        },
+      },
+    });
+
+    // Доставленные
+    const deliveredDeliveries = await this.prisma.delivery.findMany({
+      where: {
+        deliveredDate: {
+          startsWith: period,
+        },
+        status: 'Вручена',
+        deal: {
+          status: { not: 'Возврат' },
+          reservation: false,
+          deletedAt: null,
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
+          },
+        },
+      },
+    });
+
+    const title = group.title;
+    const data: WorkSpaceData = {
+      workSpaceName: title,
+      chartData: [
+        { name: '01', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '02', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '03', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '04', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '05', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '06', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '07', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '08', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '09', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '10', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '11', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '12', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '13', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '14', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '15', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '16', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '17', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '18', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '19', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '20', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '21', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '22', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '23', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '24', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '25', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '26', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '27', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '28', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '29', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '30', ['Сделки']: 0, ['Допы']: 0 },
+        { name: '31', ['Сделки']: 0, ['Допы']: 0 },
+      ],
+      callsChartData: [
+        { name: '01', ['ВК']: 0, ['B2B']: 0 },
+        { name: '02', ['ВК']: 0, ['B2B']: 0 },
+        { name: '03', ['ВК']: 0, ['B2B']: 0 },
+        { name: '04', ['ВК']: 0, ['B2B']: 0 },
+        { name: '05', ['ВК']: 0, ['B2B']: 0 },
+        { name: '06', ['ВК']: 0, ['B2B']: 0 },
+        { name: '07', ['ВК']: 0, ['B2B']: 0 },
+        { name: '08', ['ВК']: 0, ['B2B']: 0 },
+        { name: '09', ['ВК']: 0, ['B2B']: 0 },
+        { name: '10', ['ВК']: 0, ['B2B']: 0 },
+        { name: '11', ['ВК']: 0, ['B2B']: 0 },
+        { name: '12', ['ВК']: 0, ['B2B']: 0 },
+        { name: '13', ['ВК']: 0, ['B2B']: 0 },
+        { name: '14', ['ВК']: 0, ['B2B']: 0 },
+        { name: '15', ['ВК']: 0, ['B2B']: 0 },
+        { name: '16', ['ВК']: 0, ['B2B']: 0 },
+        { name: '17', ['ВК']: 0, ['B2B']: 0 },
+        { name: '18', ['ВК']: 0, ['B2B']: 0 },
+        { name: '19', ['ВК']: 0, ['B2B']: 0 },
+        { name: '20', ['ВК']: 0, ['B2B']: 0 },
+        { name: '21', ['ВК']: 0, ['B2B']: 0 },
+        { name: '22', ['ВК']: 0, ['B2B']: 0 },
+        { name: '23', ['ВК']: 0, ['B2B']: 0 },
+        { name: '24', ['ВК']: 0, ['B2B']: 0 },
+        { name: '25', ['ВК']: 0, ['B2B']: 0 },
+        { name: '26', ['ВК']: 0, ['B2B']: 0 },
+        { name: '27', ['ВК']: 0, ['B2B']: 0 },
+        { name: '28', ['ВК']: 0, ['B2B']: 0 },
+        { name: '29', ['ВК']: 0, ['B2B']: 0 },
+        { name: '30', ['ВК']: 0, ['B2B']: 0 },
+        { name: '31', ['ВК']: 0, ['B2B']: 0 },
+      ],
+      plan: 0,
+      dealsSales: 0,
+      totalSales: 0,
+      temp: 0,
+      tempToPlan: 0,
+      dealsAmount: group.deals.length,
+      dopSales: 0,
+      dopsAmount: 0,
+      salesToPlan: 0,
+      remainder: 0,
+      dopsToSales: 0,
+      averageBill: 0,
+      receivedPayments: 0,
+      calls: 0,
+      adExpensesPrice: 0,
+      callCost: 0,
+      drr: 0,
+      dealsWithoutDesigners: 0,
+      dealsSalesWithoutDesigners: 0,
+      makets: 0,
+      maketsDayToDay: 0,
+      redirectToMSG: 0,
+      conversionDealsToCalls: 0,
+      conversionMaketsToCalls: 0,
+      conversionMaketsToSales: 0,
+      conversionMaketsDayToDayToCalls: 0,
+      dealsDayToDay: 0,
+      dealsDayToDayPrice: 0,
+      sendDeliveries: 0,
+      freeDeliveries: 0,
+      freeDeliveriesPrice: 0,
+      sendDeliveriesPrice: 0,
+      deliveredDeliveriesPrice: 0,
+      deliveredDeliveries: 0,
+      users: group.users.map((u) => {
+        return {
+          id: u.id,
+          fullName: u.fullName,
+          workSpace: group.workSpace.title,
+          sales: 0,
+        };
+      }),
+      maketsSales: [
+        {
+          name: 'Дизайнерский',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: 'Заготовка из базы',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: 'Рекламный',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: 'Визуализатор',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: 'Из рассылки',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: '',
+          sales: 0,
+          amount: 0,
+        },
+      ],
+      sources: [],
+      adTags: [],
+      adExpenses: [],
+    };
+
+    // Источники рекламы
+    group.adSources.map((ds) => {
+      const adExps = ds.adExpenses.reduce((a, b) => a + b.price, 0);
+      if (!data.adExpenses.find((e) => e.name === ds.title)) {
+        data.adExpenses.push({
+          name: ds.title,
+          sales: adExps,
+        });
+      } else {
+        const dsIndex = data.adExpenses.findIndex((s) => s.name === ds.title);
+        data.adExpenses[dsIndex].sales += adExps;
+      }
+      data.adExpenses.sort((a, b) => b.sales - a.sales);
+    });
+
+    // Считаем сумму сделок
+    group.deals.map((deal) => {
+      const day = deal.saleDate.slice(8, 10);
+      const index = data.chartData.findIndex((d) => d.name === day);
+      data.chartData[index]['Сделки'] += deal.price;
+      data.dealsSales += deal.price;
+      data.totalSales += deal.price;
+      const dopsPrice = deal.dops.reduce((a, b) => a + b.price, 0);
+      if (
+        [
+          'Заготовка из базы',
+          'Рекламный',
+          'Из рассылки',
+          'Визуализатор',
+        ].includes(deal.maketType)
+      ) {
+        data.dealsWithoutDesigners += 1;
+        data.dealsSalesWithoutDesigners += deal.price + dopsPrice;
+      }
+      if (deal.saleDate === deal.client.firstContact) {
+        data.dealsDayToDay += 1;
+        data.dealsDayToDayPrice += deal.price + dopsPrice;
+      }
+
+      deal.dealers.map((dealer) => {
+        const userIndex = data.users.findIndex((u) => u.id === dealer.userId);
+        if (userIndex !== -1) {
+          data.users[userIndex].sales += dealer.price;
+        }
+      });
+
+      const maketIndex = data.maketsSales.findIndex(
+        (m) => m.name === deal.maketType,
+      );
+      data.maketsSales[maketIndex].sales += deal.price + dopsPrice;
+      data.maketsSales[maketIndex].amount += 1;
+
+      // Sources
+      if (!data.sources.find((s) => s.name === deal.source)) {
+        data.sources.push({
+          name: deal.source,
+          sales: deal.price + dopsPrice,
+        });
+      } else {
+        const sourceIndex = data.sources.findIndex(
+          (s) => s.name === deal.source,
+        );
+        data.sources[sourceIndex].sales += deal.price + dopsPrice;
+      }
+
+      // AdTags
+      if (!data.adTags.find((s) => s.name === deal.adTag)) {
+        data.adTags.push({ name: deal.adTag, sales: deal.price + dopsPrice });
+      } else {
+        const adTagIndex = data.adTags.findIndex((s) => s.name === deal.adTag);
+        data.adTags[adTagIndex].sales += deal.price + dopsPrice;
+      }
+
+      data.sources.sort((a, b) => b.sales - a.sales);
+      data.adTags.sort((a, b) => b.sales - a.sales);
+      data.maketsSales.sort((a, b) => b.sales - a.sales);
+    });
+
+    // Доставки
+    data.sendDeliveriesPrice = sendDeliveries
+      .filter((d) => d.workSpaceId === group.workSpaceId)
+      .reduce(
+        (acc, d) =>
+          acc + (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+        0,
+      );
+    data.deliveredDeliveriesPrice = deliveredDeliveries
+      .filter((d) => d.workSpaceId === group.workSpaceId)
+      .reduce(
+        (acc, d) =>
+          acc + (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+        0,
+      );
+
+    data.sendDeliveries = sendDeliveries.length;
+    data.deliveredDeliveries = deliveredDeliveries.length;
+    data.freeDeliveries = groupDeliveries.filter(
+      (d) => d.type === 'Бесплатно',
+    ).length;
+    data.freeDeliveriesPrice = groupDeliveries
+      .filter((d) => d.type === 'Бесплатно')
+      .reduce((a, b) => a + b.price, 0);
+
+    const adExpensesPrice = group.adExpenses.reduce((acc, item) => {
+      return acc + item.price;
+    }, 0);
+    data.adExpensesPrice = adExpensesPrice;
+
+    // Считаем заявки
+    group.reports.map((r) => {
+      const day = r.date.slice(8, 10);
+      const index = data.callsChartData.findIndex((d) => d.name === day);
+      data.callsChartData[index][group.title] += r.calls;
+      data.calls += r.calls;
+      data.makets += r.makets;
+      data.maketsDayToDay += r.maketsDayToDay;
+      data.redirectToMSG += r.redirectToMSG;
+    });
+
+    group.dops.map((dop) => {
+      const day = dop.saleDate.slice(8, 10);
+      const index = data.chartData.findIndex((d) => d.name === day);
+      data.chartData[index]['Допы'] += dop.price;
+      data.dopSales += dop.price;
+      data.dopsAmount += 1;
+      data.totalSales += dop.price;
+      const userIndex = data.users.findIndex((u) => u.id === dop.userId);
+      if (userIndex !== -1) {
+        data.users[userIndex].sales += dop.price;
+      }
+    });
+
+    group.users.map((user) => {
+      if (user.role.shortName === 'DO') {
+        data.plan = user.managersPlans[0]?.plan || 0;
+      }
+    });
+
+    data.receivedPayments += group.deals
+      .flatMap((d) => d.payments)
+      .reduce((a, b) => a + b.price, 0);
+
+    data.dopsToSales = data.totalSales
+      ? +((data.dopSales / data.totalSales) * 100).toFixed()
+      : 0;
+    data.averageBill = data.dealsAmount
+      ? +(data.dealsSales / data.dealsAmount).toFixed()
+      : 0;
+
+    data.salesToPlan = data.plan
+      ? +((data.totalSales / data.plan) * 100).toFixed()
+      : 0;
+
+    data.remainder = data.plan - data.totalSales;
+
+    data.callCost = data.calls
+      ? +(data.adExpensesPrice / data.calls).toFixed(2)
+      : 0;
+    data.drr = data.totalSales
+      ? +((data.adExpensesPrice / data.totalSales) * 100).toFixed(2)
+      : 0;
+
+    data.conversionDealsToCalls = data.calls
+      ? +((data.dealsAmount / data.calls) * 100).toFixed(2)
+      : 0;
+    data.conversionMaketsToCalls = data.calls
+      ? +((data.makets / data.calls) * 100).toFixed(2)
+      : 0;
+
+    data.conversionMaketsToSales = data.makets
+      ? +((data.dealsAmount / data.makets) * 100).toFixed(2)
+      : 0;
+    data.conversionMaketsDayToDayToCalls = data.calls
+      ? +((data.maketsDayToDay / data.calls) * 100).toFixed(2)
+      : 0;
+
+    const daysInMonth = getDaysInMonth(
+      +period.split('-')[0],
+      +period.split('-')[1],
+    );
+    const isThismounth =
+      period.split('-')[1] === new Date().toISOString().slice(5, 7);
+    const today = isThismounth
+      ? new Date().toISOString().slice(8, 10)
+      : daysInMonth;
+
+    data.temp = +((data.totalSales / +today) * daysInMonth).toFixed();
+
+    data.tempToPlan = data.plan
+      ? +((data.temp / data.plan) * 100).toFixed()
+      : 0;
+
+    data.users = data.users.sort((a, b) => b.sales - a.sales).slice(0, 10);
 
     return data;
+  }
+
+  private aggregateAllGroupsData(
+    groupsData: WorkSpaceData[],
+    period: string,
+  ): WorkSpaceData {
+    function getDaysInMonth(year: number, month: number): number {
+      return new Date(year, month, 0).getDate();
+    }
+
+    const aggregated: WorkSpaceData = {
+      workSpaceName: 'Все группы',
+      chartData: Array.from({ length: 31 }, (_, i) => ({
+        name: String(i + 1).padStart(2, '0'),
+        ['Сделки']: 0,
+        ['Допы']: 0,
+      })),
+      callsChartData: Array.from({ length: 31 }, (_, i) => ({
+        name: String(i + 1).padStart(2, '0'),
+        ['ВК']: 0,
+        ['B2B']: 0,
+      })),
+      plan: 0,
+      dealsSales: 0,
+      totalSales: 0,
+      temp: 0,
+      tempToPlan: 0,
+      dealsAmount: 0,
+      dopSales: 0,
+      dopsAmount: 0,
+      salesToPlan: 0,
+      remainder: 0,
+      dopsToSales: 0,
+      averageBill: 0,
+      receivedPayments: 0,
+      calls: 0,
+      adExpensesPrice: 0,
+      callCost: 0,
+      drr: 0,
+      dealsWithoutDesigners: 0,
+      dealsSalesWithoutDesigners: 0,
+      makets: 0,
+      maketsDayToDay: 0,
+      redirectToMSG: 0,
+      conversionDealsToCalls: 0,
+      conversionMaketsToCalls: 0,
+      conversionMaketsToSales: 0,
+      conversionMaketsDayToDayToCalls: 0,
+      dealsDayToDay: 0,
+      dealsDayToDayPrice: 0,
+      sendDeliveries: 0,
+      freeDeliveries: 0,
+      freeDeliveriesPrice: 0,
+      sendDeliveriesPrice: 0,
+      deliveredDeliveriesPrice: 0,
+      deliveredDeliveries: 0,
+      users: [],
+      maketsSales: [
+        {
+          name: 'Дизайнерский',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: 'Заготовка из базы',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: 'Рекламный',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: 'Визуализатор',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: 'Из рассылки',
+          sales: 0,
+          amount: 0,
+        },
+        {
+          name: '',
+          sales: 0,
+          amount: 0,
+        },
+      ],
+      sources: [],
+      adTags: [],
+      adExpenses: [],
+    };
+
+    // Агрегируем данные всех групп
+    groupsData.forEach((groupData) => {
+      // Агрегируем chartData
+      groupData.chartData.forEach((item, index) => {
+        if (aggregated.chartData[index]) {
+          aggregated.chartData[index]['Сделки'] += item['Сделки'];
+          aggregated.chartData[index]['Допы'] += item['Допы'];
+        }
+      });
+
+      // Агрегируем callsChartData - суммируем все значения по ключам
+      groupData.callsChartData.forEach((item, index) => {
+        if (aggregated.callsChartData[index]) {
+          Object.keys(item).forEach((key) => {
+            if (key !== 'name' && typeof item[key] === 'number') {
+              if (aggregated.callsChartData[index][key] === undefined) {
+                aggregated.callsChartData[index][key] = 0;
+              }
+              aggregated.callsChartData[index][key] += item[key];
+            }
+          });
+        }
+      });
+
+      // Суммируем числовые значения
+      aggregated.plan += groupData.plan;
+      aggregated.dealsSales += groupData.dealsSales;
+      aggregated.totalSales += groupData.totalSales;
+      aggregated.dealsAmount += groupData.dealsAmount;
+      aggregated.dopSales += groupData.dopSales;
+      aggregated.dopsAmount += groupData.dopsAmount;
+      aggregated.receivedPayments += groupData.receivedPayments;
+      aggregated.calls += groupData.calls;
+      aggregated.adExpensesPrice += groupData.adExpensesPrice;
+      aggregated.dealsWithoutDesigners += groupData.dealsWithoutDesigners;
+      aggregated.dealsSalesWithoutDesigners +=
+        groupData.dealsSalesWithoutDesigners;
+      aggregated.makets += groupData.makets;
+      aggregated.maketsDayToDay += groupData.maketsDayToDay;
+      aggregated.redirectToMSG += groupData.redirectToMSG;
+      aggregated.dealsDayToDay += groupData.dealsDayToDay;
+      aggregated.dealsDayToDayPrice += groupData.dealsDayToDayPrice;
+      aggregated.sendDeliveries += groupData.sendDeliveries;
+      aggregated.freeDeliveries += groupData.freeDeliveries;
+      aggregated.freeDeliveriesPrice += groupData.freeDeliveriesPrice;
+      aggregated.sendDeliveriesPrice += groupData.sendDeliveriesPrice;
+      aggregated.deliveredDeliveriesPrice += groupData.deliveredDeliveriesPrice;
+      aggregated.deliveredDeliveries += groupData.deliveredDeliveries;
+
+      // Агрегируем maketsSales
+      groupData.maketsSales.forEach((maket) => {
+        const maketIndex = aggregated.maketsSales.findIndex(
+          (m) => m.name === maket.name,
+        );
+        if (maketIndex !== -1) {
+          aggregated.maketsSales[maketIndex].sales += maket.sales;
+          aggregated.maketsSales[maketIndex].amount += maket.amount;
+        }
+      });
+
+      // Агрегируем sources
+      groupData.sources.forEach((source) => {
+        const sourceIndex = aggregated.sources.findIndex(
+          (s) => s.name === source.name,
+        );
+        if (sourceIndex !== -1) {
+          aggregated.sources[sourceIndex].sales += source.sales;
+        } else {
+          aggregated.sources.push({ ...source });
+        }
+      });
+
+      // Агрегируем adTags
+      groupData.adTags.forEach((adTag) => {
+        const adTagIndex = aggregated.adTags.findIndex(
+          (s) => s.name === adTag.name,
+        );
+        if (adTagIndex !== -1) {
+          aggregated.adTags[adTagIndex].sales += adTag.sales;
+        } else {
+          aggregated.adTags.push({ ...adTag });
+        }
+      });
+
+      // Агрегируем adExpenses
+      groupData.adExpenses.forEach((adExpense) => {
+        const adExpenseIndex = aggregated.adExpenses.findIndex(
+          (e) => e.name === adExpense.name,
+        );
+        if (adExpenseIndex !== -1) {
+          aggregated.adExpenses[adExpenseIndex].sales += adExpense.sales;
+        } else {
+          aggregated.adExpenses.push({ ...adExpense });
+        }
+      });
+
+      // Агрегируем пользователей
+      groupData.users.forEach((user) => {
+        const userIndex = aggregated.users.findIndex((u) => u.id === user.id);
+        if (userIndex !== -1) {
+          aggregated.users[userIndex].sales += user.sales;
+        } else {
+          aggregated.users.push({ ...user });
+        }
+      });
+    });
+
+    // Вычисляем производные значения
+    aggregated.dopsToSales = aggregated.totalSales
+      ? +((aggregated.dopSales / aggregated.totalSales) * 100).toFixed()
+      : 0;
+    aggregated.averageBill = aggregated.dealsAmount
+      ? +(aggregated.dealsSales / aggregated.dealsAmount).toFixed()
+      : 0;
+    aggregated.salesToPlan = aggregated.plan
+      ? +((aggregated.totalSales / aggregated.plan) * 100).toFixed()
+      : 0;
+    aggregated.remainder = aggregated.plan - aggregated.totalSales;
+    aggregated.callCost = aggregated.calls
+      ? +(aggregated.adExpensesPrice / aggregated.calls).toFixed(2)
+      : 0;
+    aggregated.drr = aggregated.totalSales
+      ? +((aggregated.adExpensesPrice / aggregated.totalSales) * 100).toFixed(2)
+      : 0;
+    aggregated.conversionDealsToCalls = aggregated.calls
+      ? +((aggregated.dealsAmount / aggregated.calls) * 100).toFixed(2)
+      : 0;
+    aggregated.conversionMaketsToCalls = aggregated.calls
+      ? +((aggregated.makets / aggregated.calls) * 100).toFixed(2)
+      : 0;
+    aggregated.conversionMaketsToSales = aggregated.makets
+      ? +((aggregated.dealsAmount / aggregated.makets) * 100).toFixed(2)
+      : 0;
+    aggregated.conversionMaketsDayToDayToCalls = aggregated.calls
+      ? +((aggregated.maketsDayToDay / aggregated.calls) * 100).toFixed(2)
+      : 0;
+
+    const daysInMonth = getDaysInMonth(
+      +period.split('-')[0],
+      +period.split('-')[1],
+    );
+    const isThismounth =
+      period.split('-')[1] === new Date().toISOString().slice(5, 7);
+    const today = isThismounth
+      ? new Date().toISOString().slice(8, 10)
+      : daysInMonth;
+
+    aggregated.temp = +(
+      (aggregated.totalSales / +today) *
+      daysInMonth
+    ).toFixed();
+    aggregated.tempToPlan = aggregated.plan
+      ? +((aggregated.temp / aggregated.plan) * 100).toFixed()
+      : 0;
+
+    // Сортируем и ограничиваем массивы
+    aggregated.sources.sort((a, b) => b.sales - a.sales);
+    aggregated.adTags.sort((a, b) => b.sales - a.sales);
+    aggregated.maketsSales.sort((a, b) => b.sales - a.sales);
+    aggregated.adExpenses.sort((a, b) => b.sales - a.sales);
+    aggregated.users = aggregated.users
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, 10);
+
+    return aggregated;
   }
 }

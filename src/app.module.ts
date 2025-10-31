@@ -42,6 +42,7 @@ import { MembersModule } from './domains/kanban/members/members.module';
 import { CommentsModule } from './domains/kanban/comments/comments.module';
 import { VkAdsModule } from './domains/vk-ads/vk-ads.module';
 import { CommercialDatasModule } from './domains/commercial-datas/commercial-datas.module';
+import { AutoCategoryRulesModule } from './domains/auto-category-rules/auto-category-rules.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { CommercialDatasModule } from './domains/commercial-datas/commercial-dat
     CommentsModule,
     VkAdsModule,
     CommercialDatasModule,
+    AutoCategoryRulesModule,
 
     // другие модули
   ],

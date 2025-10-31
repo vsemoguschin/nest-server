@@ -67,7 +67,7 @@ export class PlanfactController {
     @Query('to') to: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
-    @Query('accountId') accountId: number,
+    @Query('accountId') accountId?: number,
     @Query('distributionFilter') distributionFilter?: string,
     @Query(
       'counterPartyId',
@@ -81,9 +81,7 @@ export class PlanfactController {
     expenseCategoryId?: number[],
     @Query('typeOfOperation') typeOfOperation?: string,
   ) {
-    if (!accountId) {
-      throw new BadRequestException('Параметр accountId обязателен');
-    }
+    // Убрана обязательность accountId
     if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
         'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
@@ -151,7 +149,7 @@ export class PlanfactController {
   async getOriginalOperationsTotals(
     @Query('from') from: string,
     @Query('to') to: string,
-    @Query('accountId') accountId: number,
+    @Query('accountId') accountId?: number,
     @Query(
       'counterPartyId',
       new ParseArrayPipe({ items: Number, optional: true, separator: ',' }),
@@ -188,7 +186,7 @@ export class PlanfactController {
     ) {
       throw new BadRequestException(
         'Параметр expenseCategoryId должен содержать только неотрицательные целые числа',
-      );
+      ); 
     }
     if (
       typeOfOperation &&
@@ -203,9 +201,9 @@ export class PlanfactController {
       from,
       to,
       accountId,
-      counterPartyId,
-      expenseCategoryId,
-      typeOfOperation,
+      // counterPartyId,
+      // expenseCategoryId,
+      // typeOfOperation,
     });
   }
 
@@ -251,6 +249,14 @@ export class PlanfactController {
     );
   }
 
+  @Patch('position/:positionId/remove-category')
+  @Roles('ADMIN', 'G', 'KD')
+  async removeExpenseCategoryFromPosition(
+    @Param('positionId') positionId: number,
+  ) {
+    return this.planfactService.removeExpenseCategoryFromPosition(positionId);
+  }
+
   @Post('expense-categories')
   @Roles('ADMIN', 'G', 'KD')
   async createExpenseCategory(
@@ -282,11 +288,9 @@ export class PlanfactController {
   async getCounterPartiesFilters(
     @Query('from') from: string,
     @Query('to') to: string,
-    @Query('accountId') accountId: number,
+    @Query('accountId') accountId?: number,
   ) {
-    if (!accountId) {
-      throw new BadRequestException('Параметр accountId обязателен');
-    }
+    // Убрана обязательность accountId
     if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
         'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
@@ -310,11 +314,9 @@ export class PlanfactController {
   async getExpenseCategoriesFilters(
     @Query('from') from: string,
     @Query('to') to: string,
-    @Query('accountId') accountId: number,
+    @Query('accountId') accountId?: number,
   ) {
-    if (!accountId) {
-      throw new BadRequestException('Параметр accountId обязателен');
-    }
+    // Убрана обязательность accountId
     if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
         'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
