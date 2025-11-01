@@ -30,13 +30,13 @@ export class PlanfactController {
   constructor(private readonly planfactService: PlanfactService) {}
 
   @Get('accounts')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getBankAccounts() {
     return this.planfactService.getBankAccounts();
   }
 
   @Get('operations')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getOperationsFromRange(
     @Query('start') start: string,
     @Query('end') end: string,
@@ -61,7 +61,7 @@ export class PlanfactController {
   }
 
   @Get('original-operations')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getOriginalOperations(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -145,7 +145,7 @@ export class PlanfactController {
   }
 
   @Get('original-operations-totals')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getOriginalOperationsTotals(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -208,13 +208,13 @@ export class PlanfactController {
   }
 
   @Post('operation')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async createOperation(@Body() createOperationDto: CreateOperationDto) {
     return this.planfactService.createOperation(createOperationDto);
   }
 
   @Patch('operation/:operationId')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async updateOperation(
     @Param('operationId') operationId: string,
     @Body() updateOperationDto: UpdateOperationDto,
@@ -226,13 +226,13 @@ export class PlanfactController {
   }
 
   @Delete('operation/:operationId')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async deleteOperation(@Param('operationId') operationId: string) {
     return this.planfactService.deleteOperation(operationId);
   }
 
   @Patch('original-operation/:operationId/positions')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async updateOriginalOperationPositions(
     @Param('operationId') operationId: string,
     @Body()
@@ -250,7 +250,7 @@ export class PlanfactController {
   }
 
   @Patch('position/:positionId/remove-category')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async removeExpenseCategoryFromPosition(
     @Param('positionId') positionId: number,
   ) {
@@ -258,7 +258,7 @@ export class PlanfactController {
   }
 
   @Post('expense-categories')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async createExpenseCategory(
     @Body() createExpenseCategoryDto: CreateExpenseCategoryDto,
   ) {
@@ -266,25 +266,25 @@ export class PlanfactController {
   }
 
   @Get('expense-categories')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getExpenseCategories(@Query('operationType') operationType?: string) {
     return this.planfactService.getExpenseCategories(operationType);
   }
 
   @Get('expense-categories-by-type')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getExpenseCategoriesByType(@Query('type') type: string) {
     return this.planfactService.getExpenseCategoriesByType(type);
   }
 
   @Get('counter-parties')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getCounterParties() {
     return this.planfactService.getCounterParties();
   }
 
   @Get('counter-parties-filters')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getCounterPartiesFilters(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -310,7 +310,7 @@ export class PlanfactController {
   }
 
   @Get('expense-category-filters')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getExpenseCategoriesFilters(
     @Query('from') from: string,
     @Query('to') to: string,
@@ -336,7 +336,7 @@ export class PlanfactController {
   }
 
   @Post('counter-parties')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async createCounterParty(
     @Body() createCounterPartyDto: CreateCounterPartyDto,
   ) {
@@ -344,19 +344,19 @@ export class PlanfactController {
   }
 
   @Get('categories')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getCategories() {
     return this.planfactService.getCategories();
   }
 
   @Post('accounts')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async createAccount(@Body() dto: PlanFactAccountCreateDto) {
     return this.planfactService.createAccount(dto);
   }
 
   @Get('pl')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getPLDatas(
     @Query('period') period: string,
     @CurrentUser() user: UserDto,
@@ -370,7 +370,7 @@ export class PlanfactController {
   }
 
   @Patch('counter-parties/expense-categories')
-  @Roles('ADMIN', 'G', 'KD')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async assignExpenseCategoriesToCounterParty(
     @Body()
     categoriesData: {
