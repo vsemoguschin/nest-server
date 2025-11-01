@@ -2256,6 +2256,7 @@ export class PlanfactService {
     counterPartyId,
     expenseCategoryId,
     typeOfOperation,
+    searchText,
   }: {
     from: string;
     to: string;
@@ -2266,6 +2267,7 @@ export class PlanfactService {
     counterPartyId?: number[];
     expenseCategoryId?: number[];
     typeOfOperation?: string;
+    searchText?: string;
   }) {
     const skip = (page - 1) * limit;
 
@@ -2281,111 +2283,133 @@ export class PlanfactService {
     const realAccountNumbers = realAccounts.map((acc) => acc.accountNumber);
 
     // Собираем все условия в массив
-    const conditions: Record<string, unknown>[] = [
-      {
+    const conditions: Record<string, unknown>[] = [];
+
+    // Если передан searchText, игнорируем все фильтры
+    if (searchText) {
+      // Добавляем только условие поиска по searchText
+      conditions.push({
+        OR: [
+          {
+            counterPartyTitle: {
+              contains: searchText,
+              mode: 'insensitive',
+            },
+          },
+          {
+            payPurpose: {
+              contains: searchText,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      });
+    } else {
+      // Если searchText не передан, применяем все фильтры
+      conditions.push({
         operationDate: {
           gte: from,
           lte: to + 'T23:59:59.999Z',
         },
-      },
-      {
+      });
+      conditions.push({
         payPurpose: {
           not: {
             contains: 'Овернайт',
           },
         },
-      },
-    ];
-
-    if (accountId) {
-      conditions.push({
-        accountId,
       });
-    }
 
-    if (typeOfOperation) {
-      if (typeOfOperation === 'Transfer') {
-        // Для Transfer операций фильтруем по counterPartyAccount в реальных аккаунтах
-        if (realAccountNumbers.length > 0) {
-          conditions.push({
-            counterPartyAccount: {
-              in: realAccountNumbers,
-            },
-          });
-        } else {
-          // Если нет реальных аккаунтов, возвращаем пустой результат
-          conditions.push({
-            id: -1, // Невозможное условие
-          });
-        }
-      } else {
+      if (accountId) {
         conditions.push({
-          typeOfOperation,
+          accountId,
         });
-        // Исключаем transfer операции для Credit и Debit
-        // Операция считается перемещением, если counterPartyAccount в списке реальных аккаунтов
-        if (realAccountNumbers.length > 0) {
-          conditions.push({
-            NOT: {
+      }
+
+      if (typeOfOperation) {
+        if (typeOfOperation === 'Transfer') {
+          // Для Transfer операций фильтруем по counterPartyAccount в реальных аккаунтах
+          if (realAccountNumbers.length > 0) {
+            conditions.push({
               counterPartyAccount: {
                 in: realAccountNumbers,
               },
+            });
+          } else {
+            // Если нет реальных аккаунтов, возвращаем пустой результат
+            conditions.push({
+              id: -1, // Невозможное условие
+            });
+          }
+        } else {
+          conditions.push({
+            typeOfOperation,
+          });
+          // Исключаем transfer операции для Credit и Debit
+          // Операция считается перемещением, если counterPartyAccount в списке реальных аккаунтов
+          if (realAccountNumbers.length > 0) {
+            conditions.push({
+              NOT: {
+                counterPartyAccount: {
+                  in: realAccountNumbers,
+                },
+              },
+            });
+          }
+        }
+      }
+
+      // Формируем условия для фильтрации по позициям операций
+      const positionConditions: Record<string, unknown>[] = [];
+
+      if (counterPartyId && counterPartyId.length > 0) {
+        positionConditions.push({
+          counterPartyId: {
+            in: counterPartyId,
+          },
+        });
+      }
+
+      if (expenseCategoryId && expenseCategoryId.length > 0) {
+        // Если expenseCategoryId содержит 0, ищем позиции с null
+        if (expenseCategoryId.includes(0)) {
+          const categoryIds = expenseCategoryId.filter((id) => id !== 0);
+          if (categoryIds.length > 0) {
+            // Если есть другие ID кроме 0, используем OR для null или других ID
+            positionConditions.push({
+              OR: [
+                { expenseCategoryId: null },
+                { expenseCategoryId: { in: categoryIds } },
+              ],
+            });
+          } else {
+            // Если только 0, ищем только null
+            positionConditions.push({
+              expenseCategoryId: null,
+            });
+          }
+        } else {
+          // Обычная логика - фильтр по ID
+          positionConditions.push({
+            expenseCategoryId: {
+              in: expenseCategoryId,
             },
           });
         }
       }
-    }
 
-    // Формируем условия для фильтрации по позициям операций
-    const positionConditions: Record<string, unknown>[] = [];
-
-    if (counterPartyId && counterPartyId.length > 0) {
-      positionConditions.push({
-        counterPartyId: {
-          in: counterPartyId,
-        },
-      });
-    }
-
-    if (expenseCategoryId && expenseCategoryId.length > 0) {
-      // Если expenseCategoryId содержит 0, ищем позиции с null
-      if (expenseCategoryId.includes(0)) {
-        const categoryIds = expenseCategoryId.filter((id) => id !== 0);
-        if (categoryIds.length > 0) {
-          // Если есть другие ID кроме 0, используем OR для null или других ID
-          positionConditions.push({
-            OR: [
-              { expenseCategoryId: null },
-              { expenseCategoryId: { in: categoryIds } },
-            ],
-          });
-        } else {
-          // Если только 0, ищем только null
-          positionConditions.push({
-            expenseCategoryId: null,
-          });
-        }
-      } else {
-        // Обычная логика - фильтр по ID
-        positionConditions.push({
-          expenseCategoryId: {
-            in: expenseCategoryId,
+      // Если есть условия по позициям, добавляем их к условиям
+      if (positionConditions.length > 0) {
+        const positionFilter =
+          positionConditions.length === 1
+            ? positionConditions[0]
+            : { AND: positionConditions };
+        conditions.push({
+          operationPositions: {
+            some: positionFilter,
           },
         });
       }
-    }
-
-    // Если есть условия по позициям, добавляем их к условиям
-    if (positionConditions.length > 0) {
-      const positionFilter =
-        positionConditions.length === 1
-          ? positionConditions[0]
-          : { AND: positionConditions };
-      conditions.push({
-        operationPositions: {
-          some: positionFilter,
-        },
-      });
     }
 
     // Формируем финальный where объект
@@ -2822,6 +2846,12 @@ export class PlanfactService {
         transfer: Number.parseFloat(selfTransferTotals.transfer.toFixed(2)),
         netProfit: Number.parseFloat(netProfit.toFixed(2)),
         profitability: Number.parseFloat(profitability.toFixed(2)),
+        dividends: Number.parseFloat(
+          (
+            expenseCategoryTotals.find((cat) => cat.title === 'Дивиденды')
+              ?.debit || 0
+          ).toFixed(2),
+        ),
       },
     };
   }

@@ -80,6 +80,7 @@ export class PlanfactController {
     )
     expenseCategoryId?: number[],
     @Query('typeOfOperation') typeOfOperation?: string,
+    @Query('searchText') searchText?: string,
   ) {
     // Убрана обязательность accountId
     if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
@@ -141,6 +142,7 @@ export class PlanfactController {
       counterPartyId,
       expenseCategoryId,
       typeOfOperation,
+      searchText,
     });
   }
 
@@ -186,7 +188,7 @@ export class PlanfactController {
     ) {
       throw new BadRequestException(
         'Параметр expenseCategoryId должен содержать только неотрицательные целые числа',
-      ); 
+      );
     }
     if (
       typeOfOperation &&
