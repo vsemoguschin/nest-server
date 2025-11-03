@@ -41,7 +41,7 @@ type UpdateTaskResult = {
 
 const POSITION_STEP = 1000;
 const POSITION_SCALE = 4;
-const POSITION_MAX_ABS = 1_000_000;
+const POSITION_MAX_ABS = 999999.9999;
 const POSITION_SAFE_LIMIT = POSITION_MAX_ABS - POSITION_STEP;
 const LOCKED_COLUMN_ID = 25;
 const TAG_REMOVAL_COLUMN_ID = 17;
@@ -173,13 +173,29 @@ export class TasksService {
 
     if (!tasks.length) return;
 
-    let position = POSITION_STEP;
-    for (const task of tasks) {
-      await tx.kanbanTask.update({
-        where: { id: task.id },
-        data: { position: this.formatPosition(position) },
-      });
-      position += POSITION_STEP;
+    // Проверяем, не превысит ли финальная позиция лимит DECIMAL(10,4)
+    const maxPossiblePosition = tasks.length * POSITION_STEP;
+    if (maxPossiblePosition >= POSITION_SAFE_LIMIT) {
+      // Если превысит, используем меньший шаг
+      const adjustedStep = Math.floor(POSITION_SAFE_LIMIT / tasks.length);
+      let position = adjustedStep;
+      for (const task of tasks) {
+        await tx.kanbanTask.update({
+          where: { id: task.id },
+          data: { position: this.formatPosition(position) },
+        });
+        position += adjustedStep;
+      }
+    } else {
+      // Обычная нормализация с POSITION_STEP
+      let position = POSITION_STEP;
+      for (const task of tasks) {
+        await tx.kanbanTask.update({
+          where: { id: task.id },
+          data: { position: this.formatPosition(position) },
+        });
+        position += POSITION_STEP;
+      }
     }
   }
 
@@ -637,7 +653,8 @@ export class TasksService {
       warnings,
       deal: task.deal,
       dealId: task.dealId,
-      tracks: task.deal?.deliveries.map((d) => d.track).filter((t) => t !== '') ?? [],
+      tracks:
+        task.deal?.deliveries.map((d) => d.track).filter((t) => t !== '') ?? [],
       avaliableDeals,
 
       comments: [],
@@ -932,14 +949,6 @@ export class TasksService {
       id: c.id,
       title: c.title,
     }));
-  }
-  // + метод в сервисе
-  async updateColumn(taskId: number, columnId: number) {
-    return this.prisma.kanbanTask.update({
-      where: { id: taskId },
-      data: { columnId },
-      select: { id: true, title: true, columnId: true, updatedAt: true },
-    });
   }
 
   /** Удалить задачу */

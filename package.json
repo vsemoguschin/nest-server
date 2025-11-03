@@ -30,6 +30,7 @@
     "seed:tbank-operations": "ts-node src/seeds/seed-tbank-operations.ts",
     "seed:tbank-operations-with-categories": "ts-node src/seeds/seed-tbank-operations-with-categories.ts",
     "seed:view-tbank-operations": "ts-node src/seeds/seed-view-tbank-operations.ts",
+    "seed:normalize-task-positions": "ts-node src/seeds/normalize-task-positions.ts",
     "prisma:deploy": "prisma db push && prisma generate"
   },
   "dependencies": {

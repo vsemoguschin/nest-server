@@ -663,16 +663,6 @@ export class TasksController {
     );
   }
 
-  @Post(':id/column/:columnId')
-  async moveTaskToColumn(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('columnId', ParseIntPipe) columnId: number,
-    // @CurrentUser('user') user: UserDto,
-  ) {
-    const task = await this.tasksService.updateColumn(id, columnId);
-    return { task };
-  }
-
   @Post(':taskId/members/:userId')
   async addMemberToTask(
     @CurrentUser() user: UserDto,

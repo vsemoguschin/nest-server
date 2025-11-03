@@ -11,6 +11,7 @@ export class NotificationSchedulerService {
   private readonly env = process.env.NODE_ENV as 'development' | 'production';
   private isTbankSyncRunning = false; // Защита от повторного выполнения T-Bank синхронизации
   private isCustomerImportRunning = false; // Защита от повторного выполнения импорта клиентов
+  private isPositionNormalizationRunning = false; // Защита от повторного выполнения нормализации позиций
 
   constructor(
     private readonly prisma: PrismaService,
@@ -494,6 +495,118 @@ export class NotificationSchedulerService {
       );
     } finally {
       this.isTbankSyncRunning = false;
+    }
+  }
+
+  // Нормализация позиций задач во всех колонках
+  @Cron('0 30 4 * * *', { timeZone: 'Europe/Moscow' })
+  async normalizeTaskPositions() {
+    // Защита от повторного выполнения
+    if (this.isPositionNormalizationRunning) {
+      this.logger.warn('[Position Normalization] Already running, skipping...');
+      return;
+    }
+
+    this.isPositionNormalizationRunning = true;
+    const startTime = new Date();
+
+    try {
+      this.logger.log(
+        `[Position Normalization] Starting at ${startTime.toISOString()}`,
+      );
+
+      const POSITION_SCALE = 4;
+
+      const formatPosition = (value: number): string => {
+        return value.toFixed(POSITION_SCALE);
+      };
+
+      // Получаем все доски
+      const boards = await this.prisma.board.findMany({
+        where: { deletedAt: null },
+        select: { id: true, title: true },
+      });
+
+      let totalColumnsProcessed = 0;
+      let totalTasksProcessed = 0;
+
+      for (const board of boards) {
+        this.logger.log(
+          `[Position Normalization] Processing board: ${board.title} (ID: ${board.id})`,
+        );
+
+        // Получаем все колонки в доске, отсортированные по позиции
+        const columns = await this.prisma.column.findMany({
+          where: {
+            boardId: board.id,
+          },
+          orderBy: { position: 'asc' },
+          select: {
+            id: true,
+            title: true,
+          },
+        });
+
+        for (const column of columns) {
+          // Получаем все задачи в колонке
+          const tasks = await this.prisma.kanbanTask.findMany({
+            where: {
+              boardId: board.id,
+              columnId: column.id,
+            },
+            orderBy: { position: 'asc' },
+            select: {
+              id: true,
+            },
+          });
+
+          if (tasks.length === 0) {
+            continue;
+          }
+
+          this.logger.log(
+            `  [Position Normalization] Column "${column.title}": found ${tasks.length} tasks`,
+          );
+
+          // Перенумеровываем задачи: 1, 2, 3, 4...
+          for (let i = 0; i < tasks.length; i++) {
+            const newPosition = i + 1;
+            const formattedPosition = formatPosition(newPosition);
+
+            // Обновляем позицию задачи
+            await this.prisma.kanbanTask.update({
+              where: { id: tasks[i].id },
+              data: { position: formattedPosition },
+            });
+          }
+
+          totalColumnsProcessed++;
+          totalTasksProcessed += tasks.length;
+          this.logger.log(
+            `  [Position Normalization] Positions updated: 1, 2, ..., ${tasks.length}`,
+          );
+        }
+      }
+
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      this.logger.log(
+        `[Position Normalization] Completed successfully. Processed ${totalColumnsProcessed} columns, ${totalTasksProcessed} tasks in ${duration}ms`,
+      );
+
+      await this.notifyAdmins(
+        `✅ Нормализация позиций задач завершена: ${totalColumnsProcessed} колонок, ${totalTasksProcessed} задач за ${(duration / 1000).toFixed(1)}с`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[Position Normalization] Failed: ${error.message}`,
+        error.stack,
+      );
+      await this.notifyAdmins(
+        `🔥 Нормализация позиций задач упала: ${error.message}`,
+      );
+    } finally {
+      this.isPositionNormalizationRunning = false;
     }
   }
 }
