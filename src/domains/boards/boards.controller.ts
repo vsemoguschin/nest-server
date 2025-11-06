@@ -49,7 +49,7 @@ export class BoardsController {
     'RP',
     'FRZ',
     'PACKER',
-    'GUEST'
+    'GUEST',
   )
   @Get(':id/kanban')
   async getKanban(
@@ -66,9 +66,16 @@ export class BoardsController {
 
     const hiddenIds = parseCsvNumbers(hidden);
     const visibleMemberIds =
-      typeof visibleMembers === 'string' ? parseCsvNumbers(visibleMembers) : undefined;
+      typeof visibleMembers === 'string'
+        ? parseCsvNumbers(visibleMembers)
+        : undefined;
 
-    return this.boardsService.getKanban(user, boardId, hiddenIds, visibleMemberIds);
+    return this.boardsService.getKanban(
+      user,
+      boardId,
+      hiddenIds,
+      visibleMemberIds,
+    );
   }
 
   @Roles('ADMIN', 'G', 'KD', 'DO')
@@ -93,7 +100,7 @@ export class BoardsController {
     'MASTER',
     'RP',
     'PACKER',
-    'GUEST'
+    'GUEST',
   )
   @Get()
   async listBoards(@CurrentUser() user: UserDto) {
@@ -117,7 +124,7 @@ export class BoardsController {
     'RP',
     'PACKER',
     'FRZ',
-    'GUEST'
+    'GUEST',
   )
   @Get(':id/tags')
   async getTags(

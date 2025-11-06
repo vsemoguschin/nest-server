@@ -11,7 +11,7 @@ import { UsersModule } from '../domains/users/users.module';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'SECRET_KEY',
-      signOptions: { expiresIn: '3600s' },
+      signOptions: { expiresIn: '7200s' }, // 2 часа вместо 1 часа
     }),
     UsersModule, // импортируем модуль, который экспортирует UsersService
   ],
@@ -20,5 +20,3 @@ import { UsersModule } from '../domains/users/users.module';
   exports: [AuthService],
 })
 export class AuthModule {}
-const today = new Date().toISOString().slice(0, 10);
-console.log();

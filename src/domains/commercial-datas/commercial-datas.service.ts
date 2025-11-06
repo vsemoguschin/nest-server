@@ -444,7 +444,6 @@ export class CommercialDatasService {
       where: {
         date: {
           startsWith: period,
-          gte: '2025-09-01',
         },
         groupId: groupId,
         deal: {
@@ -467,7 +466,7 @@ export class CommercialDatasService {
     /** ищем уникальные периоды платежей */
     const paymentsPeriods = Array.from(
       new Set(payments.map((p) => p.deal.saleDate.slice(0, 7))),
-    ); //['2025-04', '2025-03', ...]
+    ).filter((p) => p >= '2025-09' && p <= period); //['2025-04', '2025-03', ...]
     /** формируем данные по каждому периоду*/
     const res = await Promise.all(
       paymentsPeriods.map(async (per) => {
