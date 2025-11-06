@@ -39,10 +39,18 @@ export type DeliveryLikeForWarnings =
   | null
   | undefined;
 
+export type PaymentLikeForWarnings =
+  | {
+      method?: string | null;
+    }
+  | null
+  | undefined;
+
 export function collectTaskWarnings(
   orders: OrderLikeForWarnings[] | null | undefined,
   deliveries: DeliveryLikeForWarnings[] | null | undefined,
   chatLink: string | null | undefined,
+  payments?: PaymentLikeForWarnings[] | null | undefined,
 ): string[] {
   const warnings = new Set<string>();
 
@@ -127,8 +135,16 @@ export function collectTaskWarnings(
     if (method) warnings.add(method);
   }
 
-  if (typeof chatLink === 'string' && chatLink.toLowerCase().includes('bluesales.ru')) {
+  if (
+    typeof chatLink === 'string' &&
+    chatLink.toLowerCase().includes('bluesales.ru')
+  ) {
     warnings.add('РОП1');
+  }
+
+  // Проверка платежей с методом "Наложка"
+  if (payments && payments.length > 0) {
+    warnings.add('НАЛОЖЕННЫЙ ПЛАТЁЖ');
   }
 
   return Array.from(warnings);

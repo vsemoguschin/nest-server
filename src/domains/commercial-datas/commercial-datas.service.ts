@@ -280,6 +280,285 @@ export class CommercialDatasService {
     };
   }
 
+  private getDOBonusPercentage(
+    totalSales: number,
+    period: string,
+    plan: number,
+  ) {
+    let bonusPercentage = 0;
+    if (totalSales > plan) {
+      bonusPercentage = 0.01;
+    } else if (totalSales < plan) {
+      bonusPercentage = 0.005;
+    }
+
+    return {
+      bonusPercentage,
+    };
+  }
+  // для юли расчеты
+  private async getDOSalesDatas(workSpaceId: number, period: string) {
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+        workSpaceId: workSpaceId,
+        deal: {
+          reservation: false,
+          deletedAt: null,
+          status: { not: 'Возврат' },
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
+            payments: true,
+            dealers: true,
+          },
+        },
+      },
+    });
+
+    /** ищем уникальные периоды платежей */
+    const paymentsPeriods = Array.from(
+      new Set(payments.map((p) => p.deal.saleDate.slice(0, 7))),
+    ); //['2025-04', '2025-03', ...]
+    /** формируем данные по каждому периоду*/
+    const res = await Promise.all(
+      paymentsPeriods.map(async (per) => {
+        const m = await this.prisma.workSpace.findUnique({
+          where: {
+            id: workSpaceId,
+          },
+          include: {
+            users: {
+              where: {
+                role: {
+                  shortName: 'DO',
+                },
+              },
+              include: {
+                managersPlans: {
+                  where: {
+                    period: per,
+                  },
+                },
+              },
+            },
+            deals: {
+              where: {
+                saleDate: {
+                  startsWith: per,
+                },
+                reservation: false,
+                deletedAt: null,
+                status: { not: 'Возврат' },
+              },
+              include: {
+                client: true,
+                payments: true,
+              },
+            },
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: per,
+                },
+                deal: {
+                  reservation: false,
+                  deletedAt: null,
+                  status: { not: 'Возврат' },
+                },
+              },
+              include: {
+                deal: {
+                  select: {
+                    title: true,
+                    price: true,
+                    payments: true,
+                    dops: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!m) {
+          return;
+        }
+        const dealSales = m.deals.reduce((a, b) => a + b.price, 0);
+        const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
+        const totalSales = dealSales + dopSales;
+        const plan = m.users
+          .flatMap((u) => u.managersPlans)
+          .reduce((a, b) => a + b.plan, 0);
+        const bonusPercentage = this.getDOBonusPercentage(
+          totalSales,
+          per,
+          plan,
+        ).bonusPercentage;
+        const paymentsFact = payments
+          .filter((p) => p.deal.saleDate.slice(0, 7) === per)
+          .reduce((a, b) => a + b.price, 0);
+        const toSalary = Math.round(paymentsFact * bonusPercentage * 100) / 100;
+        return {
+          per,
+          bonusPercentage,
+          plan,
+          totalSales,
+          dopSales,
+          dealSales,
+          paymentsFact,
+          toSalary,
+        };
+      }),
+    );
+
+    return res
+      .filter((item): item is NonNullable<typeof item> => item !== undefined)
+      .sort((a, b) => b.per.localeCompare(a.per));
+  }
+
+  /** Расчет продаж ROP за период по группе */
+  private calculateROPSalesForPeriod(
+    deals: Array<{ price: number }>,
+    dops: Array<{ price: number }>,
+  ) {
+    const dealSales = deals.reduce((a, b) => a + b.price, 0);
+    const dopSales = dops.reduce((a, b) => a + b.price, 0);
+    const totalSales = dealSales + dopSales;
+    return { dealSales, dopSales, totalSales };
+  }
+
+  /** Расчет toSalary для ROP */
+  private calculateROPToSalary(paymentsFact: number, bonusPercentage: number) {
+    return Math.round(paymentsFact * bonusPercentage * 100) / 100;
+  }
+
+  /** Получение данных по продажам ROP по группе */
+  private async getROPSalesDatas(groupId: number, period: string) {
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        date: {
+          startsWith: period,
+          gte: '2025-09-01',
+        },
+        groupId: groupId,
+        deal: {
+          reservation: false,
+          deletedAt: null,
+          status: { not: 'Возврат' },
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
+            payments: true,
+            dealers: true,
+          },
+        },
+      },
+    });
+
+    /** ищем уникальные периоды платежей */
+    const paymentsPeriods = Array.from(
+      new Set(payments.map((p) => p.deal.saleDate.slice(0, 7))),
+    ); //['2025-04', '2025-03', ...]
+    /** формируем данные по каждому периоду*/
+    const res = await Promise.all(
+      paymentsPeriods.map(async (per) => {
+        const g = await this.prisma.group.findUnique({
+          where: {
+            id: groupId,
+          },
+          include: {
+            users: {
+              where: {
+                role: {
+                  shortName: 'ROP',
+                },
+              },
+              include: {
+                managersPlans: {
+                  where: {
+                    period: per,
+                  },
+                },
+              },
+            },
+            deals: {
+              where: {
+                saleDate: {
+                  startsWith: per,
+                },
+                reservation: false,
+                deletedAt: null,
+                status: { not: 'Возврат' },
+              },
+              include: {
+                client: true,
+                payments: true,
+              },
+            },
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: per,
+                },
+                deal: {
+                  reservation: false,
+                  deletedAt: null,
+                  status: { not: 'Возврат' },
+                },
+              },
+              include: {
+                deal: {
+                  select: {
+                    title: true,
+                    price: true,
+                    payments: true,
+                    dops: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!g) {
+          return;
+        }
+        const { dealSales, dopSales, totalSales } =
+          this.calculateROPSalesForPeriod(g.deals, g.dops);
+        const bonusPercentage = 0.005; // Фиксированный процент для ROP
+        const paymentsFact = payments
+          .filter((p) => p.deal.saleDate.slice(0, 7) === per)
+          .reduce((a, b) => a + b.price, 0);
+        const toSalary = this.calculateROPToSalary(
+          paymentsFact,
+          bonusPercentage,
+        );
+        return {
+          per,
+          bonusPercentage,
+          totalSales,
+          dopSales,
+          dealSales,
+          paymentsFact,
+          toSalary,
+        };
+      }),
+    );
+
+    return res
+      .filter((item): item is NonNullable<typeof item> => item !== undefined)
+      .sort((a, b) => b.per.localeCompare(a.per));
+  }
+
   private async getManagerSalesDatas(userId: number, period: string) {
     /**
      * поиск всех платежей менеджера за выбранный период
@@ -966,13 +1245,9 @@ export class CommercialDatasService {
     const totalSales = dealSales + dopSales;
 
     /**Факт */
-    const fact =
-      m.groupId === 19 && m.role.shortName === 'ROP'
-        ? m.group.payments.reduce((a, b) => a + b.price, 0)
-        : 0;
-    const factAmount = m.group.payments.length;
-    const factPercentage =
-      m.groupId === 19 && m.role.shortName === 'ROP' ? 0.005 : 0;
+    const fact = 0;
+    const factAmount = 0;
+    const factPercentage = 0;
     const factBonus = +(fact * factPercentage).toFixed(2);
     const temp = this.calculateTemp(totalSales, period);
     /** стоимость заявки в проекте*/
@@ -1081,6 +1356,12 @@ export class CommercialDatasService {
         : 0;
     const topBonus =
       tops.find((m) => m.id === managerId && m.groupId === 3)?.topBonus ?? 0;
+
+    const ropdatas =
+      m.groupId === 19 && m.role.shortName === 'ROP'
+        ? await this.getROPSalesDatas(m.groupId, period)
+        : [];
+    const ropSalary = ropdatas.reduce((a, b) => a + b.toSalary, 0);
     totalSalary +=
       salaryCorrectionPlus -
       salaryCorrectionMinus +
@@ -1092,7 +1373,8 @@ export class CommercialDatasService {
       shiftBonus +
       groupPlanBonus +
       topBonus +
-      factBonus;
+      factBonus +
+      ropSalary;
 
     return {
       fullName: m.fullName,
@@ -1100,6 +1382,7 @@ export class CommercialDatasService {
       id: m.id,
       workSpace: m.workSpace.title,
       group: m.group.title,
+      ropdatas,
 
       plan: m.managersPlans[0]?.plan ?? 0,
       totalSales,
@@ -1143,6 +1426,7 @@ export class CommercialDatasService {
       dealPays,
       topBonus,
       totalSalary,
+      ropSalary,
       rem: 0,
 
       dealsInfo: dealsInfo.sort((a, b) => a.id - b.id),
@@ -1280,9 +1564,9 @@ export class CommercialDatasService {
     console.log(isOverRopPlan);
 
     /**Факт */
-    const fact = m.group.payments.reduce((a, b) => a + b.price, 0);
-    const factAmount = m.group.payments.length;
-    const factPercentage = isOverRopPlan ? 0.01 : 0.005;
+    const fact = 0;
+    const factAmount = 0;
+    const factPercentage = 0;
     const factBonus = +(fact * factPercentage).toFixed(2);
     const temp = this.calculateTemp(totalSales, period);
 
@@ -1399,12 +1683,19 @@ export class CommercialDatasService {
       topBonus +
       factBonus;
 
+    const dodatas =
+      managerId === 21 ? await this.getDOSalesDatas(m.workSpaceId, period) : [];
+    console.log(dodatas);
+    const doSalary = dodatas.reduce((a, b) => a + b.toSalary, 0);
+    totalSalary += doSalary;
+
     return {
       fullName: m.fullName,
       role: m.role.fullName,
       id: m.id,
       workSpace: m.workSpace.title,
       group: m.group.title,
+      dodatas,
 
       plan: m.managersPlans[0]?.plan ?? 0,
       totalSales,
@@ -1448,6 +1739,7 @@ export class CommercialDatasService {
       dealPays,
       topBonus,
       totalSalary,
+      doSalary,
       rem: 0,
 
       dealsInfo: dealsInfo.sort((a, b) => a.id - b.id),
@@ -2119,9 +2411,7 @@ export class CommercialDatasService {
   /** get /commercial-datas/groups */
   async getGroups(user: UserDto) {
     const workspacesSearch =
-      user.role.department === 'administration' ||
-      user.role.shortName === 'KD' ||
-      user.id === 21
+      user.role.department === 'administration' || user.role.shortName === 'KD'
         ? { gt: 0 }
         : user.workSpaceId;
 
@@ -2146,21 +2436,36 @@ export class CommercialDatasService {
     return groups;
   }
   /** get /commercial-datas */
-  async getManagersDatas(user: UserDto, period: string, groupId: number) {
-    const managers = await this.prisma.user.findMany({
-      where: {
-        groupId,
-        role: {
-          shortName: {
-            in:
-              user.role.shortName === 'MOP'
-                ? ['MOP']
-                : user.role.shortName === 'ROP'
-                  ? ['MOP', 'ROP']
-                  : ['DO', 'MOP', 'ROP', 'MOV'],
-          },
+  async getManagersDatas(user: UserDto, period: string, groupId?: number) {
+    const workspacesSearch =
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.workSpaceId;
+
+    const groupsSearch = ['MOP', 'MOV'].includes(user.role.shortName)
+      ? user.groupId
+      : { gt: 0 };
+    const where: any = {
+      role: {
+        shortName: {
+          in:
+            user.role.shortName === 'MOP'
+              ? ['MOP']
+              : user.role.shortName === 'ROP'
+                ? ['MOP', 'ROP']
+                : ['DO', 'MOP', 'ROP', 'MOV'],
         },
       },
+      workSpaceId: workspacesSearch,
+      groupId: groupsSearch,
+    };
+
+    if (groupId !== undefined) {
+      where.groupId = groupId;
+    }
+
+    const managers = await this.prisma.user.findMany({
+      where,
       include: {
         role: true,
         workSpace: true,
@@ -2204,17 +2509,27 @@ export class CommercialDatasService {
             date: {
               startsWith: period,
             },
+            deal: {
+              reservation: false,
+              deletedAt: null,
+              status: { not: 'Возврат' },
+            },
           },
         },
       },
     });
-    const groupAdExpenses = await this.prisma.adExpense.findMany({
-      where: {
-        date: {
-          startsWith: period,
-        },
-        groupId,
+    const adExpenseWhere: any = {
+      date: {
+        startsWith: period,
       },
+    };
+
+    if (groupId !== undefined) {
+      adExpenseWhere.groupId = groupId;
+    }
+
+    const groupAdExpenses = await this.prisma.adExpense.findMany({
+      where: adExpenseWhere,
     });
     const adExpenses = groupAdExpenses.reduce((a, b) => a + b.price, 0);
     const totalCalls = managers

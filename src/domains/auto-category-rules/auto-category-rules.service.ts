@@ -185,7 +185,7 @@ export class AutoCategoryRulesService {
       this.prisma as any
     ).originalOperationFromTbank.findMany({
       where,
-      orderBy: { id: 'asc' },
+      orderBy: { operationDate: 'desc' },
       select: {
         id: true,
         typeOfOperation: true,
@@ -194,6 +194,7 @@ export class AutoCategoryRulesService {
         counterPartyAccount: true,
         expenseCategoryName: true,
         counterPartyTitle: true,
+        operationPositions: true,
       },
     });
 

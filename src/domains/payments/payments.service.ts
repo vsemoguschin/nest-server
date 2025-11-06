@@ -258,30 +258,42 @@ export class PaymentsService {
     user: UserDto,
     from: string,
     to: string,
-    groupId: number,
     take: number,
     page: number,
+    groupId?: number,
     managersIds?: number[],
   ) {
     const sanitizedTake = Math.max(1, take);
     const sanitizedPage = Math.max(1, page);
     const skip = (sanitizedPage - 1) * sanitizedTake;
 
+    const gSearch = ['ADMIN', 'G', 'KD'].includes(user.role.shortName)
+      ? { groupId: { gt: 0 } }
+      : ['DO'].includes(user.role.shortName)
+        ? { workSpaceId: user.workSpaceId }
+        : { groupId: user.groupId };
+
     const where: Prisma.PaymentWhereInput = {
       date: {
         gte: from,
         lte: to,
       },
-      groupId,
+      deal: {
+        reservation: false,
+        deletedAt: null,
+        ...(groupId !== undefined && { groupId: groupId }),
+      },
     };
 
     if (managersIds?.length) {
       where.userId = { in: managersIds };
     }
 
+    const finalWhere = groupId !== undefined ? where : { ...where, ...gSearch };
+
     const [payments, total] = await this.prisma.$transaction([
       this.prisma.payment.findMany({
-        where,
+        where: finalWhere,
         skip,
         take: sanitizedTake,
         include: {
@@ -303,7 +315,7 @@ export class PaymentsService {
         },
       }),
       this.prisma.payment.aggregate({
-        where,
+        where: finalWhere,
         _sum: {
           price: true,
         },
@@ -328,81 +340,3 @@ export class PaymentsService {
     };
   }
 }
-
-const operation = {
-  operationDate: '2025-04-01T05:16:52Z', //Дата операции. В зависимости от статуса операции равна дате проведения по балансу или дате авторизации.
-  operationId: '32005e8d-5b2c-00f5-ab39-7ab40b53d7a8',
-  operationStatus: 'Transaction', // [Authorization, Transaction] Статус операции: авторизация или подтвержденная транзакция.
-  accountNumber: '40802810800000977213',
-  bic: '044525974',
-  typeOfOperation: 'Credit', //Тип операции: Сredit — поступления, Debit — списания.
-  category: 'incomePeople',
-  trxnPostDate: '2025-04-01T05:16:56Z', //Дата транзакции.
-  authorizationDate: '2025-04-01T05:16:36Z', //Дата авторизации.
-  drawDate: '2025-04-01T05:16:52Z', // Дата списано.
-  chargeDate: '2025-04-01T05:16:52Z', // Дата поступило.
-  docDate: '2025-03-31T21:00:00Z', //Дата создания документа.
-  documentNumber: '151819', //Номер платежного документа.
-  payVo: 'bank-order', // Вид операции
-  vo: '17', //Вид операции (номер)
-  priority: 5, //Очередность платежа.
-  operationAmount: 3916, // Сумма в валюте операции.
-  operationCurrencyDigitalCode: '643', //Числовой код валюты операции
-  accountAmount: 3916, // Сумма в валюте счета.
-  accountCurrencyDigitalCode: '643', // Числовой код валюты счета.
-  rubleAmount: 3916, //Сумма в рублях по курсу ЦБ на дату операции.
-  description: 'Пополнение по операции СБП 6119007349. Терминал Easyneon-SBP', //Описание операции.
-  payPurpose: 'Пополнение по операции СБП 6119007349. Терминал Easyneon-SBP', //Назначение платежа.
-  payer: {
-    //Информация о плательщике.
-    acct: '30233810400007059951', //Номер счета плательщика.
-    inn: '7710140679', //ИНН плательщика.
-    kpp: '771301001', //КПП плательщика.
-    name: 'АО "ТБанк"', //Наименование плательщика.
-    bicRu: '044525974', //БИК банка плательщика.
-    bankName: 'АО "ТБанк"', // Название банка плательщика.
-    corAcct: '30101810145250000974', //Корреспондентский счет плательщика.
-  },
-  receiver: {
-    acct: '40802810800000977213',
-    inn: '598103304535',
-    kpp: '0',
-    name: 'Индивидуальный предприниматель МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ',
-    bicRu: '044525974',
-    bankName: 'АО "ТБанк"',
-    corAcct: '30101810145250000974',
-  },
-  counterParty: {
-    //Информация о контрагенте.
-    account: '30233810400007059951',
-    inn: '7710140679',
-    kpp: '771301001',
-    name: 'АО "ТБанк"',
-    bankName: 'АО "ТБанк"',
-    bankBic: '044525974',
-    corrAccount: '30101810145250000974',
-  },
-  authCode: '332954', //Код авторизации.
-  rrn: '0009QxSNG9bt', //RRN (Reference Retrieval Number) — уникальный идентификатор банковской транзакции.
-  acquirerId: '010455', //ID эквайера.
-};
-// `Response: {
-//   Success: true,
-//   ErrorCode: '0',
-//   TerminalKey: '1669889928470',
-//   Status: 'NEW',
-//   PaymentId: '6205565038',
-//   OrderId: 'sdaeAw',
-//   Amount: 1000,
-//   PaymentURL: 'https://securepayments.tinkoff.ru/fpUDQzRu'
-// }```;
-// Response: {
-//   Success: true,
-//   ErrorCode: '0',
-//   TerminalKey: '1669889928470',
-//   Status: 'NEW',
-//   PaymentId: '6205795736',
-//   OrderId: 'ыизеуые',
-//   Amount: 1000,
-//   PaymentURL: 'https://securepayments.tinkoff.ru/pqroh8XU'
-// }

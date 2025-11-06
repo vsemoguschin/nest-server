@@ -31,6 +31,8 @@
     "seed:tbank-operations-with-categories": "ts-node src/seeds/seed-tbank-operations-with-categories.ts",
     "seed:view-tbank-operations": "ts-node src/seeds/seed-view-tbank-operations.ts",
     "seed:normalize-task-positions": "ts-node src/seeds/normalize-task-positions.ts",
+    "seed:update-dops-group-workspace": "ts-node src/seeds/seed-update-dops-group-workspace.ts",
+    "seed:compare-dops": "ts-node -r tsconfig-paths/register src/seeds/seed-compare-dops.ts",
     "prisma:deploy": "prisma db push && prisma generate"
   },
   "dependencies": {

@@ -43,7 +43,7 @@ type GroupDopListResponse = {
 export class DopsController {
   constructor(private readonly dopService: DopsService) {}
 
-  @Get('group/:groupId')
+  @Get('group')
   @Roles(
     'ADMIN',
     'G',
@@ -61,9 +61,10 @@ export class DopsController {
     @CurrentUser() user: UserDto,
     @Query('from') from: string,
     @Query('to') to: string,
-    @Param('groupId', ParseIntPipe) groupId: number,
     @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('groupId', new ParseIntPipe({ optional: true }))
+    groupId?: number,
     @Query(
       'managersIds',
       new ParseArrayPipe({ items: Number, optional: true, separator: ',' }),
@@ -84,9 +85,9 @@ export class DopsController {
       user,
       from,
       to,
-      groupId,
       take,
       page,
+      groupId,
       managersIds,
     );
   }

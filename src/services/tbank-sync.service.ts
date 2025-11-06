@@ -321,16 +321,19 @@ export class TbankSyncService {
       try {
         // Определяем категорию на основе условий перед созданием контрагента
         let incomeCategoryId: number | null = null;
+        let outcomeCategoryIdFromRules: number | null = null;
         const { outcomeCategoryId } = this.determineExpenseCategory(
           op.typeOfOperation,
           op.category,
         );
 
-        // Сначала пробуем правила БД для incomeCategoryId (приоритет выше counterPartyTitle хардкода)
-        if (op.typeOfOperation === 'Credit') {
-          const matchedCategoryId = applyRules(op);
-          if (matchedCategoryId) {
+        // Применяем правила БД для всех типов операций (приоритет выше категории контрагента)
+        const matchedCategoryId = applyRules(op);
+        if (matchedCategoryId) {
+          if (op.typeOfOperation === 'Credit') {
             incomeCategoryId = matchedCategoryId;
+          } else if (op.typeOfOperation === 'Debit') {
+            outcomeCategoryIdFromRules = matchedCategoryId;
           }
         }
 
@@ -365,6 +368,9 @@ export class TbankSyncService {
         }
 
         // Создаем или находим контрагента с определенной категорией
+        // Для Debit используем категорию из правил, если она есть, иначе из determineExpenseCategory
+        const finalOutcomeCategoryId =
+          outcomeCategoryIdFromRules || outcomeCategoryId;
         const counterParty = await this.getOrCreateCounterParty(
           {
             account: op.counterParty.account || '',
@@ -375,7 +381,7 @@ export class TbankSyncService {
             bankBic: op.counterParty.bankBic || '',
           },
           incomeCategoryId,
-          outcomeCategoryId,
+          finalOutcomeCategoryId,
         );
 
         // Всегда делаем upsert для операции
@@ -447,11 +453,22 @@ export class TbankSyncService {
         // Определяем категорию: 1) правила БД по payPurpose (приоритет); 2) по типу операции/категории контрагента
         let expenseCategoryId: number | null = null;
 
-        // Если incomeCategoryId уже определен по правилам БД выше - используем его
-        if (incomeCategoryId) {
+        // Сначала проверяем правила БД (высший приоритет)
+        if (op.typeOfOperation === 'Credit' && incomeCategoryId) {
           expenseCategoryId = incomeCategoryId;
+          this.logger.log(
+            `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по правилу БД (Credit)`,
+          );
+        } else if (
+          op.typeOfOperation === 'Debit' &&
+          outcomeCategoryIdFromRules
+        ) {
+          expenseCategoryId = outcomeCategoryIdFromRules;
+          this.logger.log(
+            `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по правилу БД (Debit)`,
+          );
         } else {
-          // Для Credit - используем входящую категорию контрагента
+          // Если правила не сработали, используем категорию контрагента
           if (
             op.typeOfOperation === 'Credit' &&
             counterParty.incomeExpenseCategory

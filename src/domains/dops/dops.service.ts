@@ -12,32 +12,42 @@ export class DopsService {
     user: UserDto,
     from: string,
     to: string,
-    groupId: number,
     take: number,
     page: number,
+    groupId?: number,
     managersIds?: number[],
   ) {
     const sanitizedTake = Math.max(1, take);
     const sanitizedPage = Math.max(1, page);
     const skip = (sanitizedPage - 1) * sanitizedTake;
 
+    const gSearch = ['ADMIN', 'G', 'KD'].includes(user.role.shortName)
+      ? { groupId: { gt: 0 } }
+      : ['DO'].includes(user.role.shortName)
+        ? { workSpaceId: user.workSpaceId }
+        : { groupId: user.groupId };
+
     const where: Prisma.DopWhereInput = {
       saleDate: {
         gte: from,
         lte: to,
       },
-      groupId,
     };
+
+    if (groupId !== undefined) {
+      where.groupId = groupId;
+      where.deal = {
+        groupId: groupId,
+      };
+    }
 
     if (managersIds?.length) {
       where.userId = { in: managersIds };
     }
 
-    console.log(managersIds);
-
     const [dops, total] = await this.prisma.$transaction([
       this.prisma.dop.findMany({
-        where,
+        where: groupId !== undefined ? where : { ...where, ...gSearch },
         skip,
         take: sanitizedTake,
         include: {
@@ -45,6 +55,7 @@ export class DopsService {
             select: {
               title: true,
               saleDate: true,
+              reservation: true,
             },
           },
           user: {
@@ -58,7 +69,13 @@ export class DopsService {
         },
       }),
       this.prisma.dop.aggregate({
-        where,
+        where: {
+          ...(groupId !== undefined ? where : { ...where, ...gSearch }),
+          deal: {
+            reservation: false,
+            deletedAt: null,
+          },
+        },
         _sum: {
           price: true,
         },
@@ -77,6 +94,7 @@ export class DopsService {
         userFullName: dop.user?.fullName ?? '',
         price: dop.price,
         type: dop.type,
+        reservation: dop.deal?.reservation ?? false,
       })),
     };
   }
@@ -115,8 +133,8 @@ export class DopsService {
         period, // Вычисленное значение
         userId: createDopDto.userId, // Берем из текущего пользователя
         dealId: createDopDto.dealId,
-        workSpaceId: managerExists.workSpaceId,
-        groupId: managerExists.groupId,
+        workSpaceId: dealExists.workSpaceId,
+        groupId: dealExists.groupId,
       },
     });
 

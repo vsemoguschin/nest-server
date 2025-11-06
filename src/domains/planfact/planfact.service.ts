@@ -2801,19 +2801,19 @@ export class PlanfactService {
         transfer: Number.parseFloat(unallocatedTotal.transfer.toFixed(2)),
       });
     }
-    // if (
-    //   selfTransferTotals.debit !== 0 ||
-    //   selfTransferTotals.credit !== 0 ||
-    //   selfTransferTotals.transfer !== 0
-    // ) {
-    //   expenseCategoryTotals.push({
-    //     expenseCategoryId: null,
-    //     title: selfTransferTotals.title,
-    //     debit: Number.parseFloat(selfTransferTotals.debit.toFixed(2)),
-    //     credit: Number.parseFloat(selfTransferTotals.credit.toFixed(2)),
-    //     transfer: Number.parseFloat(selfTransferTotals.transfer.toFixed(2)),
-    //   });
-    // }
+    if (
+      selfTransferTotals.debit !== 0 ||
+      selfTransferTotals.credit !== 0 ||
+      selfTransferTotals.transfer !== 0
+    ) {
+      expenseCategoryTotals.push({
+        expenseCategoryId: null,
+        title: selfTransferTotals.title,
+        debit: Number.parseFloat(selfTransferTotals.debit.toFixed(2)),
+        credit: Number.parseFloat(selfTransferTotals.credit.toFixed(2)),
+        transfer: Number.parseFloat(selfTransferTotals.transfer.toFixed(2)),
+      });
+    }
 
     // Вычисляем mainTotals из expenseCategoryTotals, исключая перемещения
     const mainTotals = expenseCategoryTotals.reduce(

@@ -46,6 +46,7 @@ const POSITION_SAFE_LIMIT = POSITION_MAX_ABS - POSITION_STEP;
 const LOCKED_COLUMN_ID = 25;
 const TAG_REMOVAL_COLUMN_ID = 17;
 const TAG_ID_TO_REMOVE = 9;
+const PAYMENT_REQUIRED_COLUMN_IDS = [65, 79];
 
 const searchSelect = {
   id: true,
@@ -583,6 +584,11 @@ export class TasksService {
               track: true,
             },
           },
+          payments: {
+            where: {
+              method: 'Наложка',
+            },
+          },
         },
       },
     } as const;
@@ -631,6 +637,7 @@ export class TasksService {
       task.orders,
       task.deal?.deliveries ?? [],
       task.chatLink,
+      task.deal?.payments,
     );
 
     return {
@@ -962,6 +969,60 @@ export class TasksService {
     return { success: true };
   }
 
+  /**
+   * Проверяет, что сумма платежей >= общей стоимости сделки (price + dops)
+   * @throws BadRequestException если проверка не пройдена
+   */
+  private async validateDealPayments(taskId: number): Promise<void> {
+    const task = await this.prisma.kanbanTask.findFirst({
+      where: { id: taskId, deletedAt: null },
+      select: {
+        id: true,
+        deal: {
+          select: {
+            id: true,
+            price: true,
+            dops: {
+              select: {
+                price: true,
+              },
+            },
+            payments: {
+              select: {
+                price: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!task?.deal) {
+      throw new BadRequestException(
+        'Нельзя переместить задачу в эту колонку: у задачи нет привязанной сделки',
+      );
+    }
+
+    const deal = task.deal;
+    const dealPrice = deal.price ?? 0;
+    const dopsTotal = (deal.dops ?? []).reduce(
+      (sum, dop) => sum + (dop.price ?? 0),
+      0,
+    );
+    const dealTotalPrice = dealPrice + dopsTotal;
+
+    const paymentsTotal = (deal.payments ?? []).reduce(
+      (sum, payment) => sum + (payment.price ?? 0),
+      0,
+    );
+
+    if (paymentsTotal < dealTotalPrice) {
+      throw new BadRequestException(
+        `Нельзя переместить в эту колонку: Заказ не оплачен полностью`,
+      );
+    }
+  }
+
   // src/domains/tasks/tasks.service.ts
   /**
    * Переместить задачу в указанную колонку и поставить её ПЕРВОЙ (минимальная позиция - STEP).
@@ -1000,6 +1061,11 @@ export class TasksService {
         },
       });
       if (!targetColumn) throw new NotFoundException('Target column not found');
+
+      // Проверка платежей при перемещении в колонки, требующие полной оплаты
+      if (PAYMENT_REQUIRED_COLUMN_IDS.includes(targetColumn.id)) {
+        await this.validateDealPayments(task.id);
+      }
 
       // --- позиция: сделать ПЕРВОЙ в целевой колонке ---
       const fetchTop = () =>
@@ -1128,6 +1194,11 @@ export class TasksService {
 
     if (!targetColumn) {
       throw new BadRequestException('Следующая колонка не найдена');
+    }
+
+    // Проверка платежей при перемещении в колонки, требующие полной оплаты
+    if (PAYMENT_REQUIRED_COLUMN_IDS.includes(targetColumn.id)) {
+      await this.validateDealPayments(taskId);
     }
 
     // 3) Определяем "верхнюю" позицию в целевой колонке

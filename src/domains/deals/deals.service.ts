@@ -891,19 +891,7 @@ export class DealsService {
       throw new NotFoundException(`Сделка с id ${id} не найдено.`);
     }
 
-    const deliveryStatus = deal.deliveries
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 1)[0]?.status;
-
-    if (deal.masterReports.length) {
-      deal.status = 'Сборка';
-    }
-    if (deal.packerReports.length) {
-      deal.status = 'Упаковка';
-    }
-    if (deliveryStatus) {
-      deal.status = deliveryStatus;
-    }
+    deal.status = this.getDealStatus(deal);
 
     const { reviews } = deal;
     if (reviews.length > 0) {
@@ -1149,7 +1137,7 @@ export class DealsService {
       where: {
         group: groupsSearch,
         role: { shortName: { in: ['MOP', 'DO', 'ROP', 'MOV', 'ROV'] } },
-        deletedAt: null,
+        // deletedAt: null,
       },
       select: {
         id: true,

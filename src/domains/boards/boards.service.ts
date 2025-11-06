@@ -69,6 +69,11 @@ export class BoardsService {
                         track: true,
                       },
                     },
+                    payments: {
+                      where: {
+                        method: 'Наложка',
+                      },
+                    },
                   },
                 },
 
@@ -162,6 +167,7 @@ export class BoardsService {
                 t.orders,
                 t.deal?.deliveries ?? [],
                 t.chatLink,
+                t.deal?.payments,
               );
               for (const w of warnings) warningsSet.add(w);
               return {

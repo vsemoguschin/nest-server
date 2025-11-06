@@ -45,7 +45,8 @@ export class CommercialDatasController {
   async getManagersDatas(
     @CurrentUser() user: UserDto,
     @Query('period') period: string,
-    @Query('groupId') groupId: number,
+    @Query('groupId', new ParseIntPipe({ optional: true }))
+    groupId?: number,
   ): Promise<any> {
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
       throw new BadRequestException(
@@ -69,8 +70,6 @@ export class CommercialDatasController {
     }
     return this.commercialDatasService.getManagerDatas(user, period, managerId);
   }
-
-
 
   @Get('/stat/all')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
