@@ -9,10 +9,8 @@ import { CreateDealDto } from './dto/deal-create.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { UpdateDealDto } from './dto/deal-update.dto';
 import { UpdateDealersDto } from './dto/dealers-update.dto';
-import { FilesService } from '../files/files.service';
 import { GroupsAccessService } from '../groups/groups-access.service';
-
-import axios from 'axios';
+import { YandexDiskClient } from 'src/integrations/yandex-disk/yandex-disk.client';
 
 const useMyGetDaysDifference = (
   dateString1: string,
@@ -84,6 +82,7 @@ export class DealsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly groupsAccessService: GroupsAccessService,
+    private readonly yandexDisk: YandexDiskClient,
 
     // private readonly filesService: FilesService,
   ) {}
@@ -900,20 +899,15 @@ export class DealsService {
           // console.log(review.file);
           if (review.file[0]?.path) {
             const filePath = review.file[0].path;
-            const md = await axios.get(
-              'https://cloud-api.yandex.net/v1/disk/resources',
-              {
-                params: {
-                  path: filePath,
-                },
-                headers: { Authorization: `OAuth ${process.env.YA_TOKEN}` },
-              },
-            );
-            // console.log(md.data);
-            // console.log(filePath);
-            // console.log(reviews[i].file[0].path);
+            const resource = await this.yandexDisk.getResource(filePath, {
+              fields: 'preview,sizes',
+            });
 
-            reviews[i].file[0].preview = md.data.sizes[0].url || '';
+            const preview = Array.isArray((resource as any).sizes)
+              ? ((resource as any).sizes[0]?.url ?? resource.preview ?? '')
+              : (resource.preview ?? '');
+
+            reviews[i].file[0].preview = preview;
           }
         }),
       );

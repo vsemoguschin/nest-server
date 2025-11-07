@@ -8,6 +8,7 @@ import {
 import axios from 'axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 import type { Readable } from 'stream';
+import { YandexDiskClient } from 'src/integrations/yandex-disk/yandex-disk.client';
 
 type PreviewQuery = {
   path: string;
@@ -25,14 +26,11 @@ type StreamResult = {
 
 @Injectable()
 export class AttachmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly yandexDisk: YandexDiskClient,
+  ) {}
   private readonly logger = new Logger(AttachmentsService.name);
-  private readonly YD_API = 'https://cloud-api.yandex.net/v1/disk';
-  private readonly YD_RES = `${this.YD_API}/resources`;
-  private readonly YD_DOWNLOAD = `${this.YD_RES}/download`;
-
-  private readonly API = 'https://cloud-api.yandex.net/v1/disk';
-  private readonly headers = { Authorization: `OAuth ${process.env.YA_TOKEN}` };
 
   async ensureAttachment(attachmentId: number) {
     const att = await this.prisma.kanbanTaskAttachment.findFirst({
@@ -135,25 +133,16 @@ export class AttachmentsService {
     if (!path) throw new BadRequestException('path is required');
 
     try {
-      const { data } = await axios.get<{
-        href: string;
-        method: string;
-        templated?: boolean;
-      }>(this.YD_DOWNLOAD, {
-        params: { path },
-        headers: this.headers,
-        timeout: 15000,
-      });
-
-      if (!data?.href) {
+      const href = await this.yandexDisk.getDownloadLink(path);
+      if (!href) {
         this.logger.warn(`No href from YDisk for path="${path}"`);
         throw new NotFoundException('File href not found');
       }
-      return data.href;
+      return href;
     } catch (e: any) {
       const msg = e?.response?.data
         ? JSON.stringify(e.response.data)
-        : e?.message;
+        : e?.message ?? (e as Error)?.message;
       this.logger.error(`getDownloadHref failed: ${msg}`);
       if (e?.response?.status === 404)
         throw new NotFoundException('File not found');

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma/prisma.module';
 // Импортируйте другие модули
 import { AuthModule } from './auth/auth.module';
@@ -43,9 +44,15 @@ import { CommentsModule } from './domains/kanban/comments/comments.module';
 import { VkAdsModule } from './domains/vk-ads/vk-ads.module';
 import { CommercialDatasModule } from './domains/commercial-datas/commercial-datas.module';
 import { AutoCategoryRulesModule } from './domains/auto-category-rules/auto-category-rules.module';
+import { YandexDiskModule } from './integrations/yandex-disk/yandex-disk.module';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      expandVariables: true,
+    }),
+    YandexDiskModule,
     PrismaModule, // Теперь PrismaService доступен глобально
     AuthModule,
     ProfileModule,

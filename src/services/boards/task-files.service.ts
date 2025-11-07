@@ -3,20 +3,41 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'node:path';
-import axios from 'axios';
+import { createReadStream, promises as fs } from 'node:fs';
+import {
+  YandexDiskClient,
+  YandexDiskResource,
+  type UploadPayload,
+} from 'src/integrations/yandex-disk/yandex-disk.client';
+
+const YDS_ORDER = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
+
+type PreviewOptions = {
+  size?: string;
+  crop?: boolean;
+};
+
+type DeleteResult = {
+  deleted: number[];
+  failed: { id: number; reason: string }[];
+};
+
+type MulterStoredFile = Express.Multer.File & { path?: string };
 
 @Injectable()
 export class TaskFilesService {
-  private readonly API = 'https://cloud-api.yandex.net/v1/disk';
-  private readonly YD_RES = 'https://cloud-api.yandex.net/v1/disk/resources';
-  private readonly TOKEN = process.env.YA_TOKEN as string;
-  private readonly headers = { Authorization: `OAuth ${process.env.YA_TOKEN}` };
+  private readonly baseFolder = 'EasyCRM';
+  private readonly logger = new Logger(TaskFilesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly yandexDisk: YandexDiskClient,
+  ) {}
 
   private decodeOriginalName(name?: string): string {
     if (!name) return '';
@@ -80,148 +101,38 @@ export class TaskFilesService {
     const directory = `boards/${boardId}/${category}`;
     const absPath = `EasyCRM/${directory}/${yaName}`;
 
-    const axiosMod = (await import('axios')).default;
-    const { Agent } = await import('https');
-    const fs = await import('fs');
-    const fsp = fs.promises;
-    const { PassThrough } = await import('stream');
+    await this.ensureHierarchy(directory);
+    this.logger.log(
+      `TaskFiles upload start: userId=${userId}, boardId=${boardId}, commentId=${commentId ?? 'n/a'}, path=${absPath}, size=${file.size ?? file.buffer?.length ?? 0}`,
+    );
 
-    const http = axiosMod.create({
-      timeout: 1_800_000, // 30 минут
-      maxContentLength: Infinity as any,
-      maxBodyLength: Infinity as any,
-      httpsAgent: new Agent({ keepAlive: true }),
-    });
-
-    const TOKEN = process.env.YA_TOKEN as string;
-    if (!TOKEN) {
-      throw new Error('YA_TOKEN is not set');
-    }
-    const auth = { Authorization: `OAuth ${TOKEN}` };
-
-    const YD_UPLOAD = 'https://cloud-api.yandex.net/v1/disk/resources/upload';
-    const YD_RES = 'https://cloud-api.yandex.net/v1/disk/resources';
-
-    // 1) ensure base directory
-    const baseDir = `EasyCRM/${directory}`;
+    const payload = await this.createPayload(file);
+    let resource: YandexDiskResource;
     try {
-      await http.put(YD_RES, null, {
-        params: { path: baseDir },
-        headers: auth,
-      });
-    } catch (e: any) {
-      if (e?.response?.status === 409) {
-      } else {
-        throw e;
-      }
-    }
-
-    // 2) get upload href
-    const up = await http.get(YD_UPLOAD, {
-      params: { path: absPath, overwrite: true },
-      headers: auth,
-    });
-    const href: string = up?.data?.href;
-
-    // === 3) upload ===
-    const localPath: string | undefined = (file as any).path;
-
-    const formatBytes = (n: number) => {
-      const mb = n / (1024 * 1024);
-      return `${mb.toFixed(1)} MB`;
-    };
-
-    if (localPath) {
-      const stat = await fsp.stat(localPath);
-      const total = stat.size;
-
-      const readStream = fs.createReadStream(localPath);
-      const progress = new PassThrough();
-
-      let uploaded = 0;
-      let lastLog = 0;
-      const LOG_STEP = 5 * 1024 * 1024; // 5MB
-
-      progress.on('data', (chunk: Buffer) => {
-        uploaded += chunk.length;
-        if (uploaded - lastLog >= LOG_STEP || uploaded === total) {
-          lastLog = uploaded;
-          const percent = ((uploaded / total) * 100).toFixed(1);
-        }
-      });
-
-      const startedAt = Date.now();
-      readStream.on('open', () => {});
-      readStream.on('error', () => {});
-      progress.on('error', () => {});
-
-      readStream.pipe(progress);
-
-      try {
-        await http.put(href, progress as any, {
-          headers: {
-            'Content-Type': file.mimetype || 'application/octet-stream',
-            'Content-Length': String(total),
-          },
-          // onUploadProgress не работает в Node-адаптере — прогресс считаем вручную через PassThrough
-        });
-        const ms = Date.now() - startedAt;
-      } catch (e: any) {
-        throw e;
-      } finally {
-        try {
-          await fsp.unlink(localPath);
-        } catch (e: any) {}
-      }
-    } else {
-      // Fallback: память (если вдруг не diskStorage)
-      const len = file.size ?? file.buffer?.length ?? 0;
-      try {
-        await http.put(href, file.buffer, {
-          headers: {
-            'Content-Type': file.mimetype || 'application/octet-stream',
-            'Content-Length': String(len),
-          },
-        });
-      } catch (e: any) {
-        throw e;
-      }
-    }
-
-    // 4) fetch metadata with small retry
-    let md: any | null = null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        md = await http.get(YD_RES, {
-          params: {
-            path: absPath,
-            fields: 'name,path,size,mime_type,preview,sizes,file',
-          },
-          headers: auth,
-        });
-        if (md?.data?.size) {
-          break;
-        }
-      } catch (e: any) {}
-      await new Promise((res) => setTimeout(res, 300 * (attempt + 1)));
+      resource = await this.yandexDisk.uploadFile(absPath, payload);
+    } finally {
+      await this.cleanupTempFile(file);
     }
 
     const safeName =
-      this.decodeOriginalName(file.originalname) || md?.data?.name || yaName;
+      this.decodeOriginalName(file.originalname) || resource.name || yaName;
+    this.logger.log(
+      `TaskFiles upload complete: path=${absPath}, size=${resource.size ?? file.size ?? 0}, resourceId=${resource.resource_id ?? 'n/a'}`,
+    );
 
     // 5) запись в БД
     const dbFile = await this.prisma.kanbanFile.create({
       data: {
         name: safeName,
         ya_name: yaName,
-        size: md?.data?.size ?? file.size ?? 0,
-        preview: md?.data?.sizes?.[0]?.url || md?.data?.preview || '',
+        size: resource.size ?? file.size ?? 0,
+        preview: this.pickPreview(resource) ?? '',
         directory,
         path: absPath,
-        mimeType: md?.data?.mime_type || file.mimetype || null,
+        mimeType: resource.mime_type || file.mimetype || null,
         uploadedById: userId,
         commentId: commentId ?? null,
-        file: md?.data?.file ?? '',
+        file: resource.file ?? '',
       },
       select: {
         id: true,
@@ -256,20 +167,14 @@ export class TaskFilesService {
   async uploadAvatar(file: Express.Multer.File) {
     const { ext } = this.resolveCategory(file);
     const yaName = `${uuidv4()}${ext}`;
-    const absPath = `EasyCRM/avatars/${yaName}`;
+    const directory = 'avatars';
+    const absPath = `${this.baseFolder}/${directory}/${yaName}`;
 
-    // Загрузка на Я.Диск — используем те же эндпоинты, что и в вашем файловом сервисе
-    // 1) получить href для загрузки
-    const axios = (await import('axios')).default;
-    const TOKEN = process.env.YA_TOKEN as string;
-    const YD_UPLOAD = 'https://cloud-api.yandex.net/v1/disk/resources/upload';
+    await this.ensureHierarchy(directory);
 
-    const up = await axios.get(YD_UPLOAD, {
-      params: { path: absPath, overwrite: true },
-      headers: { Authorization: `OAuth ${TOKEN}` },
-    });
-    await axios.put(up.data.href, file.buffer, {
-      headers: { 'Content-Type': 'application/octet-stream' },
+    await this.yandexDisk.uploadFile(absPath, {
+      body: file.buffer,
+      contentLength: file.buffer?.length,
     });
 
     return absPath;
@@ -278,20 +183,16 @@ export class TaskFilesService {
   /** Вернёт URL превью (от Yandex Disk). Можно указать размер и crop. */
   async getPreviewUrl(
     path: string,
-    opts?: { size?: string; crop?: boolean },
+    opts?: PreviewOptions,
   ): Promise<string | null> {
-    const params: Record<string, any> = {
-      path,
+    const params: Record<string, unknown> = {
       fields: 'preview',
     };
     if (opts?.size) params.preview_size = opts.size;
     if (typeof opts?.crop === 'boolean') params.preview_crop = opts.crop;
 
-    const { data } = await axios.get(`${this.API}/resources`, {
-      params,
-      headers: this.headers,
-    });
-    return data?.preview ?? null;
+    const resource = await this.yandexDisk.getResource(path, params);
+    return resource.preview ?? null;
   }
 
   // async deleteFile(att: { filePath: string; fileId: number }) {
@@ -307,10 +208,7 @@ export class TaskFilesService {
   /** helper: удалить один путь на Я.Диске (если path пустой — считаем успехом) */
   private async deleteOnYandex(path?: string | null): Promise<void> {
     if (!path) return;
-    await axios.delete(this.YD_RES, {
-      headers: this.headers,
-      params: { path, permanently: true },
-    });
+    await this.yandexDisk.deleteResource(path, true);
   }
 
   /**
@@ -334,14 +232,12 @@ export class TaskFilesService {
         await tx.kanbanTaskAttachment.deleteMany({ where: { fileId } });
         await tx.kanbanFile.delete({ where: { id: fileId } });
       });
-    } catch (e: any) {
+    } catch {
       throw new InternalServerErrorException('Не удалось удалить файл');
     }
   }
 
-  async deleteFiles(
-    fileIds: number[],
-  ): Promise<{ deleted: number[]; failed: { id: number; reason: string }[] }> {
+  async deleteFiles(fileIds: number[]): Promise<DeleteResult> {
     if (!fileIds?.length) return { deleted: [], failed: [] };
 
     const files = await this.prisma.kanbanFile.findMany({
@@ -360,16 +256,19 @@ export class TaskFilesService {
     const deleted: number[] = [];
     const failed: { id: number; reason: string }[] = [];
 
-    results.forEach((r, idx) => {
+    results.forEach((result, idx) => {
       const id = files[idx].id;
-      if (r.status === 'fulfilled') deleted.push(id);
-      else
-        failed.push({
-          id,
-          reason:
-            (r as PromiseRejectedResult)?.reason?.message ??
-            'Yandex delete failed',
-        });
+      if (result.status === 'fulfilled') {
+        deleted.push(id);
+      } else {
+        const reason =
+          result.reason instanceof Error
+            ? result.reason.message
+            : typeof result.reason === 'string'
+              ? result.reason
+              : 'Yandex delete failed';
+        failed.push({ id, reason });
+      }
     });
 
     // Чистим только успешно удалённые
@@ -383,5 +282,81 @@ export class TaskFilesService {
     }
 
     return { deleted, failed };
+  }
+
+  private async createPayload(
+    file: Express.Multer.File,
+  ): Promise<UploadPayload> {
+    const localPath = (file as MulterStoredFile)?.path;
+    if (localPath) {
+      const stat = await fs.stat(localPath);
+      this.logger.debug(
+        `TaskFiles createPayload: using disk file=${localPath}, size=${stat.size}`,
+      );
+      return {
+        body: createReadStream(localPath),
+        contentLength: stat.size,
+      };
+    }
+
+    this.logger.debug(
+      `TaskFiles createPayload: using buffer, size=${file.buffer?.length ?? 0}`,
+    );
+    return {
+      body: file.buffer,
+      contentLength: file.buffer?.length,
+    };
+  }
+
+  private async cleanupTempFile(file: Express.Multer.File): Promise<void> {
+    const localPath = (file as MulterStoredFile)?.path;
+    if (!localPath) return;
+    try {
+      await fs.unlink(localPath);
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+
+  private async ensureHierarchy(directory: string): Promise<void> {
+    const segments = directory.split('/').filter(Boolean);
+    let current = this.baseFolder;
+    await this.yandexDisk.ensureFolder(current);
+    for (const segment of segments) {
+      current = `${current}/${segment}`;
+      this.logger.debug(`TaskFiles ensure folder: ${current}`);
+      await this.yandexDisk.ensureFolder(current);
+    }
+  }
+
+  private pickPreview(
+    resource: YandexDiskResource,
+    prefer: string = 'M',
+  ): string | null {
+    const sizes = resource.sizes ?? [];
+    if (sizes.length) {
+      const sorted = [...sizes].sort((a, b) => {
+        const ia = YDS_ORDER.indexOf((a.name || '').toUpperCase());
+        const ib = YDS_ORDER.indexOf((b.name || '').toUpperCase());
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      });
+
+      const exact = sorted.find(
+        (s) => (s.name || '').toUpperCase() === prefer.toUpperCase(),
+      );
+      if (exact?.url) return exact.url;
+
+      const preferIdx = YDS_ORDER.indexOf(prefer.toUpperCase());
+      if (preferIdx !== -1) {
+        const up = sorted.find(
+          (s) => YDS_ORDER.indexOf((s.name || '').toUpperCase()) >= preferIdx,
+        );
+        if (up?.url) return up.url;
+      }
+
+      return sorted[sorted.length - 1]?.url ?? resource.preview ?? null;
+    }
+
+    return resource.preview ?? null;
   }
 }

@@ -1,118 +1,119 @@
-import axios from 'axios';
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  YandexDiskClient,
+  YandexDiskResource,
+} from 'src/integrations/yandex-disk/yandex-disk.client';
+
+export type UploadedFileRecord = {
+  name: string;
+  ya_name: string;
+  size: number;
+  preview: string;
+  directory: string;
+  path: string;
+  mimeType: string;
+};
 
 @Injectable()
 export class FilesService {
-  constructor(private readonly prisma: PrismaService) {}
-  private readonly YANDEX_DISK_API =
-    'https://cloud-api.yandex.net/v1/disk/resources/upload';
+  private readonly logger = new Logger(FilesService.name);
 
-  private readonly OAUTH_TOKEN = process.env.YA_TOKEN; // Замените на ваш OAuth-токен
+  constructor(private readonly yandexDisk: YandexDiskClient) {}
 
   async uploadToYandexDisk(
     directory: string,
     fileBuffer: Buffer,
     ya_name: string,
     fileName: string,
-  ): Promise<any> {
-    try {
-      const filePath = `EasyCRM/${directory}/${ya_name}`;
+  ): Promise<UploadedFileRecord> {
+    const baseFolder = 'EasyCRM';
+    const relativeFolder = directory.replace(/^\/+|\/+$/g, '');
+    const folderPath = `${baseFolder}/${relativeFolder}`;
+    const resourcePath = `${folderPath}/${ya_name}`;
 
-      // Шаг 1: Получаем ссылку для загрузки
-      const uploadResponse = await axios.get(this.YANDEX_DISK_API, {
-        params: { path: filePath, overwrite: true },
-        headers: { Authorization: `OAuth ${this.OAUTH_TOKEN}` },
-      });
+    await this.ensureHierarchy(folderPath);
+    this.logger.log(
+      `FilesService upload start: directory=${relativeFolder}, path=${resourcePath}, size=${fileBuffer.length}`,
+    );
 
-      const uploadUrl = uploadResponse.data.href;
+    const resource = await this.yandexDisk.uploadFile(resourcePath, {
+      body: fileBuffer,
+      contentLength: fileBuffer.length,
+    });
 
-      // Шаг 2: Отправляем файл по полученной ссылке
-      await axios.put(uploadUrl, fileBuffer, {
-        headers: { 'Content-Type': 'application/octet-stream' },
-      });
+    this.logger.log(
+      `FilesService upload complete: path=${resourcePath}, resourceSize=${resource.size ?? fileBuffer.length}`,
+    );
 
-      let attempts = 0;
-      let md = await axios.get(
-        'https://cloud-api.yandex.net/v1/disk/resources',
-        {
-          params: {
-            path: filePath,
-          },
-          headers: { Authorization: `OAuth ${this.OAUTH_TOKEN}` },
-        },
-      );
-
-      while (attempts < 3) {
-        md = await axios.get('https://cloud-api.yandex.net/v1/disk/resources', {
-          params: {
-            path: filePath,
-          },
-          headers: { Authorization: `OAuth ${this.OAUTH_TOKEN}` },
-        });
-
-        if (md.data.sizes) {
-          break; // Выходим из цикла, если получили sizes
-        }
-
-        attempts++;
-        if (attempts < 3) {
-          await new Promise((resolve) => setTimeout(resolve, 4000)); // Задержка 1 секунда перед следующей попыткой
-        }
-      }
-
-      // console.log(md.data);
-
-      return {
-        name: fileName,
-        ya_name,
-        size: md.data.size,
-        preview: md.data.sizes[0].url || '',
-        directory,
-        path: filePath,
-        mimeType: md.data.mime_type || '',
-      }; // Возвращаем публичную ссылку
-    } catch (error) {
-      console.error('Ошибка при загрузке файла на Яндекс.Диск:', error);
-      throw error;
-    }
+    return this.mapResourceToRecord({
+      resource,
+      directory: relativeFolder,
+      fileName,
+      yaName: ya_name,
+      fallbackSize: fileBuffer?.length ?? 0,
+      absPath: resourcePath,
+    });
   }
 
-  async getFilePath(filePath: string): Promise<any> {
-    try {
-      const md = await axios.get(
-        'https://cloud-api.yandex.net/v1/disk/resources',
-        {
-          params: {
-            path: filePath,
-          },
-          headers: { Authorization: `OAuth ${process.env.YA_TOKEN}` },
-        },
-      );
+  async getFilePath(filePath: string): Promise<{ preview: string }> {
+    const resource = await this.yandexDisk.getResource(filePath, {
+      fields: 'preview,sizes',
+    });
 
-      // console.log(md.data);
-
-      return {
-        preview: md.data.sizes[0].url || '',
-      }; // Возвращаем публичную ссылку
-    } catch (error) {
-      console.error('Ошибка при загрузке файла на Яндекс.Диск:', error);
-      throw error;
-    }
+    return {
+      preview: this.pickPreview(resource) ?? '',
+    };
   }
 
   async deleteFileFromYandexDisk(filePath: string): Promise<void> {
     try {
-      await axios.delete('https://cloud-api.yandex.net/v1/disk/resources', {
-        params: { path: filePath },
-        headers: { Authorization: `OAuth ${this.OAUTH_TOKEN}` },
-      });
+      await this.yandexDisk.deleteResource(filePath, true);
     } catch (error) {
-      console.error(
+      const trace = error instanceof Error ? error.stack : undefined;
+      this.logger.error(
         `Ошибка при удалении файла с Яндекс.Диска: ${filePath}`,
-        error,
+        trace,
       );
       throw error;
     }
+  }
+
+  private async ensureHierarchy(folderPath: string): Promise<void> {
+    const segments = folderPath.split('/').filter(Boolean);
+    let current = '';
+    for (const segment of segments) {
+      current = current ? `${current}/${segment}` : segment;
+      this.logger.debug(`FilesService ensure folder: ${current}`);
+      await this.yandexDisk.ensureFolder(current);
+    }
+  }
+
+  private mapResourceToRecord(params: {
+    resource: YandexDiskResource;
+    directory: string;
+    fileName: string;
+    yaName: string;
+    fallbackSize: number;
+    absPath: string;
+  }): UploadedFileRecord {
+    const { resource, directory, fileName, yaName, fallbackSize, absPath } =
+      params;
+    return {
+      name: fileName || resource.name || yaName,
+      ya_name: yaName,
+      size: resource.size ?? fallbackSize,
+      preview: this.pickPreview(resource) ?? '',
+      directory,
+      path: absPath,
+      mimeType: resource.mime_type || '',
+    };
+  }
+
+  private pickPreview(resource: YandexDiskResource): string | undefined {
+    const sizes = resource.sizes ?? [];
+    if (sizes.length) {
+      return sizes[0]?.url ?? resource.preview;
+    }
+    return resource.preview;
   }
 }

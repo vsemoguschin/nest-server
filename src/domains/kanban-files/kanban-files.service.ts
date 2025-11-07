@@ -1,15 +1,19 @@
-import axios from 'axios';
 import {
   Injectable,
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'node:path';
 import { UserDto } from '../users/dto/user.dto';
 import { FilesService } from '../files/files.service';
+import {
+  YandexDiskClient,
+  YandexDiskResource,
+} from 'src/integrations/yandex-disk/yandex-disk.client';
 
 const YDS_ORDER = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
@@ -21,31 +25,22 @@ type UploadArgs = {
 
 @Injectable()
 export class KanbanFilesService {
-  private readonly YD_UPLOAD =
-    'https://cloud-api.yandex.net/v1/disk/resources/upload';
-  private readonly YD_RES = 'https://cloud-api.yandex.net/v1/disk/resources';
-  private readonly TOKEN = process.env.YA_TOKEN as string; // обязателен
-  private readonly API = 'https://cloud-api.yandex.net/v1/disk';
-  private readonly headers = { Authorization: `OAuth ${process.env.YA_TOKEN}` };
-
+  private readonly logger = new Logger(KanbanFilesService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly filesService: FilesService,
+    private readonly yandexDisk: YandexDiskClient,
   ) {}
 
   /** Получить метаданные ресурса с Я.Диска (свежие) */
   async getFileOriginal(mimeType: string, path: string) {
-    if (mimeType === 'image/jpeg' || mimeType === 'image/png') {
-      const md = await axios.get(
-        'https://cloud-api.yandex.net/v1/disk/resources',
-        {
-          params: { path },
-          headers: {
-            Authorization: `OAuth ${process.env.YA_TOKEN}`,
-          },
-        },
-      );
-      return md.data.sizes[0].url || '';
+    if (!mimeType) return '';
+    const normalized = mimeType.toLowerCase();
+    if (normalized === 'image/jpeg' || normalized === 'image/png') {
+      const md = await this.yandexDisk.getResource(path, {
+        fields: 'preview,sizes',
+      });
+      return this.pickPreview(md) ?? '';
     }
     return '';
   }
@@ -105,85 +100,20 @@ export class KanbanFilesService {
 
   /** Загрузка файла в Я.Диск и возврат свежих метаданных */
   private async uploadToYandexDisk(params: {
-    absPath: string; // путь на диске (например EasyCRM/kanban/boards/1/images/uuid.ext)
+    absPath: string;
     buffer: Buffer;
-  }) {
-    const { absPath, buffer } = params;
-
-    // 1. Получить ссылку загрузки
-    const up = await axios.get(this.YD_UPLOAD, {
-      params: { path: absPath, overwrite: true },
-      headers: { Authorization: `OAuth ${this.TOKEN}` },
+  }): Promise<YandexDiskResource> {
+    return this.yandexDisk.uploadFile(params.absPath, {
+      body: params.buffer,
+      contentLength: params.buffer.length,
     });
-    const href = up.data.href;
-
-    // 2. Загрузить файл
-    await axios.put(href, buffer, {
-      headers: { 'Content-Type': 'application/octet-stream' },
-    });
-
-    // 3. СВЕЖИЙ запрос метаданных (без циклов ожидания)
-    let md = await axios.get(this.YD_RES, {
-      params: {
-        path: absPath,
-        fields: 'name,path,size,mime_type,preview,resource_id,sha256,md5,sizes',
-      },
-      headers: { Authorization: `OAuth ${this.TOKEN}` },
-    });
-    let attempts = 0;
-    while (attempts < 3) {
-      md = await axios.get(this.YD_RES, {
-        params: {
-          path: absPath,
-          fields:
-            'name,path,size,mime_type,preview,resource_id,sha256,md5,sizes',
-        },
-        headers: { Authorization: `OAuth ${this.TOKEN}` },
-      });
-
-      if (md.data.sizes) {
-        break; // Выходим из цикла, если получили sizes
-      }
-
-      attempts++;
-      if (attempts < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 4000)); // Задержка 1 секунда перед следующей попыткой
-      }
-    }
-
-    // console.log(md.data);
-
-    return md.data as {
-      name: string;
-      path: string;
-      size: number;
-      mime_type?: string;
-      preview?: string;
-      sizes?: { url: string; name: string }[];
-      resource_id?: string;
-      sha256?: string;
-      md5?: string;
-    };
   }
 
   /** Получить метаданные ресурса с Я.Диска (свежие) */
-  private async getResourceMeta(absPath: string) {
-    const res = await axios.get(this.YD_RES, {
-      params: {
-        path: absPath,
-        // сузим ответ — он и так большой
-        fields: 'name,path,size,mime_type,preview,sizes',
-      },
-      headers: { Authorization: `OAuth ${this.TOKEN}` },
+  private async getResourceMeta(absPath: string): Promise<YandexDiskResource> {
+    return this.yandexDisk.getResource(absPath, {
+      fields: 'name,path,size,mime_type,preview,sizes',
     });
-    return res.data as {
-      name: string;
-      path: string;
-      size?: number;
-      mime_type?: string;
-      preview?: string;
-      sizes?: { url: string; name: string }[];
-    };
   }
 
   /** Список вложений задачи */
@@ -220,20 +150,9 @@ export class KanbanFilesService {
     }));
   }
 
-
-
   /** Создать папку на Я.Диске (если уже есть — молча пропускаем) */
   private async ensureFolder(absPath: string) {
-    try {
-      await axios.put(this.YD_RES, null, {
-        params: { path: absPath },
-        headers: { Authorization: `OAuth ${this.TOKEN}` },
-      });
-    } catch (e: any) {
-      // 409 = уже существует — это ок
-      if (e?.response?.status === 409) return;
-      throw e;
-    }
+    await this.yandexDisk.ensureFolder(absPath);
   }
 
   /** Создать структуру папок для конкретной доски */
@@ -268,17 +187,26 @@ export class KanbanFilesService {
     const directory = `boards/${task.boardId}/${category}`; // ← ИЗМЕНИЛОСЬ
     const absPath = `EasyCRM/${directory}/${yaName}`; // ← ИЗМЕНИЛОСЬ
 
+    await this.ensureHierarchy(directory);
+    this.logger.log(
+      `Kanban upload start: taskId=${taskId}, userId=${userId}, path=${absPath}, size=${file.size ?? file.buffer?.length ?? 0}`,
+    );
+
     const meta = await this.uploadToYandexDisk({
       absPath,
       buffer: file.buffer,
     });
+
+    this.logger.log(
+      `Kanban upload complete: taskId=${taskId}, userId=${userId}, path=${absPath}, size=${meta.size ?? file.size ?? 0}`,
+    );
 
     const dbFile = await this.prisma.kanbanFile.create({
       data: {
         name: file.originalname || meta.name,
         ya_name: yaName,
         size: meta.size ?? file.size ?? 0,
-        preview: meta.preview || meta.sizes?.[0]?.url || '',
+        preview: this.pickPreview(meta) ?? '',
         directory, // boards/{id}/{cat}
         path: absPath, // EasyCRM/boards/{id}/{cat}/...
         mimeType: meta.mime_type || file.mimetype || null,
@@ -312,33 +240,7 @@ export class KanbanFilesService {
     prefer: string = 'M',
   ): Promise<string | null> {
     const md = await this.getResourceMeta(absPath); // включает sizes и preview
-    const sizes = Array.isArray(md.sizes) ? md.sizes : [];
-    if (!sizes.length) return md.preview || null;
-
-    // сортируем по известному порядку
-    const sorted = [...sizes].sort((a, b) => {
-      const ia = YDS_ORDER.indexOf((a.name || '').toUpperCase());
-      const ib = YDS_ORDER.indexOf((b.name || '').toUpperCase());
-      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-    });
-
-    // пробуем ровно prefer
-    const exact = sorted.find(
-      (s) => (s.name || '').toUpperCase() === prefer.toUpperCase(),
-    );
-    if (exact) return exact.url;
-
-    // иначе берём «ближайший вверх» (покрупнее)
-    const preferIdx = YDS_ORDER.indexOf(prefer.toUpperCase());
-    if (preferIdx !== -1) {
-      const up = sorted.find(
-        (s) => YDS_ORDER.indexOf((s.name || '').toUpperCase()) >= preferIdx,
-      );
-      if (up) return up.url;
-    }
-
-    // совсем fallback — самый крупный
-    return sorted[sorted.length - 1]?.url || md.preview || null;
+    return this.pickPreview(md, prefer);
   }
 
   async createLikeReview(
@@ -400,7 +302,45 @@ export class KanbanFilesService {
     }
   }
 
+  private async ensureHierarchy(directory: string): Promise<void> {
+    const segments = directory.split('/').filter(Boolean);
+    let current = 'EasyCRM';
+    await this.yandexDisk.ensureFolder(current);
+    for (const segment of segments) {
+      current = `${current}/${segment}`;
+      await this.yandexDisk.ensureFolder(current);
+      this.logger.debug(`Kanban ensure folder: ${current}`);
+    }
+  }
 
+  private pickPreview(
+    resource: YandexDiskResource,
+    prefer: string = 'M',
+  ): string | null {
+    const sizes = resource.sizes ?? [];
+    if (sizes.length) {
+      const sorted = [...sizes].sort((a, b) => {
+        const ia = YDS_ORDER.indexOf((a.name || '').toUpperCase());
+        const ib = YDS_ORDER.indexOf((b.name || '').toUpperCase());
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      });
 
+      const exact = sorted.find(
+        (s) => (s.name || '').toUpperCase() === prefer.toUpperCase(),
+      );
+      if (exact?.url) return exact.url;
 
+      const preferIdx = YDS_ORDER.indexOf(prefer.toUpperCase());
+      if (preferIdx !== -1) {
+        const up = sorted.find(
+          (s) => YDS_ORDER.indexOf((s.name || '').toUpperCase()) >= preferIdx,
+        );
+        if (up?.url) return up.url;
+      }
+
+      return sorted[sorted.length - 1]?.url ?? resource.preview ?? null;
+    }
+
+    return resource.preview ?? null;
+  }
 }
