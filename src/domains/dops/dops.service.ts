@@ -39,6 +39,15 @@ export class DopsService {
       where.deal = {
         groupId: groupId,
       };
+      where.user = {
+        workSpace: {
+          groups: {
+            some: {
+              id: groupId,
+            },
+          },
+        },
+      };
     }
 
     if (managersIds?.length) {

@@ -324,7 +324,10 @@ export class CommercialDatasService {
     /** ищем уникальные периоды платежей */
     const paymentsPeriods = Array.from(
       new Set(payments.map((p) => p.deal.saleDate.slice(0, 7))),
-    ); //['2025-04', '2025-03', ...]
+    );
+    // .filter((p) => p <= period); //['2025-04', '2025-03', ...]
+    // console.log(paymentsPeriods);
+    // console.log(payments.filter((p) => p.deal.saleDate.startsWith('2025-11')));
     /** формируем данные по каждому периоду*/
     const res = await Promise.all(
       paymentsPeriods.map(async (per) => {
@@ -440,6 +443,7 @@ export class CommercialDatasService {
 
   /** Получение данных по продажам ROP по группе */
   private async getROPSalesDatas(groupId: number, period: string) {
+    //находим все платежи внесенные в этот период
     const payments = await this.prisma.payment.findMany({
       where: {
         date: {
@@ -463,10 +467,10 @@ export class CommercialDatasService {
       },
     });
 
-    /** ищем уникальные периоды платежей */
+    /** ищем уникальные периоды сделок */
     const paymentsPeriods = Array.from(
       new Set(payments.map((p) => p.deal.saleDate.slice(0, 7))),
-    ).filter((p) => p >= '2025-09' && p <= period); //['2025-04', '2025-03', ...]
+    ).filter((p) => p >= '2025-09' && p <= period);
     /** формируем данные по каждому периоду*/
     const res = await Promise.all(
       paymentsPeriods.map(async (per) => {
@@ -553,9 +557,12 @@ export class CommercialDatasService {
       }),
     );
 
-    return res
-      .filter((item): item is NonNullable<typeof item> => item !== undefined)
-      .sort((a, b) => b.per.localeCompare(a.per));
+    return (
+      res
+        .filter((item): item is NonNullable<typeof item> => item !== undefined)
+        // .filter((item) => item?.toSalary !== 0)
+        .sort((a, b) => b.per.localeCompare(a.per))
+    );
   }
 
   private async getManagerSalesDatas(userId: number, period: string) {
@@ -1066,6 +1073,18 @@ export class CommercialDatasService {
       topBonus +
       factBonus;
 
+    const dodatas =
+      managerId === 21 ? await this.getDOSalesDatas(m.workSpaceId, period) : [];
+    // console.log(dodatas);
+    const doSalary = dodatas.reduce((a, b) => a + b.toSalary, 0);
+    totalSalary += doSalary;
+
+    const ropdatas =
+      m.groupId === 19 && m.role.shortName === 'ROP'
+        ? await this.getROPSalesDatas(m.groupId, period)
+        : [];
+    const ropSalary = ropdatas.reduce((a, b) => a + b.toSalary, 0);
+    totalSalary += ropSalary;
     return {
       fullName: m.fullName,
       role: m.role.fullName,
@@ -1110,7 +1129,11 @@ export class CommercialDatasService {
       bonusPercentage,
       bonus,
       dopsPercentage,
-
+      groupPlanBonus,
+      doSalary,
+      ropSalary,
+      dodatas,
+      ropdatas,
       dopPays,
       dealPays,
       topBonus,
@@ -1361,6 +1384,7 @@ export class CommercialDatasService {
         ? await this.getROPSalesDatas(m.groupId, period)
         : [];
     const ropSalary = ropdatas.reduce((a, b) => a + b.toSalary, 0);
+
     totalSalary +=
       salaryCorrectionPlus -
       salaryCorrectionMinus +
@@ -1560,7 +1584,7 @@ export class CommercialDatasService {
       period,
     );
 
-    console.log(isOverRopPlan);
+    // console.log(isOverRopPlan);
 
     /**Факт */
     const fact = 0;
@@ -1684,7 +1708,7 @@ export class CommercialDatasService {
 
     const dodatas =
       managerId === 21 ? await this.getDOSalesDatas(m.workSpaceId, period) : [];
-    console.log(dodatas);
+    // console.log(dodatas);
     const doSalary = dodatas.reduce((a, b) => a + b.toSalary, 0);
     totalSalary += doSalary;
 
@@ -1763,6 +1787,7 @@ export class CommercialDatasService {
   }
   /** get /commercial-datas/tops/:groupId?period */
   async getManagerGroupDatas(groupId: number, period: string) {
+    console.log(groupId, period);
     if (groupId === 18 || groupId === 3) {
       const groups = await this.prisma.group.findMany({
         where: {
@@ -1877,7 +1902,7 @@ export class CommercialDatasService {
         .flatMap((g) => g.deals)
         .reduce((acc, d) => acc + d.price, 0);
       const groupDopSales = groups
-        .flatMap((g) => g.deals)
+        .flatMap((g) => g.dops)
         .reduce((acc, d) => acc + d.price, 0);
       const groupTotalSales = groupDealSales + groupDopSales;
 
@@ -2436,6 +2461,7 @@ export class CommercialDatasService {
   }
   /** get /commercial-datas */
   async getManagersDatas(user: UserDto, period: string, groupId?: number) {
+    console.log('getManagersDatas', period, groupId);
     const workspacesSearch =
       user.role.department === 'administration' || user.role.shortName === 'KD'
         ? { gt: 0 }
@@ -2594,15 +2620,15 @@ export class CommercialDatasService {
     if (!m) {
       throw new NotFoundException('Manager not found');
     }
-    if (['MOV', 'MOP'].includes(m.role.shortName)) {
-      return await this.getMopDatas(user, period, managerId);
-    } else if (['DO'].includes(m.role.shortName)) {
-      return await this.getDODatas(user, period, managerId);
-    } else if (['ROP'].includes(m.role.shortName)) {
-      return await this.getRopDatas(user, period, managerId);
-    } else {
-      throw new NotFoundException('Данных нет.');
-    }
+    return await this.getMopDatas(user, period, managerId);
+    // if (['MOV', 'MOP'].includes(m.role.shortName)) {
+    // } else if (['DO'].includes(m.role.shortName)) {
+    //   return await this.getDODatas(user, period, managerId);
+    // } else if (['ROP'].includes(m.role.shortName)) {
+    //   return await this.getRopDatas(user, period, managerId);
+    // } else {
+    //   throw new NotFoundException('Данных нет.');
+    // }
   }
 
   /** /commercial-datas/statistics/:groupId */
@@ -3162,14 +3188,19 @@ export class CommercialDatasService {
   }
 
   /** /commercial-datas/statistics - статистика по всем группам */
-  async getStatAllGroups(user: UserDto, period: string) {
+  async getStatAllGroups(user: UserDto, period: string, groupId?: number) {
     // Получаем все группы
+    const workspacesSearch = ['G', 'KD', 'ADMIN'].includes(user.role.shortName)
+      ? { gt: 0 }
+      : user.workSpaceId;
     const groups = await this.prisma.group.findMany({
       where: {
         deletedAt: null,
         workSpace: {
           department: 'COMMERCIAL',
         },
+        id: groupId ? groupId : { gt: 0 },
+        workSpaceId: workspacesSearch,
         deals: {
           some: {},
         },
@@ -3243,6 +3274,18 @@ export class CommercialDatasService {
               reservation: false,
               status: { not: 'Возврат' },
               deletedAt: null,
+            },
+          },
+        },
+        payments: {
+          where: {
+            date: {
+              startsWith: period,
+            },
+            deal: {
+              reservation: false,
+              deletedAt: null,
+              status: { not: 'Возврат' },
             },
           },
         },
@@ -3652,9 +3695,7 @@ export class CommercialDatasService {
       }
     });
 
-    data.receivedPayments += group.deals
-      .flatMap((d) => d.payments)
-      .reduce((a, b) => a + b.price, 0);
+    data.receivedPayments += group.payments.reduce((a, b) => a + b.price, 0);
 
     data.dopsToSales = data.totalSales
       ? +((data.dopSales / data.totalSales) * 100).toFixed()

@@ -322,6 +322,12 @@ export class PaymentsService {
       }),
     ]);
 
+    // console.log(payments.filter((p) =>p.deal.saleDate.startsWith('2025-11')).reduce((a, b) => a + b.price, 0));
+    // console.log(payments.filter((p) =>p.deal.saleDate.startsWith('2025-10')).reduce((a, b) => a + b.price, 0));
+    // console.log(payments.filter((p) =>p.deal.saleDate.startsWith('2025-09')).reduce((a, b) => a + b.price, 0));
+    // console.log('Платежи не подходящие под условия (не 2025-09, 2025-10, 2025-11):');
+    // console.log(payments.filter((p) => !p.deal.saleDate.startsWith('2025-11') && !p.deal.saleDate.startsWith('2025-10') && !p.deal.saleDate.startsWith('2025-09')));
+
     return {
       totalPaymentPrice: Number(total._sum.price ?? 0),
       items: payments.map((payment) => ({

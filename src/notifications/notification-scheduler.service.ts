@@ -445,9 +445,15 @@ export class NotificationSchedulerService {
       this.logger.log(
         `[autoArchiveOldTasks] cutoff=${cutoff.toISOString()} archived=${res.count} on boards=${BOARD_IDS.join(',')}`,
       );
+      await this.notifyAdmins(
+        `🗂️ Автоархив задач завершён.\nАрхивировано: ${res.count}\nДоски: ${BOARD_IDS.join(', ')}\nСрез по дате: ${cutoff.toISOString()}`,
+      );
     } catch (e: unknown) {
       this.logger.error(
         `[autoArchiveOldTasks] failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      await this.notifyAdmins(
+        `🔥 Автоархив задач упал: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   }

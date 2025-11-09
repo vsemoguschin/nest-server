@@ -7,6 +7,7 @@ import axios from 'axios';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
 import { DashboardsService } from '../dashboards/dashboards.service';
+import { CommercialDatasService } from '../commercial-datas/commercial-datas.service';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
@@ -105,6 +106,7 @@ export class PlanfactService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly dashboardsService: DashboardsService,
+    private readonly commercialDatasService: CommercialDatasService,
   ) {}
 
   async createOperation(dto: CreateOperationDto) {
@@ -1082,12 +1084,23 @@ export class PlanfactService {
           },
           include: {
             dops: true,
+
           },
         });
-        const dealsDops = deals.flatMap((d) => d.dops);
+        const dops = await this.prisma.dop.findMany({
+          where: {
+            saleDate: {
+              startsWith: p,
+            },
+            deal: {
+              reservation: false,
+              status: { not: 'Возврат' },
+            },
+          },
+        }); 
+        const dopsPrice = dops.reduce((a, b) => a + b.price, 0);
         const allDealsPrice =
-          deals.reduce((a, b) => a + b.price, 0) +
-          dealsDops.reduce((a, b) => a + b.price, 0);
+          deals.reduce((a, b) => a + b.price, 0) + dopsPrice;
 
         const payments = await this.prisma.payment.findMany({
           where: {
@@ -1545,50 +1558,25 @@ export class PlanfactService {
 
     const mopSalaries = await Promise.all(
       periods.map(async (p, index) => {
-        const data = await this.dashboardsService.getComercialData(user, p);
-
-        const value = data.users
-          .map((u) => {
-            const { totalSalary, salaryCorrections } = u;
-            const salaryCorrectionMinus = salaryCorrections
-              .filter((c) => c.type === 'Вычет')
-              .reduce((a, b) => a + b.price, 0);
-            const salaryCorrectionPlus = salaryCorrections
-              .filter((s) => s.type === 'Прибавка')
-              .reduce((a, b) => a + b.price, 0);
-            const salary =
-              totalSalary + salaryCorrectionPlus - salaryCorrectionMinus;
-            // prevPeriodsDealsPays +
-            // prevPeriodsDopsPays;
-            return {
-              role: u.role === 'Директор отдела продаж' ? 'РОПы' : u.role,
-              manager: u.fullName,
-              salary: +salary.toFixed(2),
-            };
-          })
-          .filter((u) => u.salary > 0 && u.role === 'Менеджер отдела продаж')
-          .reduce(
-            (acc, { role, manager, salary }) => {
-              const existingRole = acc.find((item) => item.role === role);
-              if (existingRole) {
-                existingRole.value += salary;
-                existingRole.salaries.push({ role, manager, salary });
-              } else {
-                acc.push({
-                  role,
-                  value: salary,
-                  salaries: [{ role, manager, salary }],
-                });
-              }
-              return acc;
+        const mops = await this.prisma.user.findMany({
+          where: {
+            role: {
+              shortName: {in: ['MOP', 'ROP']},
             },
-            [] as {
-              role: string;
-              value: number;
-              salaries: { role: string; manager: string; salary: number }[];
-            }[],
-          )
-          .reduce((a, b) => a + b.value, 0);
+          },
+        });
+        const comMops = await Promise.all(mops.map(async (m) => {
+            const data = await this.commercialDatasService.getManagerDatas(user, p, m.id);
+            return {
+              fullName: data.fullName,
+              totalSalary: data.totalSalary,
+              role: data.role,
+            };
+          }),
+        );
+        // console.log(comMops.filter(m=>m.totalSalary > 0));
+
+        const value = comMops.reduce((a, b) => a + b.totalSalary, 0);
         const sendDeals = res.income.sendDeals[index].value;
 
         return {
@@ -1602,9 +1590,21 @@ export class PlanfactService {
     );
     const ropSalaries = await Promise.all(
       periods.map(async (p, index) => {
-        const data = await this.dashboardsService.getComercialData(user, p);
-
-        const value = data.ropData.reduce((a, b) => a + b.salaryThisPeriod, 0);
+        const rops = await this.prisma.user.findMany({
+          where: {
+            id: {in: [21]},
+          },
+        });
+        const comRops = await Promise.all(rops.map(async (r) => {
+          const data = await this.commercialDatasService.getManagerDatas(user, p, r.id);
+          return {
+            fullName: data.fullName,
+            totalSalary: data.totalSalary,
+            role: data.role,
+          };
+        }),
+        );
+        const value = comRops.reduce((a, b) => a + b.totalSalary, 0);
         const sendDeals = res.income.sendDeals[index].value;
 
         return {
