@@ -5,7 +5,9 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
+import { createReadStream, existsSync } from 'fs';
+import { join } from 'path';
 import { PrismaService } from 'src/prisma/prisma.service';
 import type { Readable } from 'stream';
 import { YandexDiskClient } from 'src/integrations/yandex-disk/yandex-disk.client';
@@ -31,6 +33,12 @@ export class AttachmentsService {
     private readonly yandexDisk: YandexDiskClient,
   ) {}
   private readonly logger = new Logger(AttachmentsService.name);
+  private readonly placeholderFilename = 'placeholder.png';
+  private readonly placeholderAbsolutePath = join(
+    process.cwd(),
+    'public',
+    this.placeholderFilename,
+  );
 
   async ensureAttachment(attachmentId: number) {
     const att = await this.prisma.kanbanTaskAttachment.findFirst({
@@ -129,7 +137,7 @@ export class AttachmentsService {
   // }
 
   /** Получить прямую ссылку на скачивание файла на Я.Диске */
-  private async getDownloadHref(path: string): Promise<string> {
+  private async getDownloadHref(path: string): Promise<string | null> {
     if (!path) throw new BadRequestException('path is required');
 
     try {
@@ -139,13 +147,34 @@ export class AttachmentsService {
         throw new NotFoundException('File href not found');
       }
       return href;
-    } catch (e: any) {
-      const msg = e?.response?.data
-        ? JSON.stringify(e.response.data)
-        : e?.message ?? (e as Error)?.message;
-      this.logger.error(`getDownloadHref failed: ${msg}`);
-      if (e?.response?.status === 404)
-        throw new NotFoundException('File not found');
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error ?? 'unknown');
+
+      if (
+        error instanceof NotFoundException ||
+        errorMessage.includes('DiskNotFoundError') ||
+        errorMessage.includes('Resource not found')
+      ) {
+        this.logger.warn(`File missing on Yandex Disk: ${path}`);
+        return null;
+      }
+
+      if (axios.isAxiosError(error)) {
+        const msg = error.response?.data
+          ? JSON.stringify(error.response.data)
+          : error.message;
+        this.logger.error(`getDownloadHref failed: ${msg}`);
+        if (error.response?.status === 404) {
+          this.logger.warn(`File missing on Yandex Disk: ${path}`);
+          return null;
+        }
+      } else if (error instanceof Error) {
+        this.logger.error(`getDownloadHref failed: ${error.message}`);
+      } else {
+        this.logger.error('getDownloadHref failed: Unknown error');
+      }
+
       throw new InternalServerErrorException('Storage error');
     }
   }
@@ -165,19 +194,45 @@ export class AttachmentsService {
       const contentLength = Number(resp.headers['content-length']);
       const stream = resp.data as unknown as Readable;
       return { stream, contentType, contentLength };
-    } catch (e: any) {
-      const msg = e?.response?.status
-        ? `${e.response.status} ${e.response.statusText}`
-        : e?.message;
-      this.logger.error(`openSourceStream failed: ${msg}`);
-      throw new InternalServerErrorException('Upstream download failed');
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      const status = axiosError.response?.status;
+      const statusText = axiosError.response?.statusText;
+      const bodyRaw = axiosError.response?.data;
+      const bodyString =
+        typeof bodyRaw === 'string'
+          ? bodyRaw
+          : bodyRaw
+            ? JSON.stringify(bodyRaw)
+            : undefined;
+      const snippet =
+        bodyString && bodyString.length > 2000
+          ? `${bodyString.slice(0, 2000)}…`
+          : bodyString;
+      const messageParts = [
+        `status=${status ?? 'n/a'}`,
+        `statusText=${statusText ?? 'n/a'}`,
+        `message=${axiosError.message ?? 'n/a'}`,
+      ];
+      if (snippet) {
+        messageParts.push(`body=${snippet}`);
+      }
+      this.logger.error(`openSourceStream failed: ${messageParts.join(' | ')}`);
+      throw new InternalServerErrorException({
+        message: 'Upstream download failed',
+        upstreamStatus: status,
+        upstreamStatusText: statusText,
+        upstreamBody: snippet,
+      });
     }
   }
 
   /** Попробовать подключить sharp динамически (без жёсткой зависимости) */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async tryLoadSharp(): Promise<any | null> {
     try {
       // динамический импорт через eval — TS не будет требовать типы модуля
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mod = await (eval('import("sharp")') as Promise<any>);
       return mod?.default ?? mod ?? null;
     } catch {
@@ -220,13 +275,19 @@ export class AttachmentsService {
     // console.log('here');
     // 1) получаем прямой href и открываем исходный поток
     const href = await this.getDownloadHref(path);
+    if (!href) {
+      this.logger.warn(
+        `Returning placeholder for preview: path=${path}, format=${format ?? 'original'}`,
+      );
+      await this.clearTaskCover(path);
+      return this.buildPlaceholderStream();
+    }
     const src = await this.openSourceStream(href);
 
     const isImage = (src.contentType || '').startsWith('image/');
     const needTransform = isImage && (!!w || !!h || !!format);
 
     if (!needTransform) {
-      
       // отдаём как есть (inline)
       return {
         stream: src.stream,
@@ -285,8 +346,7 @@ export class AttachmentsService {
 
     // собираем пайп: исходник -> sharp -> ответ
     // важно: не читать всё в память
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const piped = (src.stream as any).pipe(transformer as any) as Readable;
     return {
       stream: piped,
@@ -301,6 +361,11 @@ export class AttachmentsService {
     if (!path) throw new BadRequestException('path is required');
 
     const href = await this.getDownloadHref(path);
+    if (!href) {
+      this.logger.warn(`Returning placeholder for download: path=${path}`);
+      await this.clearTaskCover(path);
+      return this.buildPlaceholderStream();
+    }
     const src = await this.openSourceStream(href);
 
     return {
@@ -309,5 +374,47 @@ export class AttachmentsService {
       filename: this.deriveFilename(path),
       cacheSeconds: 60 * 60 * 24, // 1 день
     };
+  }
+
+  private buildPlaceholderStream(): StreamResult {
+    if (!existsSync(this.placeholderAbsolutePath)) {
+      this.logger.error(
+        `Placeholder file not found: ${this.placeholderAbsolutePath}`,
+      );
+      throw new NotFoundException('File not found');
+    }
+
+    try {
+      const stream = createReadStream(this.placeholderAbsolutePath);
+      return {
+        stream,
+        contentType: 'image/png',
+        filename: this.placeholderFilename,
+        cacheSeconds: 60 * 60 * 24,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to open placeholder file: ${message}`);
+      throw new InternalServerErrorException('Storage error');
+    }
+  }
+
+  private async clearTaskCover(path: string): Promise<void> {
+    try {
+      const result = await this.prisma.kanbanTask.updateMany({
+        where: { cover: path },
+        data: { cover: '' },
+      });
+      if (result.count > 0) {
+        this.logger.warn(
+          `Cleared cover for ${result.count} kanban task(s) because file is missing: ${path}`,
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to clear kanban task cover for path=${path}: ${message}`,
+      );
+    }
   }
 }

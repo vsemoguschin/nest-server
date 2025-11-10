@@ -867,7 +867,7 @@ export class ProductionService {
                 saleDate: 'desc',
               },
             });
-            console.log(deals[0]);
+            // console.log(deals[0]);
             dealId = deals.length ? deals[0].id : 0;
             // console.log(deal);
           }
@@ -1854,7 +1854,7 @@ export class ProductionService {
   }
 
   async createOtherReport(dto: CreateOtherReportDto) {
-    console.log(dto);
+    // console.log(dto);
     return this.prisma.otherReport.create({
       data: { ...dto },
     });

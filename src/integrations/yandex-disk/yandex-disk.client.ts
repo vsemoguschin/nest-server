@@ -7,6 +7,7 @@ import axios, {
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -141,6 +142,11 @@ export class YandexDiskClient {
   private readonly oauthEndpoint = 'https://oauth.yandex.ru/token';
   private readonly http: AxiosInstance;
   private readonly uploadUserAgent: string;
+  private readonly pathQueues = new Map<string, Array<() => void>>();
+  private readonly lockRetryAttempts: number;
+  private readonly lockRetryBaseDelayMs: number;
+  private readonly lockRetryMaxDelayMs: number;
+  private readonly lockRetryBackoffFactor: number;
 
   private accessToken: string | null;
   private readonly refreshToken: string | null;
@@ -155,6 +161,23 @@ export class YandexDiskClient {
     this.uploadUserAgent =
       this.config.get<string>('YANDEX_DISK_UPLOAD_USER_AGENT') ??
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36';
+
+    this.lockRetryAttempts = Math.max(
+      1,
+      this.config.get<number>('YANDEX_DISK_LOCK_RETRY_ATTEMPTS', 5),
+    );
+    this.lockRetryBaseDelayMs = Math.max(
+      50,
+      this.config.get<number>('YANDEX_DISK_LOCK_RETRY_DELAY_MS', 250),
+    );
+    this.lockRetryMaxDelayMs = Math.max(
+      this.lockRetryBaseDelayMs,
+      this.config.get<number>('YANDEX_DISK_LOCK_RETRY_MAX_DELAY_MS', 4_000),
+    );
+    this.lockRetryBackoffFactor = Math.max(
+      1,
+      this.config.get<number>('YANDEX_DISK_LOCK_RETRY_BACKOFF', 2),
+    );
 
     this.accessToken =
       this.config.get<string>('YANDEX_DISK_TOKEN') ??
@@ -191,6 +214,9 @@ export class YandexDiskClient {
       (response) => response,
       async (error: AxiosError) => {
         if (error.response?.status === 409) {
+          throw error;
+        }
+        if (error.response?.status === 423) {
           throw error;
         }
         if (error.response?.status === 401 && this.canRefresh()) {
@@ -235,24 +261,38 @@ export class YandexDiskClient {
   }
 
   async ensureFolder(path: string): Promise<void> {
-    try {
-      await this.http.put('/resources', null, { params: { path } });
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 409) {
-        return;
-      }
-      throw this.wrapError(error, `Не удалось создать папку «${path}»`);
-    }
+    const normalizedPath = this.normalizePath(path);
+    await this.runWithLockAndRetry({
+      path: normalizedPath,
+      scope: 'resource',
+      wrapMessage: `Не удалось создать папку «${normalizedPath}»`,
+      operation: async () => {
+        try {
+          await this.http.put('/resources', null, {
+            params: { path: normalizedPath },
+          });
+        } catch (error) {
+          if (axios.isAxiosError(error) && error.response?.status === 409) {
+            return;
+          }
+          throw error;
+        }
+      },
+    });
   }
 
   async deleteResource(path: string, permanently = false): Promise<void> {
-    try {
-      await this.http.delete('/resources', {
-        params: { path, permanently },
-      });
-    } catch (error) {
-      throw this.wrapError(error, `Не удалось удалить ресурс «${path}»`);
-    }
+    const normalizedPath = this.normalizePath(path);
+    await this.runWithLockAndRetry({
+      path: normalizedPath,
+      scope: 'resource',
+      wrapMessage: `Не удалось удалить ресурс «${normalizedPath}»`,
+      operation: async () => {
+        await this.http.delete('/resources', {
+          params: { path: normalizedPath, permanently },
+        });
+      },
+    });
   }
 
   async getDownloadLink(path: string): Promise<string> {
@@ -275,7 +315,7 @@ export class YandexDiskClient {
     payload: UploadPayload,
     overwrite = true,
   ): Promise<YandexDiskResource> {
-    const normalizedPath = path.replace(/\\/g, '/');
+    const normalizedPath = this.normalizePath(path);
     const extension = this.extractExtension(normalizedPath);
     const useTempName = extension && THROTTLED_EXTENSIONS.has(extension);
 
@@ -283,118 +323,129 @@ export class YandexDiskClient {
       ? this.buildTempPath(normalizedPath, extension)
       : normalizedPath;
 
-    try {
-      const link = await this.http.get<YandexDiskUploadLink>(
-        '/resources/upload',
-        {
-          params: { path: tempPath, overwrite },
-          headers: {
-            'User-Agent': this.uploadUserAgent,
-          },
-        },
-      );
+    return this.runWithLockAndRetry({
+      path: normalizedPath,
+      scope: 'directory',
+      wrapMessage: `Не удалось загрузить файл «${normalizedPath}»`,
+      operation: async () => {
+        try {
+          const link = await this.http.get<YandexDiskUploadLink>(
+            '/resources/upload',
+            {
+              params: { path: tempPath, overwrite },
+              headers: {
+                'User-Agent': this.uploadUserAgent,
+              },
+            },
+          );
 
-      this.logger.log(
-        `YD upload link: path=${tempPath}, href=${link.data.href}, method=${link.data.method}, operation_id=${link.data.operation_id ?? 'n/a'}`,
-      );
+          this.logger.log(
+            `YD upload link: path=${tempPath}, href=${link.data.href}, method=${link.data.method}, operation_id=${link.data.operation_id ?? 'n/a'}`,
+          );
 
-      const contentLength =
-        payload.contentLength ??
-        (payload.body instanceof Buffer ? payload.body.length : undefined);
+          const contentLength =
+            payload.contentLength ??
+            (payload.body instanceof Buffer ? payload.body.length : undefined);
 
-      if (contentLength === undefined) {
-        this.logger.warn(
-          `YD upload content length undefined for path=${tempPath}. Upload may fall back to chunked transfer.`,
-        );
-      } else {
-        this.logger.log(
-          `YD upload start: path=${tempPath}, size=${contentLength} bytes`,
-        );
-      }
-
-      const startTime = Date.now();
-      let uploadedBytes = 0;
-      let lastLogTimestamp = Date.now();
-
-      if (!(payload.body instanceof Buffer) && 'on' in payload.body) {
-        (payload.body as NodeJS.ReadableStream).on('data', (chunk: unknown) => {
-          const size = Buffer.isBuffer(chunk) ? chunk.length : 0;
-          uploadedBytes += size;
-
-          const now = Date.now();
-          if (now - lastLogTimestamp >= 1000) {
-            const progress =
-              contentLength && contentLength > 0
-                ? `${((uploadedBytes / contentLength) * 100 || 0).toFixed(2)}%`
-                : `${uploadedBytes} bytes`;
-            this.logger.debug(
-              `YD stream progress: path=${tempPath}, uploaded=${uploadedBytes} bytes (${progress})`,
+          if (contentLength === undefined) {
+            this.logger.warn(
+              `YD upload content length undefined for path=${tempPath}. Upload may fall back to chunked transfer.`,
             );
-            lastLogTimestamp = now;
+          } else {
+            this.logger.log(
+              `YD upload start: path=${tempPath}, size=${contentLength} bytes`,
+            );
           }
-        });
-      }
 
-      await axios.put(link.data.href, payload.body, {
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          'User-Agent': this.uploadUserAgent,
-          ...(contentLength !== undefined
-            ? { 'Content-Length': String(contentLength) }
-            : {}),
-        },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-        timeout: this.config.get<number>(
-          'YANDEX_DISK_UPLOAD_TIMEOUT',
-          30 * 60_000,
-        ),
-      });
+          const startTime = Date.now();
+          let uploadedBytes = 0;
+          let lastLogTimestamp = Date.now();
 
-      const durationMs = Date.now() - startTime;
-      const uploadedTotal =
-        payload.body instanceof Buffer ? payload.body.length : uploadedBytes;
-      const speed =
-        durationMs > 0
-          ? ((uploadedTotal / durationMs) * 1000).toFixed(2)
-          : 'n/a';
-      this.logger.log(
-        `YD upload complete: path=${tempPath}, bytes=${uploadedTotal}, time=${durationMs}ms, speed=${speed} B/s`,
-      );
+          if (!(payload.body instanceof Buffer) && 'on' in payload.body) {
+            (payload.body as NodeJS.ReadableStream).on(
+              'data',
+              (chunk: unknown) => {
+                const size = Buffer.isBuffer(chunk) ? chunk.length : 0;
+                uploadedBytes += size;
 
-      const finalPath = useTempName
-        ? await this.renameTempResource(tempPath, normalizedPath, overwrite)
-        : normalizedPath;
-      if (useTempName) {
-        this.logger.log(`YD temp rename done: ${tempPath} -> ${finalPath}`);
-      }
+                const now = Date.now();
+                if (now - lastLogTimestamp >= 1000) {
+                  const progress =
+                    contentLength && contentLength > 0
+                      ? `${((uploadedBytes / contentLength) * 100 || 0).toFixed(2)}%`
+                      : `${uploadedBytes} bytes`;
+                  this.logger.debug(
+                    `YD stream progress: path=${tempPath}, uploaded=${uploadedBytes} bytes (${progress})`,
+                  );
+                  lastLogTimestamp = now;
+                }
+              },
+            );
+          }
 
-      return await this.getResource(finalPath, {
-        fields:
-          'name,path,size,mime_type,preview,sizes,resource_id,sha256,md5,file',
-      });
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        const message =
-          this.extractErrorMessage(error) ?? error.message ?? 'Unknown error';
-        this.logger.error(
-          `Ошибка загрузки файла на Яндекс.Диск: ${normalizedPath}. Статус: ${status ?? 'no-response'}. ${message}`,
-        );
-      } else if (error instanceof Error) {
-        this.logger.error(
-          `Неизвестная ошибка загрузки файла на Яндекс.Диск: ${normalizedPath}. ${error.message}`,
-        );
-      } else {
-        this.logger.error(
-          `Неизвестная ошибка загрузки файла на Яндекс.Диск: ${normalizedPath}.`,
-        );
-      }
-      throw this.wrapError(
-        error,
-        `Не удалось загрузить файл «${normalizedPath}»`,
-      );
-    }
+          await axios.put(link.data.href, payload.body, {
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'User-Agent': this.uploadUserAgent,
+              ...(contentLength !== undefined
+                ? { 'Content-Length': String(contentLength) }
+                : {}),
+            },
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+            timeout: this.config.get<number>(
+              'YANDEX_DISK_UPLOAD_TIMEOUT',
+              30 * 60_000,
+            ),
+          });
+
+          const durationMs = Date.now() - startTime;
+          const uploadedTotal =
+            payload.body instanceof Buffer
+              ? payload.body.length
+              : uploadedBytes;
+          const speed =
+            durationMs > 0
+              ? ((uploadedTotal / durationMs) * 1000).toFixed(2)
+              : 'n/a';
+          this.logger.log(
+            `YD upload complete: path=${tempPath}, bytes=${uploadedTotal}, time=${durationMs}ms, speed=${speed} B/s`,
+          );
+
+          const finalPath = useTempName
+            ? await this.renameTempResource(tempPath, normalizedPath, overwrite)
+            : normalizedPath;
+          if (useTempName) {
+            this.logger.log(`YD temp rename done: ${tempPath} -> ${finalPath}`);
+          }
+
+          return await this.getResource(finalPath, {
+            fields:
+              'name,path,size,mime_type,preview,sizes,resource_id,sha256,md5,file',
+          });
+        } catch (error) {
+          if (axios.isAxiosError(error)) {
+            const status = error.response?.status;
+            const message =
+              this.extractErrorMessage(error) ??
+              error.message ??
+              'Unknown error';
+            this.logger.error(
+              `Ошибка загрузки файла на Яндекс.Диск: ${normalizedPath}. Статус: ${status ?? 'no-response'}. ${message}`,
+            );
+          } else if (error instanceof Error) {
+            this.logger.error(
+              `Неизвестная ошибка загрузки файла на Яндекс.Диск: ${normalizedPath}. ${error.message}`,
+            );
+          } else {
+            this.logger.error(
+              `Неизвестная ошибка загрузки файла на Яндекс.Диск: ${normalizedPath}.`,
+            );
+          }
+          throw error;
+        }
+      },
+    });
   }
 
   async uploadExternalResource(params: {
@@ -403,26 +454,27 @@ export class YandexDiskClient {
     name?: string;
     disableRedirects?: boolean;
   }): Promise<YandexDiskUploadLink> {
-    try {
-      const response = await this.http.post<YandexDiskUploadLink>(
-        '/resources/upload',
-        null,
-        {
-          params: {
-            path: params.path,
-            url: params.url,
-            name: params.name,
-            disable_redirects: params.disableRedirects,
+    const normalizedPath = this.normalizePath(params.path);
+    return this.runWithLockAndRetry({
+      path: normalizedPath,
+      scope: 'resource',
+      wrapMessage: `Не удалось инициировать загрузку внешнего ресурса в «${normalizedPath}»`,
+      operation: async () => {
+        const response = await this.http.post<YandexDiskUploadLink>(
+          '/resources/upload',
+          null,
+          {
+            params: {
+              path: normalizedPath,
+              url: params.url,
+              name: params.name,
+              disable_redirects: params.disableRedirects,
+            },
           },
-        },
-      );
-      return response.data;
-    } catch (error) {
-      throw this.wrapError(
-        error,
-        `Не удалось инициировать загрузку внешнего ресурса в «${params.path}»`,
-      );
-    }
+        );
+        return response.data;
+      },
+    });
   }
 
   async copyResource(params: {
@@ -430,25 +482,27 @@ export class YandexDiskClient {
     path: string;
     overwrite?: boolean;
   }): Promise<YandexDiskUploadLink> {
-    try {
-      const response = await this.http.post<YandexDiskUploadLink>(
-        '/resources/copy',
-        null,
-        {
-          params: {
-            from: params.from,
-            path: params.path,
-            overwrite: params.overwrite,
+    const normalizedFrom = this.normalizePath(params.from);
+    const normalizedPath = this.normalizePath(params.path);
+    return this.runWithLockAndRetry({
+      path: normalizedPath,
+      scope: 'directory',
+      wrapMessage: `Не удалось скопировать ресурс из «${normalizedFrom}» в «${normalizedPath}»`,
+      operation: async () => {
+        const response = await this.http.post<YandexDiskUploadLink>(
+          '/resources/copy',
+          null,
+          {
+            params: {
+              from: normalizedFrom,
+              path: normalizedPath,
+              overwrite: params.overwrite,
+            },
           },
-        },
-      );
-      return response.data;
-    } catch (error) {
-      throw this.wrapError(
-        error,
-        `Не удалось скопировать ресурс из «${params.from}» в «${params.path}»`,
-      );
-    }
+        );
+        return response.data;
+      },
+    });
   }
 
   async moveResource(params: {
@@ -456,55 +510,65 @@ export class YandexDiskClient {
     path: string;
     overwrite?: boolean;
   }): Promise<YandexDiskUploadLink> {
-    try {
-      const response = await this.http.post<YandexDiskUploadLink>(
-        '/resources/move',
-        null,
-        {
-          params: {
-            from: params.from,
-            path: params.path,
-            overwrite: params.overwrite,
+    const normalizedFrom = this.normalizePath(params.from);
+    const normalizedPath = this.normalizePath(params.path);
+    return this.runWithLockAndRetry({
+      path: normalizedPath,
+      scope: 'directory',
+      wrapMessage: `Не удалось переместить ресурс из «${normalizedFrom}» в «${normalizedPath}»`,
+      operation: async () => {
+        const response = await this.http.post<YandexDiskUploadLink>(
+          '/resources/move',
+          null,
+          {
+            params: {
+              from: normalizedFrom,
+              path: normalizedPath,
+              overwrite: params.overwrite,
+            },
           },
-        },
-      );
-      return response.data;
-    } catch (error) {
-      throw this.wrapError(
-        error,
-        `Не удалось переместить ресурс из «${params.from}» в «${params.path}»`,
-      );
-    }
+        );
+        return response.data;
+      },
+    });
   }
 
   async publishResource(path: string): Promise<YandexDiskResource> {
-    try {
-      const response = await this.http.put<YandexDiskResource>(
-        '/resources/publish',
-        null,
-        {
-          params: { path },
-        },
-      );
-      return response.data;
-    } catch (error) {
-      throw this.wrapError(error, `Не удалось опубликовать ресурс «${path}»`);
-    }
+    const normalizedPath = this.normalizePath(path);
+    return this.runWithLockAndRetry({
+      path: normalizedPath,
+      scope: 'resource',
+      wrapMessage: `Не удалось опубликовать ресурс «${normalizedPath}»`,
+      operation: async () => {
+        const response = await this.http.put<YandexDiskResource>(
+          '/resources/publish',
+          null,
+          {
+            params: { path: normalizedPath },
+          },
+        );
+        return response.data;
+      },
+    });
   }
 
   async unpublishResource(path: string): Promise<YandexDiskResource> {
-    try {
-      const response = await this.http.put<YandexDiskResource>(
-        '/resources/unpublish',
-        null,
-        {
-          params: { path },
-        },
-      );
-      return response.data;
-    } catch (error) {
-      throw this.wrapError(error, `Не удалось снять публикацию «${path}»`);
-    }
+    const normalizedPath = this.normalizePath(path);
+    return this.runWithLockAndRetry({
+      path: normalizedPath,
+      scope: 'resource',
+      wrapMessage: `Не удалось снять публикацию «${normalizedPath}»`,
+      operation: async () => {
+        const response = await this.http.put<YandexDiskResource>(
+          '/resources/unpublish',
+          null,
+          {
+            params: { path: normalizedPath },
+          },
+        );
+        return response.data;
+      },
+    });
   }
 
   async listFilesFlat(params?: {
@@ -675,25 +739,26 @@ export class YandexDiskClient {
     name?: string;
     overwrite?: boolean;
   }): Promise<YandexDiskUploadLink> {
-    try {
-      const response = await this.http.put<YandexDiskUploadLink>(
-        '/trash/resources/restore',
-        null,
-        {
-          params: {
-            path: params.path,
-            name: params.name,
-            overwrite: params.overwrite,
+    const normalizedPath = this.normalizePath(params.path);
+    return this.runWithLockAndRetry({
+      path: normalizedPath,
+      scope: 'resource',
+      wrapMessage: `Не удалось восстановить ресурс «${normalizedPath}» из корзины`,
+      operation: async () => {
+        const response = await this.http.put<YandexDiskUploadLink>(
+          '/trash/resources/restore',
+          null,
+          {
+            params: {
+              path: normalizedPath,
+              name: params.name,
+              overwrite: params.overwrite,
+            },
           },
-        },
-      );
-      return response.data;
-    } catch (error) {
-      throw this.wrapError(
-        error,
-        `Не удалось восстановить ресурс «${params.path}» из корзины`,
-      );
-    }
+        );
+        return response.data;
+      },
+    });
   }
 
   async getOperationStatus(
@@ -710,6 +775,122 @@ export class YandexDiskClient {
         `Не удалось получить статус операции «${operationId}»`,
       );
     }
+  }
+
+  private async runWithLockAndRetry<T>(params: {
+    path: string;
+    scope: 'resource' | 'directory';
+    wrapMessage: string;
+    operation: () => Promise<T>;
+  }): Promise<T> {
+    const key = this.buildLockKey(params.path, params.scope);
+    let attempt = 0;
+    let delay = this.lockRetryBaseDelayMs;
+
+    while (true) {
+      attempt += 1;
+      const release = await this.acquireLock(key);
+      let shouldRetry = false;
+      let waitMs = delay;
+      try {
+        return await params.operation();
+      } catch (error) {
+        if (
+          this.isResourceLockedError(error) &&
+          attempt < this.lockRetryAttempts
+        ) {
+          shouldRetry = true;
+          waitMs = Math.min(delay, this.lockRetryMaxDelayMs);
+          this.logger.warn(
+            `YD resource locked: path=${params.path}, attempt=${attempt}/${this.lockRetryAttempts}, retry_in=${waitMs}ms`,
+          );
+          delay = Math.min(
+            delay * this.lockRetryBackoffFactor,
+            this.lockRetryMaxDelayMs,
+          );
+        } else {
+          if (error instanceof HttpException) {
+            throw error;
+          }
+          throw this.wrapError(error, params.wrapMessage);
+        }
+      } finally {
+        release();
+      }
+
+      if (shouldRetry) {
+        await this.sleep(waitMs);
+        continue;
+      }
+    }
+  }
+
+  private async acquireLock(key: string): Promise<() => void> {
+    return new Promise((resolve) => {
+      const queue = this.pathQueues.get(key);
+      const createRelease = (): (() => void) => {
+        let released = false;
+        return () => {
+          if (released) return;
+          released = true;
+          const currentQueue = this.pathQueues.get(key);
+          if (currentQueue && currentQueue.length) {
+            const next = currentQueue.shift();
+            next?.();
+          } else {
+            this.pathQueues.delete(key);
+          }
+        };
+      };
+
+      if (!queue) {
+        this.pathQueues.set(key, []);
+        resolve(createRelease());
+      } else {
+        queue.push(() => resolve(createRelease()));
+      }
+    });
+  }
+
+  private buildLockKey(path: string, scope: 'resource' | 'directory'): string {
+    const normalized = this.normalizePath(path);
+    if (scope === 'directory') {
+      const dir = this.getDirectoryPath(normalized);
+      return `dir:${dir || '/'}`;
+    }
+    return `res:${normalized || '/'}`;
+  }
+
+  private normalizePath(path: string): string {
+    return path.replace(/\\/g, '/');
+  }
+
+  private getDirectoryPath(path: string): string {
+    const normalized = this.normalizePath(path);
+    const separatorIndex = normalized.lastIndexOf('/');
+    if (separatorIndex === -1) {
+      return '';
+    }
+    return normalized.slice(0, separatorIndex);
+  }
+
+  private isResourceLockedError(error: unknown): boolean {
+    if (axios.isAxiosError(error)) {
+      return error.response?.status === 423;
+    }
+    if (error instanceof ServiceUnavailableException) {
+      const message = error.message ?? '';
+      return (
+        message.includes('DiskResourceLockedError') ||
+        message.includes('Resource is locked')
+      );
+    }
+    return false;
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    if (ms <= 0) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, ms));
   }
 
   private canRefresh(): boolean {
@@ -895,17 +1076,41 @@ export class YandexDiskClient {
       `YD rename temp resource: from=${tempPath} to=${finalPath}, overwrite=${overwrite}`,
     );
 
-    await this.http.post<YandexDiskUploadLink>('/resources/move', null, {
-      params: {
-        from: tempPath,
-        path: finalPath,
-        overwrite,
-      },
-      headers: {
-        'User-Agent': this.uploadUserAgent,
-      },
-    });
+    let attempt = 0;
+    let delay = this.lockRetryBaseDelayMs;
 
-    return finalPath;
+    while (true) {
+      attempt += 1;
+      try {
+        await this.http.post<YandexDiskUploadLink>('/resources/move', null, {
+          params: {
+            from: tempPath,
+            path: finalPath,
+            overwrite,
+          },
+          headers: {
+            'User-Agent': this.uploadUserAgent,
+          },
+        });
+        return finalPath;
+      } catch (error) {
+        if (
+          this.isResourceLockedError(error) &&
+          attempt < this.lockRetryAttempts
+        ) {
+          const waitMs = Math.min(delay, this.lockRetryMaxDelayMs);
+          this.logger.warn(
+            `YD rename locked: from=${tempPath}, to=${finalPath}. attempt=${attempt}/${this.lockRetryAttempts}, retry_in=${waitMs}ms`,
+          );
+          delay = Math.min(
+            delay * this.lockRetryBackoffFactor,
+            this.lockRetryMaxDelayMs,
+          );
+          await this.sleep(waitMs);
+          continue;
+        }
+        throw error;
+      }
+    }
   }
 }

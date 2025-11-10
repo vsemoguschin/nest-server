@@ -14,7 +14,6 @@ import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
 import { subMonths, format } from 'date-fns';
-import { contains } from 'class-validator';
 
 function getLastMonths(dateStr: string, m: number): string[] {
   // Парсим входную строку в объект Date (предполагаем формат YYYY-MM)
@@ -958,6 +957,27 @@ export class PlanfactService {
 
   async getPLDatas(period: string, user: UserDto) {
     const periods = getLastMonths(period, 4);
+    type ManagerDatasResult = Awaited<
+      ReturnType<typeof this.commercialDatasService.getManagerDatas>
+    >;
+    const managerDatasCache = new Map<string, ManagerDatasResult>();
+    const getManagerDatasCached = async (
+      periodKey: string,
+      managerId: number,
+    ) => {
+      const cacheKey = `${managerId}:${periodKey}`;
+      const cached = managerDatasCache.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+      const data = await this.commercialDatasService.getManagerDatas(
+        user,
+        periodKey,
+        managerId,
+      );
+      managerDatasCache.set(cacheKey, data);
+      return data;
+    };
 
     type resType = {
       periods: string[];
@@ -1084,7 +1104,6 @@ export class PlanfactService {
           },
           include: {
             dops: true,
-
           },
         });
         const dops = await this.prisma.dop.findMany({
@@ -1097,7 +1116,7 @@ export class PlanfactService {
               status: { not: 'Возврат' },
             },
           },
-        }); 
+        });
         const dopsPrice = dops.reduce((a, b) => a + b.price, 0);
         const allDealsPrice =
           deals.reduce((a, b) => a + b.price, 0) + dopsPrice;
@@ -1556,66 +1575,51 @@ export class PlanfactService {
 
     res.expenses.commercial.adExpenses.totals = getTotals(adExpenses);
 
-    const mopSalaries = await Promise.all(
-      periods.map(async (p, index) => {
-        const mops = await this.prisma.user.findMany({
-          where: {
-            role: {
-              shortName: {in: ['MOP', 'ROP']},
-            },
+    type SalaryPeriodStat = {
+      value: number;
+      period: string;
+      changePercent: number;
+    };
+    const mopSalaries: SalaryPeriodStat[] = [];
+    for (const [index, p] of periods.entries()) {
+      const mops = await this.prisma.user.findMany({
+        where: {
+          role: {
+            shortName: { in: ['MOP', 'ROP'] },
           },
-        });
-        const comMops = await Promise.all(mops.map(async (m) => {
-            const data = await this.commercialDatasService.getManagerDatas(user, p, m.id);
-            return {
-              fullName: data.fullName,
-              totalSalary: data.totalSalary,
-              role: data.role,
-            };
-          }),
-        );
-        // console.log(comMops.filter(m=>m.totalSalary > 0));
-
-        const value = comMops.reduce((a, b) => a + b.totalSalary, 0);
-        const sendDeals = res.income.sendDeals[index].value;
-
-        return {
-          value,
-          period: p,
-          changePercent: sendDeals
-            ? +((value / sendDeals) * 100).toFixed(2)
-            : 0,
-        };
-      }),
-    );
-    const ropSalaries = await Promise.all(
-      periods.map(async (p, index) => {
-        const rops = await this.prisma.user.findMany({
-          where: {
-            id: {in: [21]},
-          },
-        });
-        const comRops = await Promise.all(rops.map(async (r) => {
-          const data = await this.commercialDatasService.getManagerDatas(user, p, r.id);
-          return {
-            fullName: data.fullName,
-            totalSalary: data.totalSalary,
-            role: data.role,
-          };
-        }),
-        );
-        const value = comRops.reduce((a, b) => a + b.totalSalary, 0);
-        const sendDeals = res.income.sendDeals[index].value;
-
-        return {
-          value,
-          period: p,
-          changePercent: sendDeals
-            ? +((value / sendDeals) * 100).toFixed(2)
-            : 0,
-        };
-      }),
-    );
+        },
+      });
+      let value = 0;
+      for (const m of mops) {
+        const data = await getManagerDatasCached(p, m.id);
+        value += data.totalSalary;
+      }
+      const sendDeals = res.income.sendDeals[index].value;
+      mopSalaries.push({
+        value,
+        period: p,
+        changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+      });
+    }
+    const ropSalaries: SalaryPeriodStat[] = [];
+    for (const [index, p] of periods.entries()) {
+      const rops = await this.prisma.user.findMany({
+        where: {
+          id: { in: [21] },
+        },
+      });
+      let value = 0;
+      for (const r of rops) {
+        const data = await getManagerDatasCached(p, r.id);
+        value += data.totalSalary;
+      }
+      const sendDeals = res.income.sendDeals[index].value;
+      ropSalaries.push({
+        value,
+        period: p,
+        changePercent: sendDeals ? +((value / sendDeals) * 100).toFixed(2) : 0,
+      });
+    }
     const disSalaries = await Promise.all(
       periods.map(async (p, index) => {
         const designers = await this.prisma.user.findMany({

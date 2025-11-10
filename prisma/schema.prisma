@@ -692,7 +692,7 @@ model FrezerReport {
   id           Int      @id @default(autoincrement())
   date         String
   items        Int     @default(0)
-  sheets       Int     @default(0)
+  sheets       Float   @default(0)
   remake       Int     @default(0)
   hours        Int     @default(0)
   cost         Int     @default(0)

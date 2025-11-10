@@ -33,7 +33,7 @@ export class PaymentsService {
         groupId: existingDeal.groupId,
       },
     });
-    console.log(newPayment);
+    // console.log(newPayment);
 
     // Формируем комментарий для аудита
     const auditComment = `Добавил платеж(${newPayment.method}) на сумму ${newPayment.price} руб.`;
@@ -57,7 +57,7 @@ export class PaymentsService {
         .digest('hex');
       return hash;
     }
-    console.log(createPaymentLinkDto);
+    // console.log(createPaymentLinkDto);
     const { Name, Phone, Email } = createPaymentLinkDto;
     const Amount = createPaymentLinkDto.Amount * 100;
     const Description =
@@ -136,13 +136,13 @@ export class PaymentsService {
       body,
     );
 
-    console.log(data);
+    // console.log(data);
 
     return { link: data.PaymentURL, PaymentId: data.PaymentId };
   }
 
   async checkPaymentByLink(link: string) {
-    console.log(link);
+    // console.log(link);
     const linkEnd = link.split('/').reverse()[0];
 
     const result = {
@@ -161,7 +161,7 @@ export class PaymentsService {
         const successUrl = new URL(data.merchant.successUrl);
         const amountParam = successUrl.searchParams.get('Amount');
         const paymentId = successUrl.searchParams.get('PaymentId') ?? '';
-        console.log(data.status);
+        // console.log(data.status);
         if (amountParam) {
           const amount = Number.parseInt(amountParam, 10);
           if (!Number.isNaN(amount)) {
@@ -190,7 +190,7 @@ export class PaymentsService {
     }
     let TerminalKey = '';
     let password = '';
-    console.log(terminal);
+    // console.log(terminal);
     if (terminal === 'Терминал ИзиБук') {
       TerminalKey = process.env.TB_TERMINAL_BOOK || '';
       password = process.env.TB_TERMINAL_PASSWORD_BOOK || '';
@@ -225,7 +225,7 @@ export class PaymentsService {
         res.message = data.Message;
       }
 
-      console.log(data);
+      // console.log(data);
 
       return res;
     } catch (error) {

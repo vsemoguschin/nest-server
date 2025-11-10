@@ -1787,7 +1787,7 @@ export class CommercialDatasService {
   }
   /** get /commercial-datas/tops/:groupId?period */
   async getManagerGroupDatas(groupId: number, period: string) {
-    console.log(groupId, period);
+    // console.log(groupId, period);
     if (groupId === 18 || groupId === 3) {
       const groups = await this.prisma.group.findMany({
         where: {
@@ -2461,7 +2461,6 @@ export class CommercialDatasService {
   }
   /** get /commercial-datas */
   async getManagersDatas(user: UserDto, period: string, groupId?: number) {
-    console.log('getManagersDatas', period, groupId);
     const workspacesSearch =
       user.role.department === 'administration' || user.role.shortName === 'KD'
         ? { gt: 0 }
