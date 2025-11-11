@@ -12,6 +12,7 @@ import { UserDto } from '../users/dto/user.dto';
 import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
+import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
 import { subMonths, format } from 'date-fns';
 
@@ -68,6 +69,17 @@ export interface CounterPartyType {
 export interface ExpenseCategoryType {
   id: number;
   name: string;
+}
+
+export interface ExpenseCategoryTree {
+  id: number;
+  name: string;
+  type: string;
+  description: string | null;
+  parentId: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+  children: ExpenseCategoryTree[];
 }
 
 export interface OperationPositionType {
@@ -816,6 +828,120 @@ export class PlanfactService {
     });
   }
 
+  async updateExpenseCategory(id: number, dto: UpdateExpenseCategoryDto) {
+    // Проверяем, существует ли категория
+    const category = await this.prisma.expenseCategory.findUnique({
+      where: { id },
+    });
+
+    if (!category) {
+      throw new NotFoundException(`Категория с ID ${id} не найдена`);
+    }
+
+    // Если обновляется parentId, проверяем существование родительской категории
+    if (dto.parentId !== undefined) {
+      if (dto.parentId === null) {
+        // Разрешаем установку parentId в null (удаление родителя)
+      } else {
+        // Проверяем, что родительская категория существует
+        const parentExists = await this.prisma.expenseCategory.findUnique({
+          where: { id: dto.parentId },
+        });
+        if (!parentExists) {
+          throw new BadRequestException(
+            'Указанная родительская категория не найдена',
+          );
+        }
+
+        // Проверяем, что не пытаемся установить категорию родителем самой себя
+        if (dto.parentId === id) {
+          throw new BadRequestException(
+            'Категория не может быть родителем самой себя',
+          );
+        }
+
+        // Проверяем, что тип родительской категории совпадает с типом текущей категории
+        const categoryType = dto.type || category.type;
+        if (parentExists.type !== categoryType) {
+          throw new BadRequestException(
+            'Тип родительской категории должен совпадать с типом категории',
+          );
+        }
+
+        // Проверяем, что не создается циклическая зависимость
+        // (родитель не должен быть потомком текущей категории)
+        const checkCircularDependency = async (
+          parentId: number,
+          currentId: number,
+        ): Promise<boolean> => {
+          const parent = await this.prisma.expenseCategory.findUnique({
+            where: { id: parentId },
+            select: { parentId: true },
+          });
+          if (!parent || !parent.parentId) {
+            return false;
+          }
+          if (parent.parentId === currentId) {
+            return true;
+          }
+          return checkCircularDependency(parent.parentId, currentId);
+        };
+
+        const hasCircularDependency = await checkCircularDependency(
+          dto.parentId,
+          id,
+        );
+        if (hasCircularDependency) {
+          throw new BadRequestException(
+            'Невозможно установить родителя: создается циклическая зависимость',
+          );
+        }
+      }
+    }
+
+    // Если обновляется type, проверяем, что все дочерние категории имеют тот же тип
+    if (dto.type && dto.type !== category.type) {
+      const children = await this.prisma.expenseCategory.findMany({
+        where: { parentId: id },
+      });
+      if (children.length > 0) {
+        throw new BadRequestException(
+          'Невозможно изменить тип категории, у которой есть дочерние категории',
+        );
+      }
+    }
+
+    // Подготавливаем данные для обновления
+    const updateData: {
+      name?: string;
+      type?: string;
+      description?: string;
+      parentId?: number | null;
+    } = {};
+
+    if (dto.name !== undefined) {
+      updateData.name = dto.name;
+    }
+    if (dto.type !== undefined) {
+      updateData.type = dto.type;
+    }
+    if (dto.description !== undefined) {
+      updateData.description = dto.description;
+    }
+    if (dto.parentId !== undefined) {
+      updateData.parentId = dto.parentId;
+    }
+
+    return this.prisma.expenseCategory.update({
+      where: { id },
+      data: updateData,
+      include: {
+        parent: true,
+        children: true,
+      },
+    });
+  }
+
   async getExpenseCategories(operationType?: string) {
     const types = operationType
       ? operationType === 'Credit'
@@ -892,6 +1018,100 @@ export class PlanfactService {
     };
 
     return flattenCategories(categories);
+  }
+
+  async getExpenseCategoriesList() {
+    // Получаем все категории без include (более эффективно)
+    const allCategories = await this.prisma.expenseCategory.findMany({
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    // Создаем карту для быстрого доступа к детям по parentId
+    const childrenMap = new Map<number, typeof allCategories>();
+    for (const category of allCategories) {
+      if (category.parentId !== null) {
+        if (!childrenMap.has(category.parentId)) {
+          childrenMap.set(category.parentId, []);
+        }
+        childrenMap.get(category.parentId)!.push(category);
+      }
+    }
+
+    // Рекурсивная функция для построения дерева категорий
+    const buildCategoryTree = (
+      category: (typeof allCategories)[0],
+    ): ExpenseCategoryTree => {
+      const categoryData: ExpenseCategoryTree = {
+        id: category.id,
+        name: category.name,
+        type: category.type,
+        description: category.description,
+        parentId: category.parentId,
+        createdAt: category.createdAt,
+        updatedAt: category.updatedAt,
+        children: [],
+      };
+
+      // Находим всех детей этой категории из карты
+      const children = childrenMap.get(category.id) || [];
+
+      // Рекурсивно строим дерево для каждого ребенка
+      categoryData.children = children
+        .map((child) => buildCategoryTree(child))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      return categoryData;
+    };
+
+    // Фильтруем только корневые категории (без родителей)
+    const rootCategories = allCategories.filter((cat) => cat.parentId === null);
+
+    // Группируем по типу
+    const groupedByType: Record<string, ExpenseCategoryTree[]> = {};
+
+    for (const rootCategory of rootCategories) {
+      const type = rootCategory.type;
+      if (!groupedByType[type]) {
+        groupedByType[type] = [];
+      }
+
+      // Строим дерево для каждой корневой категории
+      const categoryTree = buildCategoryTree(rootCategory);
+      groupedByType[type].push(categoryTree);
+    }
+
+    // Сортируем категории внутри каждого типа по имени
+    for (const type in groupedByType) {
+      groupedByType[type].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // Определяем порядок типов
+    const typeOrder = [
+      'Расходы',
+      'Доходы',
+      'Обязательства',
+      'Капитал',
+      'Активы',
+    ];
+
+    // Создаем новый объект с типами в нужном порядке
+    const orderedResult: Record<string, ExpenseCategoryTree[]> = {};
+    for (const type of typeOrder) {
+      if (groupedByType[type]) {
+        orderedResult[type] = groupedByType[type];
+      }
+    }
+
+    // Добавляем остальные типы, если они есть (на случай, если появятся новые типы)
+    for (const type in groupedByType) {
+      if (!orderedResult[type]) {
+        orderedResult[type] = groupedByType[type];
+      }
+    }
+
+    return orderedResult;
   }
 
   // async assignExpenseCategory(operationId: string, expenseCategoryId: number) {
@@ -2302,6 +2522,12 @@ export class PlanfactService {
           },
           {
             payPurpose: {
+              contains: searchText,
+              mode: 'insensitive',
+            },
+          },
+          {
+            operationId: {
               contains: searchText,
               mode: 'insensitive',
             },

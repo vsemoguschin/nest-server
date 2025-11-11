@@ -1,5 +1,6 @@
 // Скрипт для нормализации позиций задач в колонках
 // Проходит по всем колонкам и перенумеровывает задачи начиная с 1, 2, 3...
+// Использует raw SQL для обновления позиций без изменения updatedAt
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -11,11 +12,13 @@ function formatPosition(value: number): string {
 }
 
 async function main() {
-  console.log('Начинаем нормализацию позиций задач...\n');
+  const startTime = new Date();
+  console.log(
+    `Начинаем нормализацию позиций задач в ${startTime.toISOString()}...\n`,
+  );
 
   // Получаем все доски
   const boards = await prisma.board.findMany({
-    where: { deletedAt: null },
     select: { id: true, title: true },
   });
 
@@ -59,15 +62,17 @@ async function main() {
       );
 
       // Перенумеровываем задачи: 1, 2, 3, 4...
+      // Используем raw SQL для обновления позиций без изменения updatedAt
       for (let i = 0; i < tasks.length; i++) {
         const newPosition = i + 1;
         const formattedPosition = formatPosition(newPosition);
 
-        // Обновляем позицию задачи
-        await prisma.kanbanTask.update({
-          where: { id: tasks[i].id },
-          data: { position: formattedPosition },
-        });
+        // Обновляем позицию задачи через raw SQL, чтобы не изменять updatedAt
+        await prisma.$executeRaw`
+          UPDATE "KanbanTask"
+          SET position = ${formattedPosition}::DECIMAL(10, 4)
+          WHERE id = ${tasks[i].id}
+        `;
       }
 
       totalColumnsProcessed++;
@@ -76,10 +81,16 @@ async function main() {
     }
   }
 
+  const endTime = new Date();
+  const duration = endTime.getTime() - startTime.getTime();
+
   console.log('\n' + '='.repeat(50));
   console.log(`✓ Нормализация завершена успешно!`);
   console.log(`  Обработано колонок: ${totalColumnsProcessed}`);
   console.log(`  Обработано задач: ${totalTasksProcessed}`);
+  console.log(
+    `  Время выполнения: ${duration}ms (${(duration / 1000).toFixed(1)}с)`,
+  );
   console.log('='.repeat(50));
 }
 

@@ -153,11 +153,12 @@ export class PaymentsService {
     };
 
     try {
-      const { data } = await axios.get<{
-        status?: string;
+      const {data} = await axios.get<{
+        status?: { value: string };
         merchant?: { successUrl?: string };
-      }>(`https://payapi.tbank.ru/api/v1/pf/sessions/${linkEnd}`);
-      if (data.status === 'SUCCESS' && data.merchant?.successUrl) {
+      }>(`https://payapi.tbank.ru/api/v2/pf/sessions/${linkEnd}`);
+      console.log(linkEnd,data);
+      if (data.status?.value === 'SUCCESS' && data.merchant?.successUrl) {
         const successUrl = new URL(data.merchant.successUrl);
         const amountParam = successUrl.searchParams.get('Amount');
         const paymentId = successUrl.searchParams.get('PaymentId') ?? '';
@@ -175,7 +176,7 @@ export class PaymentsService {
 
       return result;
     } catch (error) {
-      console.log(error);
+      // console.log(error);
       return result;
       throw new NotFoundException(`Ошибка при проверке оплаты`);
     }

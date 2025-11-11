@@ -425,32 +425,129 @@ export class NotificationSchedulerService {
   }
 
   // Автоматическая архивация задач старше 5 дней на заданных досках
+  // Архивирует задачи, у которых все записи аудита и comments старше 5 дней
   // Сейчас — только для boardId=3
   @Cron('0 10 3 * * *', { timeZone: 'Europe/Moscow' })
   async autoArchiveOldTasks() {
+    const startTime = new Date();
     try {
       const BOARD_IDS = [3];
       const DAYS = 5;
-      const cutoff = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000);
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - DAYS);
 
-      const res = await this.prisma.kanbanTask.updateMany({
+      this.logger.log(
+        `[autoArchiveOldTasks] Starting at ${startTime.toISOString()}, checking tasks older than ${fiveDaysAgo.toISOString()}`,
+      );
+
+      // Получаем все активные задачи с их аудитом и comments
+      const tasks = await this.prisma.kanbanTask.findMany({
         where: {
           deletedAt: null,
           archived: false,
-          updatedAt: { lt: cutoff },
           boardId: { in: BOARD_IDS },
         },
-        data: { archived: true },
+        select: {
+          id: true,
+          title: true,
+          boardId: true,
+          columnId: true,
+          audits: {
+            select: {
+              id: true,
+              createdAt: true,
+              action: true,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
+          comments: {
+            where: {
+              deletedAt: null, // Исключаем удаленные комментарии
+            },
+            select: {
+              id: true,
+              updatedAt: true,
+            },
+          },
+        },
       });
+
       this.logger.log(
-        `[autoArchiveOldTasks] cutoff=${cutoff.toISOString()} archived=${res.count} on boards=${BOARD_IDS.join(',')}`,
+        `[autoArchiveOldTasks] Found ${tasks.length} active tasks to check`,
       );
+
+      const tasksToArchive: number[] = [];
+      const tasksWithoutAudit: number[] = [];
+      const tasksWithRecentActivity: number[] = [];
+      const tasksWithRecentComments: number[] = [];
+
+      // Проверяем каждую задачу
+      for (const task of tasks) {
+        // Если у задачи нет записей аудита, пропускаем
+        if (task.audits.length === 0) {
+          tasksWithoutAudit.push(task.id);
+          continue;
+        }
+
+        // Проверяем, все ли записи аудита старше 5 дней
+        const allAuditsOld = task.audits.every(
+          (audit) => audit.createdAt < fiveDaysAgo,
+        );
+
+        // Проверяем, все ли comments старше 5 дней (если есть)
+        const allCommentsOld =
+          task.comments.length === 0 ||
+          task.comments.every((comment) => comment.updatedAt < fiveDaysAgo);
+
+        // Архивируем только если все условия выполнены
+        if (allAuditsOld && allCommentsOld) {
+          tasksToArchive.push(task.id);
+        } else {
+          if (!allAuditsOld) {
+            tasksWithRecentActivity.push(task.id);
+          }
+          if (!allCommentsOld) {
+            tasksWithRecentComments.push(task.id);
+          }
+        }
+      }
+
+      this.logger.log(
+        `[autoArchiveOldTasks] Tasks without audit: ${tasksWithoutAudit.length}, with recent activity: ${tasksWithRecentActivity.length}, with recent comments: ${tasksWithRecentComments.length}, to archive: ${tasksToArchive.length}`,
+      );
+
+      if (tasksToArchive.length === 0) {
+        this.logger.log('[autoArchiveOldTasks] No tasks to archive');
+        await this.notifyAdmins(
+          `🗂️ Автоархив задач: нет задач для архивации\nПроверено: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}`,
+        );
+        return;
+      }
+
+      // Архивируем задачи через raw SQL без изменения updatedAt
+      const archivedCount = await this.prisma.$executeRaw`
+        UPDATE "KanbanTask"
+        SET archived = true
+        WHERE id = ANY(${tasksToArchive}::int[])
+      `;
+
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+
+      this.logger.log(
+        `[autoArchiveOldTasks] Archived ${archivedCount} tasks in ${duration}ms`,
+      );
+
       await this.notifyAdmins(
-        `🗂️ Автоархив задач завершён.\nАрхивировано: ${res.count}\nДоски: ${BOARD_IDS.join(', ')}\nСрез по дате: ${cutoff.toISOString()}`,
+        `🗂️ Автоархив задач завершён.\nАрхивировано: ${archivedCount}\nДоски: ${BOARD_IDS.join(', ')}\nПроверено задач: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}\nВремя выполнения: ${(duration / 1000).toFixed(1)}с`,
       );
     } catch (e: unknown) {
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
       this.logger.error(
-        `[autoArchiveOldTasks] failed: ${e instanceof Error ? e.message : String(e)}`,
+        `[autoArchiveOldTasks] failed after ${duration}ms: ${e instanceof Error ? e.message : String(e)}`,
       );
       await this.notifyAdmins(
         `🔥 Автоархив задач упал: ${e instanceof Error ? e.message : String(e)}`,
@@ -459,7 +556,7 @@ export class NotificationSchedulerService {
   }
 
   // Автоматическая синхронизация операций Т-Банка каждый час с 8 утра до полуночи
-  @Cron('0 0 8-23 * * *', { timeZone: 'Europe/Moscow' })
+  @Cron('0 0 * * * *', { timeZone: 'Europe/Moscow' })
   async syncTbankOperations() {
     // Защита от повторного выполнения
     if (this.isTbankSyncRunning) {
@@ -529,7 +626,6 @@ export class NotificationSchedulerService {
 
       // Получаем все доски
       const boards = await this.prisma.board.findMany({
-        where: { deletedAt: null },
         select: { id: true, title: true },
       });
 
@@ -575,15 +671,17 @@ export class NotificationSchedulerService {
           );
 
           // Перенумеровываем задачи: 1, 2, 3, 4...
+          // Используем raw SQL для обновления позиций без изменения updatedAt
           for (let i = 0; i < tasks.length; i++) {
             const newPosition = i + 1;
             const formattedPosition = formatPosition(newPosition);
 
-            // Обновляем позицию задачи
-            await this.prisma.kanbanTask.update({
-              where: { id: tasks[i].id },
-              data: { position: formattedPosition },
-            });
+            // Обновляем позицию задачи через raw SQL, чтобы не изменять updatedAt
+            await this.prisma.$executeRaw`
+              UPDATE "KanbanTask"
+              SET position = ${formattedPosition}::DECIMAL(10, 4)
+              WHERE id = ${tasks[i].id}
+            `;
           }
 
           totalColumnsProcessed++;

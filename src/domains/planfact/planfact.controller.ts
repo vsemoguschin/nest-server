@@ -21,6 +21,7 @@ import { UserDto } from '../users/dto/user.dto';
 import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
+import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
 
 @UseGuards(RolesGuard)
@@ -267,6 +268,22 @@ export class PlanfactController {
     return this.planfactService.createExpenseCategory(createExpenseCategoryDto);
   }
 
+  @Patch('expense-categories/:id')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async updateExpenseCategory(
+    @Param('id') id: string,
+    @Body() updateExpenseCategoryDto: UpdateExpenseCategoryDto,
+  ) {
+    const categoryId = parseInt(id, 10);
+    if (isNaN(categoryId)) {
+      throw new BadRequestException('ID категории должен быть числом');
+    }
+    return this.planfactService.updateExpenseCategory(
+      categoryId,
+      updateExpenseCategoryDto,
+    );
+  }
+
   @Get('expense-categories')
   @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getExpenseCategories(@Query('operationType') operationType?: string) {
@@ -277,6 +294,12 @@ export class PlanfactController {
   @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getExpenseCategoriesByType(@Query('type') type: string) {
     return this.planfactService.getExpenseCategoriesByType(type);
+  }
+
+  @Get('expense-categories-list')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async getExpenseCategoriesList() {
+    return this.planfactService.getExpenseCategoriesList();
   }
 
   @Get('counter-parties')

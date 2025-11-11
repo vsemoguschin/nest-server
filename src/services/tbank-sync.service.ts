@@ -199,8 +199,8 @@ export class TbankSyncService {
         const params: Record<string, string | number | boolean | string[]> = {
           accountNumber,
           operationStatus: 'Transaction',
-          from: new Date(from).toISOString(),
-          to: new Date(to + 'T23:59:59.999Z').toISOString(),
+          from: `${from}T00:00:00.000Z`,
+          to: `${to}T23:59:59.999Z`,
           withBalances: cursor ? false : true,
           limit: Math.min(limit, 5000),
         };

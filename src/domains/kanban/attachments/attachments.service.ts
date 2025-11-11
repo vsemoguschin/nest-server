@@ -33,6 +33,7 @@ export class AttachmentsService {
     private readonly yandexDisk: YandexDiskClient,
   ) {}
   private readonly logger = new Logger(AttachmentsService.name);
+  private readonly downloadRetryAttempts = 2;
   private readonly placeholderFilename = 'placeholder.png';
   private readonly placeholderAbsolutePath = join(
     process.cwd(),
@@ -282,7 +283,7 @@ export class AttachmentsService {
       await this.clearTaskCover(path);
       return this.buildPlaceholderStream();
     }
-    const src = await this.openSourceStream(href);
+    const src = await this.fetchSourceStream(path, href);
 
     const isImage = (src.contentType || '').startsWith('image/');
     const needTransform = isImage && (!!w || !!h || !!format);
@@ -366,7 +367,7 @@ export class AttachmentsService {
       await this.clearTaskCover(path);
       return this.buildPlaceholderStream();
     }
-    const src = await this.openSourceStream(href);
+    const src = await this.fetchSourceStream(path, href);
 
     return {
       stream: src.stream,
@@ -416,5 +417,53 @@ export class AttachmentsService {
         `Failed to clear kanban task cover for path=${path}: ${message}`,
       );
     }
+  }
+
+  private async fetchSourceStream(
+    path: string,
+    initialHref: string,
+  ): Promise<{
+    stream: Readable;
+    contentType?: string;
+    contentLength?: number;
+  }> {
+    let attempt = 0;
+    let href: string | null = initialHref;
+
+    while (attempt < this.downloadRetryAttempts && href) {
+      attempt += 1;
+      try {
+        const result = await this.openSourceStream(href);
+        if (attempt > 1) {
+          this.logger.log(
+            `Successfully fetched stream on retry ${attempt} for path=${path}`,
+          );
+        }
+        return result;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error ?? 'unknown');
+        this.logger.warn(
+          `openSourceStream attempt ${attempt} failed for path=${path}: ${message}`,
+        );
+        if (attempt >= this.downloadRetryAttempts) {
+          break;
+        }
+        href = await this.getDownloadHref(path);
+        if (!href) {
+          this.logger.warn(
+            `Re-fetching href returned null for path=${path}, using placeholder`,
+          );
+          await this.clearTaskCover(path);
+          return this.buildPlaceholderStream();
+        }
+      }
+    }
+
+    this.logger.error(
+      `All attempts to fetch stream failed for path=${path}. Falling back to placeholder.`,
+    );
+    await this.clearTaskCover(path);
+    return this.buildPlaceholderStream();
   }
 }

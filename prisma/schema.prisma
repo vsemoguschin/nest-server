@@ -1094,6 +1094,8 @@ model TaskOrder {
   giftPack       Boolean         @default(false) // Подарочная упаковка
   description    String          @default("")    // Описание
   deletedAt      DateTime?                       // Для мягкого удаления
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt @default(now())
   docs           Boolean         @default(false) // Документы
 
   neons          Neon[]
