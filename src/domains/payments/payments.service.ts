@@ -157,7 +157,7 @@ export class PaymentsService {
         status?: { value: string };
         merchant?: { successUrl?: string };
       }>(`https://payapi.tbank.ru/api/v2/pf/sessions/${linkEnd}`);
-      console.log(linkEnd,data);
+      // console.log(linkEnd,data);
       if (data.status?.value === 'SUCCESS' && data.merchant?.successUrl) {
         const successUrl = new URL(data.merchant.successUrl);
         const amountParam = successUrl.searchParams.get('Amount');

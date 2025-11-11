@@ -2542,13 +2542,28 @@ export class PlanfactService {
           lte: to + 'T23:59:59.999Z',
         },
       });
-      conditions.push({
-        payPurpose: {
-          not: {
-            contains: 'Овернайт',
+      if (
+        expenseCategoryId &&
+        expenseCategoryId.length > 0 &&
+        expenseCategoryId.includes(0)
+      ) {
+        conditions.push({
+          NOT: {
+            OR: [
+              {
+                payPurpose: {
+                  contains: 'Возврат д/с с депозита "Овернайт"',
+                },
+              },
+              {
+                payPurpose: {
+                  contains: 'Внутренний перевод на депозит "Овернайт"',
+                },
+              },
+            ],
           },
-        },
-      });
+        });
+      }
 
       if (accountId) {
         conditions.push({
@@ -2676,10 +2691,15 @@ export class PlanfactService {
     const operationsWithTransferFlag = allOperations.map((operation) => {
       const operationAny = operation as unknown as {
         counterPartyAccount?: string | null;
+        payPurpose: string;
       };
       const isTransferOperation =
-        operationAny.counterPartyAccount &&
-        realAccountNumbers.includes(operationAny.counterPartyAccount);
+        (operationAny.counterPartyAccount &&
+          realAccountNumbers.includes(operationAny.counterPartyAccount)) ||
+        operationAny.payPurpose.includes('Возврат д/с с депозита "Овернайт"') ||
+        operationAny.payPurpose.includes(
+          'Внутренний перевод на депозит "Овернайт"',
+        );
       return {
         ...operation,
         isTransferOperation: !!isTransferOperation,
@@ -2900,7 +2920,12 @@ export class PlanfactService {
         continue;
       }
 
-      if (operation.payPurpose.includes('Овернайт')) {
+      if (
+        operation.payPurpose.includes('Возврат д/с с депозита "Овернайт"') ||
+        operation.payPurpose.includes(
+          'Внутренний перевод на депозит "Овернайт"',
+        )
+      ) {
         continue;
       }
 
