@@ -122,8 +122,11 @@ export class PaymentsController {
 
   @Post('link')
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
-  async createPaymentLink(@Body() dto: CreatePaymentLinkDto) {
-    return this.paymentsService.createLink(dto);
+  async createPaymentLink(
+    @Body() dto: CreatePaymentLinkDto,
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.paymentsService.createLink(dto, user);
   }
 
   @Get('checkPayment')

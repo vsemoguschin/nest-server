@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -50,7 +54,7 @@ export class PaymentsService {
     return { ...newPayment, message: 'Платеж создан' };
   }
 
-  async createLink(createPaymentLinkDto: CreatePaymentLinkDto) {
+  async createLink(createPaymentLinkDto: CreatePaymentLinkDto, user: UserDto) {
     function generateToken(Data): string {
       const hash = createHash('sha256')
         .update(Data.join(''), 'utf8')
@@ -75,10 +79,19 @@ export class PaymentsService {
     } else if (createPaymentLinkDto.terminal === 'Терминал Изинеон СБП') {
       TerminalKey = process.env.TB_TERMINAL_SPB || '';
       password = process.env.TB_TERMINAL_PASSWORD_SPB || '';
+    } else if (createPaymentLinkDto.terminal === 'Терминал ИзиБук СБП') {
+      TerminalKey = process.env.TB_TERMINAL_BOOK_SPB || '';
+      password = process.env.TB_TERMINAL_PASSWORD_BOOK_SPB || '';
     } else {
       TerminalKey = process.env.TB_TERMINAL || '';
       password = process.env.TB_TERMINAL_PASSWORD || '';
     }
+    // if (
+    //   user.role.shortName !== 'G' &&
+    //   createPaymentLinkDto.terminal === 'Терминал ИзиБук СБП'
+    // ) {
+    //   throw new ForbiddenException('У вас нет доступа к этому терминалу');
+    // }
     const RedirectDueDate = (() => {
       const dueDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
       const pad = (value: number) => value.toString().padStart(2, '0');
@@ -153,7 +166,7 @@ export class PaymentsService {
     };
 
     try {
-      const {data} = await axios.get<{
+      const { data } = await axios.get<{
         status?: { value: string };
         merchant?: { successUrl?: string };
       }>(`https://payapi.tbank.ru/api/v2/pf/sessions/${linkEnd}`);
