@@ -8,6 +8,8 @@ type CreateRuleInput = {
   description?: string;
   keywords: string[];
   operationType: 'Debit' | 'Credit' | 'Any';
+  accountIds?: number[];
+  counterPartyIds?: number[];
   expenseCategoryId: number;
 };
 
@@ -48,6 +50,8 @@ export class AutoCategoryRulesService {
         description: data.description ?? '',
         keywords: data.keywords,
         operationType: data.operationType,
+        accountIds: data.accountIds ?? [],
+        counterPartyIds: data.counterPartyIds ?? [],
         expenseCategoryId: data.expenseCategoryId,
       },
     });
@@ -118,6 +122,12 @@ export class AutoCategoryRulesService {
         ...(data.operationType !== undefined
           ? { operationType: data.operationType }
           : {}),
+        ...(data.accountIds !== undefined
+          ? { accountIds: data.accountIds }
+          : {}),
+        ...(data.counterPartyIds !== undefined
+          ? { counterPartyIds: data.counterPartyIds }
+          : {}),
         ...(data.expenseCategoryId !== undefined
           ? { expenseCategoryId: data.expenseCategoryId }
           : {}),
@@ -155,15 +165,42 @@ export class AutoCategoryRulesService {
       id: number;
       typeOfOperation: string;
       payPurpose: string;
+      accountId?: number;
+      counterPartyId?: number | null;
     },
-    rule: { operationType: string; keywords: string[] },
+    rule: {
+      operationType: string;
+      keywords: string[];
+      accountIds?: number[];
+      counterPartyIds?: number[];
+    },
   ): boolean {
+    // Проверка типа операции
     if (
       rule.operationType !== 'Any' &&
       rule.operationType !== op.typeOfOperation
     ) {
       return false;
     }
+
+    // Проверка счетов (если указаны в правиле)
+    if (rule.accountIds && rule.accountIds.length > 0) {
+      if (!op.accountId || !rule.accountIds.includes(op.accountId)) {
+        return false;
+      }
+    }
+
+    // Проверка контрагентов (если указаны в правиле)
+    if (rule.counterPartyIds && rule.counterPartyIds.length > 0) {
+      if (
+        !op.counterPartyId ||
+        !rule.counterPartyIds.includes(op.counterPartyId)
+      ) {
+        return false;
+      }
+    }
+
+    // Проверка ключевых слов
     return this.matchesPayPurposeInOrder(op.payPurpose || '', rule.keywords);
   }
 
@@ -179,6 +216,18 @@ export class AutoCategoryRulesService {
     if (rule.operationType !== 'Any') {
       where.typeOfOperation = rule.operationType;
     }
+    // Фильтр по счетам, если указаны
+    if (rule.accountIds && rule.accountIds.length > 0) {
+      where.accountId = { in: rule.accountIds };
+    }
+
+    // Предзагрузка контрагентов для маппинга
+    const counterParties = await this.prisma.counterParty.findMany({
+      select: { id: true, account: true },
+    });
+    const accountToCounterPartyId = new Map(
+      counterParties.map((c) => [c.account || '', c.id]),
+    );
 
     // Загружаем ВСЕ операции по типу (без пагинации на уровне SQL)
     const allRows = await (
@@ -191,17 +240,29 @@ export class AutoCategoryRulesService {
         typeOfOperation: true,
         payPurpose: true,
         accountAmount: true,
+        accountId: true,
         counterPartyAccount: true,
         expenseCategoryName: true,
         counterPartyTitle: true,
         operationPositions: true,
+        account: {
+          select: {
+            id: true,
+            name: true,
+            accountNumber: true,
+          },
+        },
       },
     });
 
     // Фильтруем по правилу
-    const matched = allRows.filter((op: any) =>
-      this.matchRuleWithOriginal(op, rule),
-    );
+    const matched = allRows
+      .map((op: any) => ({
+        ...op,
+        counterPartyId:
+          accountToCounterPartyId.get(op.counterPartyAccount || '') || null,
+      }))
+      .filter((op: any) => this.matchRuleWithOriginal(op, rule));
 
     // Применяем пагинацию к РЕЗУЛЬТАТУ фильтрации
     const paginated = matched.slice(skip, skip + take);
@@ -213,6 +274,8 @@ export class AutoCategoryRulesService {
     data: {
       operationType: 'Debit' | 'Credit' | 'Any';
       keywords: string[];
+      accountIds?: number[];
+      counterPartyIds?: number[];
     },
     take = 50,
     skip = 0,
@@ -222,16 +285,29 @@ export class AutoCategoryRulesService {
     if (data.operationType !== 'Any') {
       where.typeOfOperation = data.operationType;
     }
+    // Фильтр по счетам, если указаны
+    if (data.accountIds && data.accountIds.length > 0) {
+      where.accountId = { in: data.accountIds };
+    }
+
+    // Предзагрузка контрагентов для маппинга
+    const counterParties = await this.prisma.counterParty.findMany({
+      select: { id: true, account: true },
+    });
+    const accountToCounterPartyId = new Map(
+      counterParties.map((c) => [c.account || '', c.id]),
+    );
 
     // Загружаем ВСЕ операции по типу (без пагинации на уровне SQL)
     const allRows = await this.prisma.originalOperationFromTbank.findMany({
       where,
-      orderBy: { id: 'asc' },
+      orderBy: { operationDate: 'desc' },
       select: {
         id: true,
         typeOfOperation: true,
         payPurpose: true,
         accountAmount: true,
+        accountId: true,
         counterPartyAccount: true,
         expenseCategoryName: true,
         counterPartyTitle: true,
@@ -244,16 +320,31 @@ export class AutoCategoryRulesService {
             },
           },
         },
+        account: {
+          select: {
+            id: true,
+            name: true,
+            accountNumber: true,
+          },
+        },
       },
     });
 
     // Фильтруем по правилу
-    const matched = allRows.filter((op: any) =>
-      this.matchRuleWithOriginal(op, {
-        operationType: data.operationType,
-        keywords: data.keywords,
-      }),
-    );
+    const matched = allRows
+      .map((op: any) => ({
+        ...op,
+        counterPartyId:
+          accountToCounterPartyId.get(op.counterPartyAccount || '') || null,
+      }))
+      .filter((op: any) =>
+        this.matchRuleWithOriginal(op, {
+          operationType: data.operationType,
+          keywords: data.keywords,
+          accountIds: data.accountIds,
+          counterPartyIds: data.counterPartyIds,
+        }),
+      );
 
     // Применяем пагинацию к РЕЗУЛЬТАТУ фильтрации
     const paginated = matched.slice(skip, skip + take);
@@ -271,6 +362,10 @@ export class AutoCategoryRulesService {
     const where: any = {};
     if (rule.operationType !== 'Any') {
       where.typeOfOperation = rule.operationType;
+    }
+    // Фильтр по счетам, если указаны
+    if (rule.accountIds && rule.accountIds.length > 0) {
+      where.accountId = { in: rule.accountIds };
     }
 
     // Загружаем порциями, чтобы не перегружать память
@@ -300,6 +395,7 @@ export class AutoCategoryRulesService {
           typeOfOperation: true,
           payPurpose: true,
           accountAmount: true,
+          accountId: true,
           counterPartyAccount: true,
         },
       });
@@ -307,7 +403,12 @@ export class AutoCategoryRulesService {
 
       const matchIds: number[] = [];
       for (const op of originals) {
-        if (this.matchRuleWithOriginal(op, rule)) {
+        const opWithCounterParty = {
+          ...op,
+          counterPartyId:
+            accountToCounterPartyId.get(op.counterPartyAccount || '') || null,
+        };
+        if (this.matchRuleWithOriginal(opWithCounterParty, rule)) {
           matchIds.push(op.id);
         }
       }
@@ -365,11 +466,23 @@ export class AutoCategoryRulesService {
           typeOfOperation: true,
           payPurpose: true,
           accountAmount: true,
+          accountId: true,
           counterPartyAccount: true,
         },
       },
     );
     if (!op) return { applied: 0 };
+
+    // Получаем ID контрагента
+    const counterParty = await this.prisma.counterParty.findFirst({
+      where: { account: op.counterPartyAccount || '' },
+      select: { id: true },
+    });
+
+    const opWithCounterParty = {
+      ...op,
+      counterPartyId: counterParty?.id ?? null,
+    };
 
     const rules = await (this.prisma as any).autoCategoryRule.findMany({
       where: { enabled: true },
@@ -377,12 +490,7 @@ export class AutoCategoryRulesService {
     });
 
     for (const rule of rules) {
-      if (this.matchRuleWithOriginal(op, rule)) {
-        const counterParty = await this.prisma.counterParty.findFirst({
-          where: { account: op.counterPartyAccount || '' },
-          select: { id: true },
-        });
-
+      if (this.matchRuleWithOriginal(opWithCounterParty, rule)) {
         const { count } = await this.prisma.operationPosition.updateMany({
           where: { originalOperationId: op.id },
           data: { expenseCategoryId: rule.expenseCategoryId },

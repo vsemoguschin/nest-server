@@ -860,6 +860,7 @@ export class ReportsService {
                 },
               },
             },
+            
           },
         },
       },
@@ -867,6 +868,16 @@ export class ReportsService {
         date: 'desc',
       },
     });
+
+    const deliveries = await this.prisma.delivery.findMany({
+      where: {
+        deliveredDate: {
+          gte: range.from,
+          lte: range.to,
+        },
+      },
+    });
+    console.log(deliveries);
 
     // console.log(reports);
 

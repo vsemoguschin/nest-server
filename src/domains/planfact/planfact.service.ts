@@ -344,289 +344,6 @@ export class PlanfactService {
     return counterParty;
   }
 
-  async getOperationsFromRange(
-    range: { from: string; to: string },
-    limit: number,
-    accountId: number,
-  ) {
-    try {
-      const account = await this.prisma.planFactAccount.findUnique({
-        where: {
-          id: accountId,
-        },
-      });
-
-      // если у аккаунта есть апи
-      if (account && account.isReal) {
-        // console.log('acc');
-        const fetchOperationsForAccount = async (accountNumber: string) => {
-          // const agent = new SocksProxyAgent('socks5h://localhost:8080');
-
-          try {
-            const response = await axios.get(
-              'https://business.tbank.ru/openapi/api/v1/statement',
-              {
-                // httpsAgent: agent, // Используем SOCKS-прокси
-                proxy: false, // Отключаем системный прокси
-                headers: {
-                  Authorization: 'Bearer ' + tToken,
-                  'Content-Type': 'application/json',
-                },
-                params: {
-                  accountNumber,
-                  operationStatus: 'Transaction',
-                  from: new Date(range.from),
-                  to: range.to + 'T23:59:59.999Z',
-                  withBalances: true,
-                  limit: limit,
-                },
-                maxBodyLength: Infinity,
-              },
-            );
-            // console.log(response);
-
-            await Promise.all(
-              response.data.operations.map(async (op: OperationFromApi) => {
-                // Проверяем и создаем CounterParty, если не существует
-                // console.log(op);
-                const counterParty = await this.getOrCreateCounterParty(
-                  op.counterParty,
-                );
-
-                console.log(op.counterParty);
-
-                let operationType = op.category;
-                // console.log(op);
-                if (op.category === 'selfTransferInner') {
-                  operationType = 'Перемещение';
-                }
-                if (
-                  ['incomePeople', 'income', 'creditPaymentInner'].includes(
-                    op.category,
-                  )
-                ) {
-                  operationType = 'Поступление';
-                }
-                if (
-                  [
-                    'salary', //выплаты
-                    'fee', //услуги банка
-                    'selfTransferOuter', //перевод между своими счетами в T‑Бизнесе
-                    'cardOperation', //оплата картой
-                    'contragentPeople', //исходящие платежи
-                    'contragentOutcome', //перевод контрагенту
-                    'creditPaymentOuter', //погашение кредита
-                    'tax', //налоговые платежи.
-                  ].includes(op.category)
-                ) {
-                  operationType = 'Выплата';
-                }
-
-                // Создаем операцию в базе, если не существует
-
-                const operation = await this.prisma.operation.upsert({
-                  where: { operationId: op.operationId },
-                  update: {},
-                  create: {
-                    operationId: op.operationId,
-                    operationDate: op.operationDate.slice(0, 10),
-                    operationDateTime: op.operationDate,
-                    typeOfOperation: op.typeOfOperation || 'Unknown',
-                    operationType,
-                    category: op.category || '',
-                    description: op.description || '',
-                    payPurpose: op.payPurpose || '',
-                    // accountAmount: op.accountAmount,
-                    accountId: account.id,
-                    // counterPartyId: counterParty.id,
-                  },
-                  include: {
-                    operationPositions: {
-                      include: { counterParty: true },
-                    },
-                  },
-                });
-
-                if (!operation.operationPositions.length) {
-                  await this.prisma.operationPosition.create({
-                    data: {
-                      operationId: operation.id,
-                      amount: op.accountAmount,
-                      counterPartyId: counterParty.id,
-                    },
-                  });
-                }
-
-                if (
-                  operation.operationType === 'Поступление' &&
-                  operation.payPurpose.startsWith('Пополнение по операции СБП')
-                ) {
-                  const { operationPositions } = operation;
-                  const operationPositionsIds = operationPositions.map(
-                    (p) => p.id,
-                  );
-                  await this.prisma.operationPosition.updateMany({
-                    where: {
-                      id: {
-                        in: operationPositionsIds,
-                      },
-                    },
-                    data: {
-                      expenseCategoryId: 2, //Продажа через СБП
-                    },
-                  });
-                }
-
-                if (
-                  operation.operationType === 'Поступление' &&
-                  operation.operationPositions.find(
-                    (p) => p.counterPartyId === 495,
-                  )
-                ) {
-                  const { operationPositions } = operation;
-                  const operationPositionsIds = operationPositions.map(
-                    (p) => p.id,
-                  );
-                  await this.prisma.operationPosition.updateMany({
-                    where: {
-                      id: {
-                        in: operationPositionsIds,
-                      },
-                    },
-                    data: {
-                      expenseCategoryId: 3, //Продажа "Долями"
-                    },
-                  });
-                }
-
-                if (
-                  operation.operationType === 'Поступление' &&
-                  operation.operationPositions.find(
-                    (p) => p.counterPartyId === 526,
-                  )
-                ) {
-                  const { operationPositions } = operation;
-                  const operationPositionsIds = operationPositions.map(
-                    (p) => p.id,
-                  );
-                  await this.prisma.operationPosition.updateMany({
-                    where: {
-                      id: {
-                        in: operationPositionsIds,
-                      },
-                    },
-                    data: {
-                      expenseCategoryId: 10, //наложка от сдека
-                    },
-                  });
-                }
-
-                // console.log(operation);
-                return operation;
-              }),
-            );
-            // console.log(operations);
-            return await this.prisma.operation.findMany({
-              where: {
-                operationDate: {
-                  gte: range.from,
-                  lte: range.to,
-                },
-                accountId: account.id,
-                deletedAt: null,
-              },
-              include: {
-                // counterParty: true,
-                // expenseCategory: true,
-                operationPositions: {
-                  include: {
-                    counterParty: true,
-                    expenseCategory: true,
-                  },
-                },
-                account: true,
-              },
-            });
-          } catch (error) {
-            // console.log(error);
-            throw new Error(`API request failed: ${error.message}`);
-          }
-        };
-
-        // Множество для уникальных контрагентов
-        const contragentsSet = new Set<string>();
-
-        // console.log(account);
-        const allOperations = await fetchOperationsForAccount(
-          account.accountNumber,
-        );
-
-        // Сортируем операции по operationDate (в порядке возрастания)
-        allOperations.sort(
-          (a, b) =>
-            new Date(a.operationDate).getTime() -
-            new Date(b.operationDate).getTime(),
-        );
-
-        return {
-          operations: allOperations,
-          contragents: Array.from(contragentsSet), // Уникальные контрагенты
-        };
-      } else if (account) {
-        // console.log('db');
-        const operations = await this.prisma.operation.findMany({
-          where: {
-            accountId: account.id,
-            operationDate: {
-              gte: range.from,
-              lte: range.to,
-            },
-            deletedAt: null,
-          },
-        });
-        return {
-          operations,
-          contragents: [],
-        };
-      }
-      // Функция для получения операций по одному счету
-    } catch (error) {
-      console.error('Ошибка при выполнении запроса:', error);
-
-      if (axios.isAxiosError(error)) {
-        console.error('Axios Error Response:', error.response?.data);
-        throw new NotFoundException(
-          `Ошибка API: ${error.response?.data?.errorMessage}`,
-        );
-      } else {
-        throw new NotFoundException('Неизвестная ошибка');
-      }
-    }
-  }
-
-  async getCategories() {
-    return await this.prisma.expenseCategory.findMany({
-      where: {
-        parentId: null,
-      },
-      include: {
-        children: {
-          include: {
-            children: {
-              include: {
-                children: {
-                  include: {
-                    children: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-  }
-
   async createCounterParty(dto: CreateCounterPartyDto) {
     // Проверяем существование категорий, если указаны
     if (dto.incomeExpenseCategoryId) {
@@ -671,127 +388,54 @@ export class PlanfactService {
     });
   }
 
-  async getCounterParties() {
-    return this.prisma.counterParty.findMany();
-  }
-
   async getCounterPartiesFilters({
-    from,
-    to,
-    accountId,
+    page,
+    limit,
+    title,
   }: {
-    from: string;
-    to: string;
-    accountId?: number;
+    page: number;
+    limit: number;
+    title?: string;
   }) {
-    // Получаем все операции по датам и accountId
-    const operations = await this.prisma.originalOperationFromTbank.findMany({
-      where: {
-        operationDate: {
-          gte: from,
-          lte: to + 'T23:59:59.999Z',
-        },
-        ...(accountId ? { accountId } : {}),
-      },
-      select: {
-        counterPartyAccount: true,
-      },
-    });
+    const skip = (page - 1) * limit;
 
-    // Собираем уникальные accountNumber
-    const uniqueAccountNumbers = Array.from(
-      new Set(
-        operations
-          .map((op) => op.counterPartyAccount)
-          .filter((account) => account && account.trim() !== ''),
-      ),
-    );
+    const where: Record<string, unknown> = {};
 
-    // Находим контрагентов по accountNumber
-    const counterParties = await this.prisma.counterParty.findMany({
-      where: {
-        account: {
-          in: uniqueAccountNumbers,
-        },
-      },
-      select: {
-        id: true,
-        title: true,
-      },
-      orderBy: {
-        title: 'asc',
-      },
-    });
-
-    // Возвращаем массив {id, name}
-    return counterParties.map((cp) => ({
-      id: cp.id,
-      name: cp.title,
-    }));
-  }
-
-  async getExpenseCategoriesFilters({
-    from,
-    to,
-    accountId,
-  }: {
-    from: string;
-    to: string;
-    accountId?: number;
-  }) {
-    // Получаем все операции по датам и accountId с позициями
-    const operations = await this.prisma.originalOperationFromTbank.findMany({
-      where: {
-        operationDate: {
-          gte: from,
-          lte: to + 'T23:59:59.999Z',
-        },
-        ...(accountId ? { accountId } : {}),
-      },
-      select: {
-        operationPositions: {
-          select: {
-            expenseCategoryId: true,
-          },
-        },
-      },
-    });
-
-    // Собираем уникальные expenseCategoryId из всех позиций
-    const uniqueCategoryIds = Array.from(
-      new Set(
-        operations
-          .flatMap((op) => op.operationPositions)
-          .map((pos) => pos.expenseCategoryId)
-          .filter((id): id is number => id !== null && id !== undefined),
-      ),
-    );
-
-    if (uniqueCategoryIds.length === 0) {
-      return [];
+    if (title) {
+      where.title = {
+        contains: title,
+        mode: 'insensitive',
+      };
     }
 
-    // Находим категории по expenseCategoryId
-    const expenseCategories = await this.prisma.expenseCategory.findMany({
-      where: {
-        id: {
-          in: uniqueCategoryIds,
+    const [data, total] = await Promise.all([
+      this.prisma.counterParty.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: {
+          title: 'asc',
         },
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-      orderBy: {
-        name: 'asc',
-      },
-    });
+        select: {
+          id: true,
+          title: true,
+          account: true,
+        },
+      }),
+      this.prisma.counterParty.count({ where }),
+    ]);
 
-    // Возвращаем массив {id, name}
-    return expenseCategories.map((cat) => ({
-      id: cat.id,
-      name: cat.name,
-    }));
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
+      },
+    };
   }
 
   async createExpenseCategory(dto: CreateExpenseCategoryDto) {
@@ -940,48 +584,6 @@ export class PlanfactService {
         children: true,
       },
     });
-  }
-
-  async getExpenseCategories(operationType?: string) {
-    const types = operationType
-      ? operationType === 'Credit'
-        ? ['Доходы', 'Активы', 'Обязательства', 'Капитал']
-        : ['Расходы', 'Активы', 'Обязательства', 'Капитал']
-      : [];
-
-    const categories = await this.prisma.expenseCategory.findMany({
-      where: {
-        type: { in: types },
-        parent: null,
-      },
-      include: {
-        children: {
-          include: {
-            children: {
-              include: {
-                children: true,
-              },
-            },
-          },
-        },
-      },
-      // orderBy: {
-      //   type: 'desc',
-      // },
-    });
-
-    const flattenCategories = (categories, prefix = '') => {
-      return categories.reduce((acc, cat) => {
-        const formattedCategory = { ...cat, name: `${prefix}${cat.name}` };
-        acc.push(formattedCategory);
-        if (cat.children && cat.children.length > 0) {
-          acc.push(...flattenCategories(cat.children, `${prefix} - `));
-        }
-        return acc;
-      }, []);
-    };
-
-    return flattenCategories(categories);
   }
 
   async getExpenseCategoriesByType(type: string) {
@@ -1170,7 +772,12 @@ export class PlanfactService {
     // );
     // console.log(response);
 
-    const accounts = await this.prisma.planFactAccount.findMany();
+    const accounts = await this.prisma.planFactAccount.findMany({
+      select: {
+        id: true,
+        name: true,
+      },
+    });
     // console.log(accounts);
     return accounts;
   }
@@ -2855,6 +2462,7 @@ export class PlanfactService {
         transfer: number;
         incomeExpenseCategory?: { id: number; name: string } | null;
         outcomeExpenseCategory?: { id: number; name: string } | null;
+        mainParentCategory?: string | null;
       }
     >();
     const expenseCategoryTotalsMap = new Map<

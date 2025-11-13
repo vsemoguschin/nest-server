@@ -274,6 +274,8 @@ async function saveOriginalOperations(
     name: string;
     operationType: string;
     keywords: string[];
+    accountIds: number[];
+    counterPartyIds: number[];
     expenseCategoryId: number;
   }> = (await extendedPrisma.autoCategoryRule.findMany({
     where: { enabled: true },
@@ -285,6 +287,8 @@ async function saveOriginalOperations(
       name: true,
       operationType: true,
       keywords: true,
+      accountIds: true,
+      counterPartyIds: true,
       expenseCategoryId: true,
     },
   })) as Array<{
@@ -294,6 +298,8 @@ async function saveOriginalOperations(
     name: string;
     operationType: string;
     keywords: string[];
+    accountIds: number[];
+    counterPartyIds: number[];
     expenseCategoryId: number;
   }>;
 
@@ -314,14 +320,38 @@ async function saveOriginalOperations(
     `✅ Загружено ${rules.length} правил из БД для автокатегоризации`,
   );
 
-  const applyRules = (op: OperationFromApi): number | null => {
+  const applyRules = (
+    op: OperationFromApi,
+    opAccountId: number,
+    opCounterPartyId: number | null,
+  ): number | null => {
     for (const rule of rules) {
+      // Проверка типа операции
       if (
         rule.operationType !== 'Any' &&
         rule.operationType !== op.typeOfOperation
       ) {
         continue;
       }
+
+      // Проверка счетов (если указаны в правиле)
+      if (rule.accountIds && rule.accountIds.length > 0) {
+        if (!rule.accountIds.includes(opAccountId)) {
+          continue;
+        }
+      }
+
+      // Проверка контрагентов (если указаны в правиле)
+      if (rule.counterPartyIds && rule.counterPartyIds.length > 0) {
+        if (
+          !opCounterPartyId ||
+          !rule.counterPartyIds.includes(opCounterPartyId)
+        ) {
+          continue;
+        }
+      }
+
+      // Проверка ключевых слов
       const matched = matchInOrder(op.payPurpose || '', rule.keywords);
       if (matched) {
         return rule.expenseCategoryId; // первый матч
@@ -340,13 +370,18 @@ async function saveOriginalOperations(
         op.category,
       );
 
-      // Применяем правила БД для всех типов операций (приоритет выше категории контрагента)
-      const matchedCategoryId = applyRules(op);
-      if (matchedCategoryId) {
+      // Первая попытка применения правил БД (без учета контрагента, т.к. он еще не создан)
+      // Применяем только правила без фильтра по контрагентам
+      const matchedCategoryIdWithoutCounterParty = applyRules(
+        op,
+        accountId,
+        null, // counterPartyId еще неизвестен
+      );
+      if (matchedCategoryIdWithoutCounterParty) {
         if (op.typeOfOperation === 'Credit') {
-          incomeCategoryId = matchedCategoryId;
+          incomeCategoryId = matchedCategoryIdWithoutCounterParty;
         } else if (op.typeOfOperation === 'Debit') {
-          outcomeCategoryIdFromRules = matchedCategoryId;
+          outcomeCategoryIdFromRules = matchedCategoryIdWithoutCounterParty;
         }
       }
 
@@ -396,6 +431,21 @@ async function saveOriginalOperations(
         incomeCategoryId,
         finalOutcomeCategoryId,
       );
+
+      // Теперь применяем правила БД с учетом accountId и counterPartyId
+      // Это может переопределить предыдущий результат, если есть правила с фильтром по контрагентам
+      const matchedCategoryIdWithCounterParty = applyRules(
+        op,
+        accountId,
+        counterParty.id,
+      );
+      if (matchedCategoryIdWithCounterParty) {
+        if (op.typeOfOperation === 'Credit') {
+          incomeCategoryId = matchedCategoryIdWithCounterParty;
+        } else if (op.typeOfOperation === 'Debit') {
+          outcomeCategoryIdFromRules = matchedCategoryIdWithCounterParty;
+        }
+      }
 
       // Всегда делаем upsert для операции
       const originalOperation = await prisma.originalOperationFromTbank.upsert({

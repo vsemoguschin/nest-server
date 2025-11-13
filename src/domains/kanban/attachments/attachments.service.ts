@@ -194,6 +194,27 @@ export class AttachmentsService {
       const contentType = resp.headers['content-type'] as string | undefined;
       const contentLength = Number(resp.headers['content-length']);
       const stream = resp.data as unknown as Readable;
+
+      // Валидация Content-Type: отклоняем HTML ответы
+      if (contentType) {
+        const normalizedContentType = contentType
+          .toLowerCase()
+          .split(';')[0]
+          .trim();
+        if (
+          normalizedContentType === 'text/html' ||
+          normalizedContentType.startsWith('text/html')
+        ) {
+          this.logger.error(
+            `Yandex Disk returned HTML instead of file. Content-Type: ${contentType}, href: ${href}`,
+          );
+          stream.destroy();
+          throw new InternalServerErrorException(
+            'Yandex Disk returned HTML error page instead of file',
+          );
+        }
+      }
+
       return { stream, contentType, contentLength };
     } catch (error) {
       const axiosError = error as AxiosError;
@@ -280,7 +301,6 @@ export class AttachmentsService {
       this.logger.warn(
         `Returning placeholder for preview: path=${path}, format=${format ?? 'original'}`,
       );
-      await this.clearTaskCover(path);
       return this.buildPlaceholderStream();
     }
     const src = await this.fetchSourceStream(path, href);
@@ -364,7 +384,6 @@ export class AttachmentsService {
     const href = await this.getDownloadHref(path);
     if (!href) {
       this.logger.warn(`Returning placeholder for download: path=${path}`);
-      await this.clearTaskCover(path);
       return this.buildPlaceholderStream();
     }
     const src = await this.fetchSourceStream(path, href);
@@ -397,25 +416,6 @@ export class AttachmentsService {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to open placeholder file: ${message}`);
       throw new InternalServerErrorException('Storage error');
-    }
-  }
-
-  private async clearTaskCover(path: string): Promise<void> {
-    try {
-      const result = await this.prisma.kanbanTask.updateMany({
-        where: { cover: path },
-        data: { cover: '' },
-      });
-      if (result.count > 0) {
-        this.logger.warn(
-          `Cleared cover for ${result.count} kanban task(s) because file is missing: ${path}`,
-        );
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Failed to clear kanban task cover for path=${path}: ${message}`,
-      );
     }
   }
 
@@ -454,7 +454,6 @@ export class AttachmentsService {
           this.logger.warn(
             `Re-fetching href returned null for path=${path}, using placeholder`,
           );
-          await this.clearTaskCover(path);
           return this.buildPlaceholderStream();
         }
       }
@@ -463,7 +462,6 @@ export class AttachmentsService {
     this.logger.error(
       `All attempts to fetch stream failed for path=${path}. Falling back to placeholder.`,
     );
-    await this.clearTaskCover(path);
     return this.buildPlaceholderStream();
   }
 }

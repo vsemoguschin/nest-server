@@ -787,25 +787,17 @@ model CounterParty {
 }
 
 model AutoCategoryRule {
-  /// Уникальный идентификатор правила
-  id                Int       @id @default(autoincrement())
-  /// Флаг активности правила автокатегоризации
-  enabled           Boolean   @default(true)
-  /// Приоритет применения (меньше — раньше). Используется при совпадениях
-  priority          Int       @default(100)
-  /// Название правила для удобства
-  name              String
-  /// Описание логики правила
-  description       String    @default("")
-  /// Тип сопоставления: например, 'keywords' | 'regex'
-  keywords          String[]
-  /// Тип операции: входящая/исходящая/перевод и т.п.
-  operationType     String
-  /// ID категории расходов, которую назначать при совпадении
-  expenseCategoryId Int
-  /// Дата создания
-  createdAt         DateTime  @default(now())
-  /// Дата обновления
+  id                Int       @id @default(autoincrement()) // Уникальный идентификатор правила
+  enabled           Boolean   @default(true) // Флаг активности правила автокатегоризации
+  priority          Int       @default(100) // Приоритет применения (меньше — раньше). Используется при совпадениях
+  name              String // Название правила для удобства
+  description       String    @default("") // Описание логики правила
+  keywords          String[] // Тип сопоставления: например, 'keywords' | 'regex'
+  operationType     String // Тип операции: входящая/исходящая/перевод и т.п.
+  accountIds        Int[] // ID счетов, на которые будет применяться правило
+  counterPartyIds   Int[] // ID контрагентов, на которые будет применяться правило
+  expenseCategoryId Int // ID категории расходов, которую назначать при совпадении
+  createdAt         DateTime  @default(now()) // Дата создания
   updatedAt         DateTime  @updatedAt
 
   @@index([enabled, priority])

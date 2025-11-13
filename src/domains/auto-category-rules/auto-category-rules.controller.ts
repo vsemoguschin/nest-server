@@ -24,6 +24,8 @@ export class AutoCategoryRulesController {
       description?: string;
       keywords: string[];
       operationType: 'Debit' | 'Credit' | 'Any';
+      accountIds?: number[];
+      counterPartyIds?: number[];
       expenseCategoryId: number;
     },
   ) {
@@ -51,6 +53,8 @@ export class AutoCategoryRulesController {
       description?: string;
       keywords?: string[];
       operationType?: 'Debit' | 'Credit' | 'Any';
+      accountIds?: number[];
+      counterPartyIds?: number[];
       expenseCategoryId?: number;
     },
   ) {
@@ -81,6 +85,8 @@ export class AutoCategoryRulesController {
     body: {
       operationType: 'Debit' | 'Credit' | 'Any';
       keywords: string[];
+      accountIds?: number[];
+      counterPartyIds?: number[];
     },
     @Query('take') take?: string,
     @Query('skip') skip?: string,
