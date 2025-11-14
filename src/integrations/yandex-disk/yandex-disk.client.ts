@@ -1003,6 +1003,7 @@ export class YandexDiskClient {
         case 429:
           throw new ServiceUnavailableException(finalMessage);
         case 500:
+        case 502:
         case 503:
           throw new ServiceUnavailableException(finalMessage);
         case 507:
@@ -1027,6 +1028,24 @@ export class YandexDiskClient {
   }
 
   private extractErrorMessage(error: AxiosError): string | undefined {
+    // Проверяем, не является ли ответ HTML (например, 502 Bad Gateway от nginx)
+    if (typeof error.response?.data === 'string') {
+      const responseText = error.response.data as string;
+      // Если это HTML, не возвращаем его как сообщение об ошибке
+      if (
+        responseText.includes('<!DOCTYPE') ||
+        responseText.includes('<html') ||
+        responseText.includes('Bad Gateway') ||
+        responseText.includes('502')
+      ) {
+        this.logger.error(
+          `Yandex Disk returned HTML error page. Status: ${error.response?.status}`,
+        );
+        return undefined; // Возвращаем undefined, чтобы использовать fallback сообщение
+      }
+      return responseText;
+    }
+
     const data = error.response?.data as YandexDiskErrorDetails | undefined;
     if (!data) return undefined;
 
@@ -1048,10 +1067,6 @@ export class YandexDiskClient {
         .map((d) => d?.message ?? d?.description)
         .filter(Boolean)
         .join('; ');
-    }
-
-    if (typeof error.response?.data === 'string') {
-      return error.response?.data as string;
     }
 
     return undefined;

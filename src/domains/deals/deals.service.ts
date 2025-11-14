@@ -520,7 +520,7 @@ export class DealsService {
 
       const hasDelivered = Array.isArray(deal.deliveries)
         ? deal.deliveries.some((delivery: any) =>
-            ['Отправлена', 'Вручена'].includes(delivery.status),
+            ['Отправлена'].includes(delivery.status),
           )
         : deal.hasDelivered === true;
 

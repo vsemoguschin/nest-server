@@ -4,6 +4,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { UserDto } from '../users/dto/user.dto';
 import { CdekService } from 'src/services/cdek.service';
 import { DeliveryUpdateDto } from './dto/delivery-update.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class DeliveriesService {
@@ -242,5 +243,108 @@ export class DeliveriesService {
     await this.prisma.delivery.delete({
       where: { id },
     });
+  }
+
+  async getList(
+    user: UserDto,
+    from: string,
+    to: string,
+    take: number,
+    page: number,
+    groupId?: number,
+  ) {
+    const sanitizedTake = Math.max(1, take);
+    const sanitizedPage = Math.max(1, page);
+    const skip = (sanitizedPage - 1) * sanitizedTake;
+
+    const gSearch = ['ADMIN', 'G', 'KD'].includes(user.role.shortName)
+      ? { groupId: { gt: 0 } }
+      : ['DO'].includes(user.role.shortName)
+        ? { workSpaceId: user.workSpaceId }
+        : { groupId: user.groupId };
+
+    const where: Prisma.DeliveryWhereInput = {
+      date: {
+        gte: from,
+        lte: to,
+      },
+      deal: {
+        reservation: false,
+        deletedAt: null,
+        ...(groupId !== undefined ? { groupId: groupId } : gSearch),
+      },
+    };
+
+    const [deliveries, allDeliveriesForTotal] = await this.prisma.$transaction([
+      // Запрос для текущей страницы
+      this.prisma.delivery.findMany({
+        where: where,
+        skip,
+        take: sanitizedTake,
+        include: {
+          deal: {
+            select: {
+              title: true,
+              saleDate: true,
+              price: true,
+              dops: {
+                select: {
+                  price: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          date: 'desc',
+        },
+      }),
+      // Запрос для подсчета общей суммы за весь период (без пагинации)
+      this.prisma.delivery.findMany({
+        where: where,
+        include: {
+          deal: {
+            select: {
+              price: true,
+              dops: {
+                select: {
+                  price: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    // Вычисляем общую сумму за весь период: deal.price + сумма всех dops.price для каждой доставки
+    const totalDeliveryPrice = allDeliveriesForTotal.reduce((sum, delivery) => {
+      const dealPrice = delivery.deal?.price ?? 0;
+      const dopsSum =
+        delivery.deal?.dops?.reduce((acc, dop) => acc + dop.price, 0) ?? 0;
+      return sum + dealPrice + dopsSum;
+    }, 0);
+
+    return {
+      totalDeliveryPrice: Number(totalDeliveryPrice.toFixed(2)),
+      items: deliveries.map((delivery) => {
+        const dealPrice = delivery.deal?.price ?? 0;
+        const dopsSum =
+          delivery.deal?.dops?.reduce((acc, dop) => acc + dop.price, 0) ?? 0;
+        const calculatedPrice = dealPrice + dopsSum;
+
+        return {
+          id: delivery.id,
+          dealId: delivery.dealId,
+          method: delivery.method,
+          type: delivery.type,
+          price: calculatedPrice,
+          dealTitle: delivery.deal?.title ?? '',
+          dealSaleDate: delivery.deal?.saleDate ?? '',
+          status: delivery.status,
+          date: delivery.date,
+        };
+      }),
+    };
   }
 }

@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import axios, { AxiosError } from 'axios';
 import { createReadStream, existsSync } from 'fs';
@@ -152,6 +153,7 @@ export class AttachmentsService {
       const errorMessage =
         error instanceof Error ? error.message : String(error ?? 'unknown');
 
+      // Постоянные ошибки - возвращаем null для показа placeholder
       if (
         error instanceof NotFoundException ||
         errorMessage.includes('DiskNotFoundError') ||
@@ -161,13 +163,38 @@ export class AttachmentsService {
         return null;
       }
 
+      // Временные ошибки - возвращаем null для показа placeholder
+      if (
+        error instanceof ServiceUnavailableException ||
+        errorMessage.includes('Service Unavailable') ||
+        errorMessage.includes('Bad Gateway') ||
+        errorMessage.includes('502') ||
+        errorMessage.includes('503')
+      ) {
+        this.logger.warn(
+          `Temporary Yandex Disk error for path="${path}": ${errorMessage}. Returning null for placeholder.`,
+        );
+        return null;
+      }
+
       if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
         const msg = error.response?.data
           ? JSON.stringify(error.response.data)
           : error.message;
         this.logger.error(`getDownloadHref failed: ${msg}`);
-        if (error.response?.status === 404) {
+
+        // 404 - файл не найден, возвращаем null
+        if (status === 404) {
           this.logger.warn(`File missing on Yandex Disk: ${path}`);
+          return null;
+        }
+
+        // 502, 503 - временные ошибки, возвращаем null
+        if (status === 502 || status === 503) {
+          this.logger.warn(
+            `Temporary Yandex Disk error (${status}) for path="${path}". Returning null for placeholder.`,
+          );
           return null;
         }
       } else if (error instanceof Error) {
@@ -176,6 +203,7 @@ export class AttachmentsService {
         this.logger.error('getDownloadHref failed: Unknown error');
       }
 
+      // Только для критических ошибок выбрасываем исключение
       throw new InternalServerErrorException('Storage error');
     }
   }

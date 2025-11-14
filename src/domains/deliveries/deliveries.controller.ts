@@ -10,6 +10,7 @@ import {
   Get,
   Query,
   BadRequestException,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -49,6 +50,43 @@ export class DeliveriesController {
       );
     }
     return this.deliveriesService.checkRegisters(period);
+  }
+
+  @Get('')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'MOP',
+    'ROP',
+    'ROV',
+    'MOV',
+    'LOGIST',
+    'MARKETER',
+    'ASSISTANT',
+  )
+  @ApiOperation({ summary: 'Получить список доставок' })
+  async getList(
+    @CurrentUser() user: UserDto,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('groupId', new ParseIntPipe({ optional: true }))
+    groupId?: number,
+  ) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.deliveriesService.getList(user, from, to, take, page, groupId);
   }
 
   // Создание записи
