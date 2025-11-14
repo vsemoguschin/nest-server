@@ -440,7 +440,7 @@ export class PlanfactService {
 
   async createExpenseCategory(dto: CreateExpenseCategoryDto) {
     // Проверяем, существует ли родительская категория, если указан parentId
-    console.log(dto);
+    // console.log(dto);
     if (dto.parentId) {
       const parentExists = await this.prisma.expenseCategory.findUnique({
         where: { id: dto.parentId },

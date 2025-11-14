@@ -576,7 +576,10 @@ export class TasksService {
       },
 
       deal: {
-        include: {
+        select: {
+          id: true,
+          title: true,
+          saleDate: true,
           deliveries: {
             select: {
               method: true,
@@ -606,31 +609,26 @@ export class TasksService {
 
     let avaliableDeals: { id: number; title: string; saleDate: string }[] = [];
 
-    if (!task.dealId && task.chatLink) {
+    if (task.chatLink) {
       const deals = await this.prisma.deal.findMany({
         where: {
           client: {
             chatLink: { equals: task.chatLink, mode: 'insensitive' },
           },
         },
+        select: {
+          id: true,
+          title: true,
+          saleDate: true,
+        },
         // take: 2,
       });
 
-      if (deals.length > 1) {
-        avaliableDeals = deals.map((d) => ({
-          id: d.id,
-          title: d.title,
-          saleDate: d.saleDate,
-        }));
-      } else if (deals.length === 1) {
-        task = await this.prisma.kanbanTask.update({
-          where: { id: task.id },
-          data: {
-            deal: { connect: { id: deals[0].id } },
-          },
-          include: taskIncludes,
-        });
-      }
+      avaliableDeals = deals.map((d) => ({
+        id: d.id,
+        title: d.title,
+        saleDate: d.saleDate,
+      }));
     }
 
     const warnings = collectTaskWarnings(
@@ -754,34 +752,6 @@ export class TasksService {
       });
 
       let finalDealId = updated.dealId;
-
-      if (field === 'chatLink') {
-        const normalizedLink = dto.chatLink?.trim();
-
-        if (normalizedLink) {
-          const deals = await tx.deal.findMany({
-            where: {
-              client: {
-                chatLink: { equals: normalizedLink, mode: 'insensitive' },
-              },
-            },
-            select: { id: true },
-          });
-
-          if (deals.length === 1) {
-            const relinked = await tx.kanbanTask.update({
-              where: { id: task.id },
-              data: { deal: { connect: { id: deals[0].id } } },
-              select: { dealId: true },
-            });
-            finalDealId = relinked.dealId;
-          } else {
-            finalDealId = null;
-          }
-        } else {
-          finalDealId = null;
-        }
-      }
 
       if (field === 'dealId') {
         const hasDealId =
@@ -1063,7 +1033,10 @@ export class TasksService {
       if (!targetColumn) throw new NotFoundException('Target column not found');
 
       // Проверка платежей при перемещении в колонки, требующие полной оплаты
-      if (PAYMENT_REQUIRED_COLUMN_IDS.includes(targetColumn.id)) {
+      if (
+        PAYMENT_REQUIRED_COLUMN_IDS.includes(targetColumn.id) &&
+        !['ADMIN', 'KD', 'G', 'ROV'].includes(user.role.shortName)
+      ) {
         await this.validateDealPayments(task.id);
       }
 
@@ -1136,7 +1109,7 @@ export class TasksService {
    * и ставит задачу в начало колонки (минимальная позиция - 1 или 1, если колонка пустая).
    * Возвращает обновлённую задачу и информацию о колонках.
    */
-  async moveToNextColumn(taskId: number): Promise<{
+  async moveToNextColumn(taskId: number, user: UserDto): Promise<{
     updated: any;
     fromColumn: {
       id: number;
@@ -1197,7 +1170,8 @@ export class TasksService {
     }
 
     // Проверка платежей при перемещении в колонки, требующие полной оплаты
-    if (PAYMENT_REQUIRED_COLUMN_IDS.includes(targetColumn.id)) {
+    if (PAYMENT_REQUIRED_COLUMN_IDS.includes(targetColumn.id) &&
+    !['ADMIN', 'KD', 'G', 'ROV'].includes(user.role.shortName)) {
       await this.validateDealPayments(taskId);
     }
 

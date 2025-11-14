@@ -851,8 +851,8 @@ export class ReportsService {
         dateDeliveriesSales, //сумма отправленных
       };
     });
-    console.log(range,reportsData.reduce((a, b) => a + b.dateDeliveriesSales, 0));
-    console.log(deliveries.map(d=>({date: d.date, deal: d.deal})));
+    // console.log(range,reportsData.reduce((a, b) => a + b.dateDeliveriesSales, 0));
+    // console.log(deliveries.map(d=>({date: d.date, deal: d.deal})));
     return reportsData;
   }
 }

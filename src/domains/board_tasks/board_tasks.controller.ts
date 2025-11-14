@@ -326,7 +326,7 @@ export class TasksController {
   ) {
     // const task = await this.tasksService.ensureTask(taskId);
     const { updated, fromColumn, targetColumn } =
-      await this.tasksService.moveToNextColumn(taskId);
+      await this.tasksService.moveToNextColumn(taskId, user);
     await this.tasksService.ensureMember(taskId, user.id);
     const msg = `Перемещение: «${fromColumn?.title ?? '—'}» → «${targetColumn.title}»`;
     await this.audit.log({
