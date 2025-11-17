@@ -116,7 +116,9 @@ export class TasksService {
               deletedAt: null,
             },
           },
-          include: {
+          select: {
+            userId: true,
+            noticeType: true,
             user: {
               select: {
                 tg_id: true,
@@ -1022,7 +1024,9 @@ export class TasksService {
           boardId: true,
           subscriptions: {
             where: { user: { deletedAt: null } },
-            include: {
+            select: {
+              userId: true,
+              noticeType: true,
               user: {
                 select: { tg_id: true },
               },
@@ -1109,7 +1113,10 @@ export class TasksService {
    * и ставит задачу в начало колонки (минимальная позиция - 1 или 1, если колонка пустая).
    * Возвращает обновлённую задачу и информацию о колонках.
    */
-  async moveToNextColumn(taskId: number, user: UserDto): Promise<{
+  async moveToNextColumn(
+    taskId: number,
+    user: UserDto,
+  ): Promise<{
     updated: any;
     fromColumn: {
       id: number;
@@ -1123,6 +1130,8 @@ export class TasksService {
       position: Prisma.Decimal;
       boardId: number;
       subscriptions: {
+        userId: number;
+        noticeType: string;
         user: {
           tg_id: string;
         };
@@ -1156,7 +1165,9 @@ export class TasksService {
         boardId: true,
         subscriptions: {
           where: { user: { deletedAt: null } },
-          include: {
+          select: {
+            userId: true,
+            noticeType: true,
             user: {
               select: { tg_id: true },
             },
@@ -1170,8 +1181,10 @@ export class TasksService {
     }
 
     // Проверка платежей при перемещении в колонки, требующие полной оплаты
-    if (PAYMENT_REQUIRED_COLUMN_IDS.includes(targetColumn.id) &&
-    !['ADMIN', 'KD', 'G', 'ROV'].includes(user.role.shortName)) {
+    if (
+      PAYMENT_REQUIRED_COLUMN_IDS.includes(targetColumn.id) &&
+      !['ADMIN', 'KD', 'G', 'ROV'].includes(user.role.shortName)
+    ) {
       await this.validateDealPayments(taskId);
     }
 

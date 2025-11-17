@@ -114,7 +114,21 @@ export class TasksController {
     const column = await this.tasksService.ensureTaskColumn(dto.columnId);
     const task = await this.tasksService.create(user, dto, column.boardId);
     const { subscriptions } = column;
-    // console.log(subscriptions);
+
+    // Получаем участников задачи для фильтрации подписок
+    const taskWithMembers = await this.tasksService.ensureTask(task.id);
+    const memberIds = new Set(
+      (taskWithMembers.members || []).map((m: { id: number }) => m.id),
+    );
+
+    // Фильтруем подписки: если noticeType === 'only_my', оставляем только тех, кто является участником
+    const filteredSubscriptions = subscriptions.filter((sub) => {
+      if (sub.noticeType === 'only_my') {
+        return memberIds.has(sub.userId);
+      }
+      return true; // 'all' - отправляем всем
+    });
+
     await this.audit.log({
       userId: user.id,
       taskId: task.id,
@@ -125,7 +139,7 @@ export class TasksController {
       taskId: task.id,
       boardId: column.boardId,
       taskTitle: task.title,
-      subscriptions,
+      subscriptions: filteredSubscriptions,
       columnTitle: column.title,
     });
     return task;
@@ -289,11 +303,25 @@ export class TasksController {
     //   // link опционально, если не передашь — сгенерится автоматически
     // });
     if (movedBetweenColumns && targetColumn.subscriptions?.length) {
+      // Получаем участников задачи для фильтрации подписок
+      const taskWithMembers = await this.tasksService.ensureTask(taskId);
+      const memberIds = new Set(
+        (taskWithMembers.members || []).map((m: { id: number }) => m.id),
+      );
+
+      // Фильтруем подписки: если noticeType === 'only_my', оставляем только тех, кто является участником
+      const filteredSubscriptions = targetColumn.subscriptions.filter((sub) => {
+        if (sub.noticeType === 'only_my') {
+          return memberIds.has(sub.userId);
+        }
+        return true; // 'all' - отправляем всем
+      });
+
       await this.notify.notifyColumnSubscribers({
         taskId,
         boardId: targetColumn.boardId,
         taskTitle: updated.title,
-        subscriptions: targetColumn.subscriptions,
+        subscriptions: filteredSubscriptions,
         columnTitle: targetColumn.title,
       });
     }
@@ -336,11 +364,25 @@ export class TasksController {
       description: msg,
     });
     if (targetColumn.subscriptions?.length) {
+      // Получаем участников задачи для фильтрации подписок
+      const taskWithMembers = await this.tasksService.ensureTask(taskId);
+      const memberIds = new Set(
+        (taskWithMembers.members || []).map((m: { id: number }) => m.id),
+      );
+
+      // Фильтруем подписки: если noticeType === 'only_my', оставляем только тех, кто является участником
+      const filteredSubscriptions = targetColumn.subscriptions.filter((sub) => {
+        if (sub.noticeType === 'only_my') {
+          return memberIds.has(sub.userId);
+        }
+        return true; // 'all' - отправляем всем
+      });
+
       await this.notify.notifyColumnSubscribers({
         taskId,
         boardId: targetColumn.boardId,
         taskTitle: updated.title,
-        subscriptions: targetColumn.subscriptions,
+        subscriptions: filteredSubscriptions,
         columnTitle: targetColumn.title,
       });
     }

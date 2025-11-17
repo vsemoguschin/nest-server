@@ -13,6 +13,8 @@ type NotifyOpts = {
 };
 
 type ColumnSubscriptionPayload = {
+  userId: number;
+  noticeType: string;
   user: {
     tg_id: string;
   };
@@ -93,7 +95,15 @@ export class TaskNotifyService {
     //   return;
     // }
 
-    const { taskId, boardId, taskTitle, subscriptions, link, silent, columnTitle } = opts;
+    const {
+      taskId,
+      boardId,
+      taskTitle,
+      subscriptions,
+      link,
+      silent,
+      columnTitle,
+    } = opts;
 
     if (!subscriptions.length) return;
 

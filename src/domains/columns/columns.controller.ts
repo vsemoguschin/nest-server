@@ -78,8 +78,18 @@ export class ColumnsController {
   async subscribe(
     @CurrentUser() user: UserDto,
     @Param('id', ParseIntPipe) id: number,
+    @Body() body: { noticeType?: 'all' | 'only_my' },
   ) {
-    return this.columnsService.subscribe(user.id, id);
+    return this.columnsService.subscribe(user.id, id, body.noticeType || 'all');
+  }
+
+  @Patch(':id/subscribe')
+  async updateNoticeType(
+    @CurrentUser() user: UserDto,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { noticeType: 'all' | 'only_my' },
+  ) {
+    return this.columnsService.updateNoticeType(user.id, id, body.noticeType);
   }
 
   @Delete(':id/subscribe')

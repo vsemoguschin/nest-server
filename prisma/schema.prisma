@@ -907,10 +907,11 @@ model Column {
 }
 
 model ColumnSubscription {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  columnId  Int
-  createdAt DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  columnId   Int
+  createdAt  DateTime @default(now())
+  noticeType String  @default("all")  // all | only_my 
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   column Column @relation(fields: [columnId], references: [id], onDelete: Cascade)

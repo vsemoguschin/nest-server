@@ -2,6 +2,7 @@ import {
   Injectable,
   ForbiddenException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -45,20 +46,18 @@ export class ColumnsService {
         title: true,
         position: true,
         createdAt: true,
-        
+
         // При желании можно вернуть счётчики задач:
         _count: { select: { tasks: { where: { deletedAt: null } } } },
       },
     });
   }
 
-  async create(
-    userId: number,
-    dto: CreateColumnDto,
-  ) {
+  async create(userId: number, dto: CreateColumnDto) {
     await this.assertBoardAccess(userId, dto.boardId);
 
-    const position = dto.position ?? (await this.computeNextPosition(dto.boardId));
+    const position =
+      dto.position ?? (await this.computeNextPosition(dto.boardId));
 
     return this.prisma.column.create({
       data: {
@@ -121,7 +120,15 @@ export class ColumnsService {
     return { success: true };
   }
 
-  async subscribe(userId: number, columnId: number) {
+  async subscribe(
+    userId: number,
+    columnId: number,
+    noticeType: 'all' | 'only_my' = 'all',
+  ) {
+    if (noticeType !== 'all' && noticeType !== 'only_my') {
+      throw new BadRequestException('noticeType must be "all" or "only_my"');
+    }
+
     const column = await this.prisma.column.findFirst({
       where: { id: columnId, deletedAt: null },
       select: { id: true, boardId: true },
@@ -129,17 +136,84 @@ export class ColumnsService {
     if (!column) throw new NotFoundException('Column not found');
 
     await this.assertBoardAccess(userId, column.boardId);
- 
+
     const existing = await this.prisma.columnSubscription.findUnique({
       where: { userId_columnId: { userId, columnId } },
-      select: { id: true, userId: true, columnId: true, createdAt: true },
+      select: {
+        id: true,
+        userId: true,
+        columnId: true,
+        createdAt: true,
+        noticeType: true,
+      },
     });
 
-    if (existing) return existing;
+    if (existing) {
+      // Обновляем noticeType если он изменился
+      if (existing.noticeType !== noticeType) {
+        return this.prisma.columnSubscription.update({
+          where: { userId_columnId: { userId, columnId } },
+          data: { noticeType },
+          select: {
+            id: true,
+            userId: true,
+            columnId: true,
+            createdAt: true,
+            noticeType: true,
+          },
+        });
+      }
+      return existing;
+    }
 
     return this.prisma.columnSubscription.create({
-      data: { userId, columnId },
-      select: { id: true, userId: true, columnId: true, createdAt: true },
+      data: { userId, columnId, noticeType },
+      select: {
+        id: true,
+        userId: true,
+        columnId: true,
+        createdAt: true,
+        noticeType: true,
+      },
+    });
+  }
+
+  async updateNoticeType(
+    userId: number,
+    columnId: number,
+    noticeType: 'all' | 'only_my',
+  ) {
+    if (noticeType !== 'all' && noticeType !== 'only_my') {
+      throw new BadRequestException('noticeType must be "all" or "only_my"');
+    }
+
+    const column = await this.prisma.column.findFirst({
+      where: { id: columnId, deletedAt: null },
+      select: { id: true, boardId: true },
+    });
+    if (!column) throw new NotFoundException('Column not found');
+
+    await this.assertBoardAccess(userId, column.boardId);
+
+    const existing = await this.prisma.columnSubscription.findUnique({
+      where: { userId_columnId: { userId, columnId } },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    return this.prisma.columnSubscription.update({
+      where: { userId_columnId: { userId, columnId } },
+      data: { noticeType },
+      select: {
+        id: true,
+        userId: true,
+        columnId: true,
+        createdAt: true,
+        noticeType: true,
+      },
     });
   }
 

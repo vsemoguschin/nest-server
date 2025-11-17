@@ -234,6 +234,7 @@ export class BoardsService {
       id: c.id,
       title: c.title,
       isSubs: c.subscriptions.length > 0,
+      subType: c.subscriptions[0]?.noticeType,
     }));
   }
 

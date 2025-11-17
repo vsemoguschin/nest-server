@@ -1131,7 +1131,7 @@ export class DealsService {
       where: {
         group: groupsSearch,
         role: { shortName: { in: ['MOP', 'DO', 'ROP', 'MOV', 'ROV'] } },
-        // deletedAt: null,
+        deletedAt: null,
       },
       select: {
         id: true,
