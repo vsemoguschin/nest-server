@@ -231,24 +231,24 @@ async function main() {
     `\nНайдено архивированных задач для разархивации: ${archivedTasks.length}`,
   );
 
-  // if (archivedTasks.length > 0) {
-  //   const unarchiveResult = await prisma.kanbanTask.updateMany({
-  //     where: {
-  //       id: {
-  //         in: archivedTasks.map((task) => task.id),
-  //       },
-  //     },
-  //     data: {
-  //       archived: false,
-  //     },
-  //   });
+  if (archivedTasks.length > 0) {
+    const unarchiveResult = await prisma.kanbanTask.updateMany({
+      where: {
+        id: {
+          in: archivedTasks.map((task) => task.id),
+        },
+      },
+      data: {
+        archived: false,
+      },
+    });
 
-  //   console.log(
-  //     `✓ Разархивировано задач: ${unarchiveResult.count}\nДоска: ${BOARD_IDS.join(', ')}, Колонки: ${IGNORE_COLUMNS_IDS.join(', ')}`,
-  //   );
-  // } else {
-  //   console.log('✓ Нет архивированных задач для разархивации');
-  // }
+    console.log(
+      `✓ Разархивировано задач: ${unarchiveResult.count}\nДоска: ${BOARD_IDS.join(', ')}, Колонки: ${IGNORE_COLUMNS_IDS.join(', ')}`,
+    );
+  } else {
+    console.log('✓ Нет архивированных задач для разархивации');
+  }
 
   console.log('\n✓ Seed script completed successfully.');
 }
