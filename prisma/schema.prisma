@@ -616,11 +616,18 @@ model MasterReport {
   isPenalty    Boolean  @default(false)
   comment      String   @default("")
 
+  lightingType      String  @default("")
+  lightingLength    Float   @default(0)
+  lightingElements  Int     @default(0)
+  lightingCost      Int     @default(0)
+
   userId     Int
   user       User    @relation(fields: [userId], references: [id])
 
   dealId     Int?
   deal       Deal?   @relation(fields: [dealId], references: [id])
+
+  orderId    Int?
 }
 
 model PackerReport {

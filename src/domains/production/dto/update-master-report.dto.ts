@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsIn,
   Min,
+  IsBoolean,
 } from 'class-validator';
 
 export class UpdateMasterReportDto {
@@ -55,4 +56,37 @@ export class UpdateMasterReportDto {
   @IsString()
   @IsOptional()
   comment?: string;
+
+  @IsBoolean({ message: 'isPenalty должен быть булевым значением' })
+  @IsOptional()
+  isPenalty?: boolean;
+
+  @IsString({ message: 'Тип освещения должен быть строкой' })
+  @IsOptional()
+  lightingType?: string;
+
+  @IsNumber({}, { message: 'Длина освещения должна быть числом' })
+  @Min(0, { message: 'Длина освещения должна быть больше или равна нулю' })
+  @IsOptional()
+  lightingLength?: number;
+
+  @IsNumber({}, { message: 'Элементы освещения должны быть числом' })
+  @Min(0, { message: 'Элементы освещения должны быть больше или равны нулю' })
+  @IsOptional()
+  lightingElements?: number;
+
+  @IsNumber({}, { message: 'Стоимость освещения должна быть числом' })
+  @Min(0, { message: 'Стоимость освещения должна быть больше или равна нулю' })
+  @IsOptional()
+  lightingCost?: number;
+
+  @IsNumber({}, { message: 'ID сделки должен быть числом' })
+  @Min(0, { message: 'ID сделки должен быть больше или равен нулю' })
+  @IsOptional()
+  dealId?: number;
+
+  @IsNumber({}, { message: 'ID заказа должен быть числом' })
+  @Min(0, { message: 'ID заказа должен быть больше или равен нулю' })
+  @IsOptional()
+  orderId?: number;
 }

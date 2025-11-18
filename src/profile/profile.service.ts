@@ -10,7 +10,10 @@ export class ProfileService {
   async getProfile(userId: number): Promise<UserProfileDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { role: true, boards: true }, // Включаем связанную модель Role
+      include: {
+        role: true,
+        boards: true,
+      }, // Включаем связанную модель Role
     });
 
     if (!user) {
@@ -24,6 +27,7 @@ export class ProfileService {
         id: ['ADMIN', 'G'].includes(user?.role.shortName)
           ? { gt: 0 }
           : { in: boardsIds },
+        deletedAt: null,
       },
     });
 

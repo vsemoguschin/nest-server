@@ -647,6 +647,21 @@ export class TasksController {
 
   /** Создать заказ для задачи */
   @Post(':taskId/orders')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+    'RP',
+    'GUEST',
+  )
   createOrderForTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: CreateTaskOrderDto,
@@ -661,7 +676,23 @@ export class TasksController {
   }
 
   /** Обновить заказ (полная замена массивов неонов/подсветок) */
+
   @Patch('orders/:orderId')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+    'RP',
+    'GUEST',
+  )
   updateOrder(
     @Param('orderId', ParseIntPipe) orderId: number,
     @Body() dto: UpdateTaskOrderDto,

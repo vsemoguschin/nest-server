@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -177,16 +178,52 @@ export class AttachmentsService {
         return null;
       }
 
+      // Обработка BadRequestException (400) - возможно неверный формат пути
+      if (error instanceof BadRequestException) {
+        this.logger.error(
+          `Bad request to Yandex Disk for path="${path}": ${errorMessage}. This might indicate path format issue.`,
+        );
+        return null; // Возвращаем null вместо выбрасывания ошибки
+      }
+
+      // Обработка ForbiddenException (403) - недостаточно прав
+      if (error instanceof ForbiddenException) {
+        this.logger.error(
+          `Access forbidden to Yandex Disk for path="${path}": ${errorMessage}. Check token permissions.`,
+        );
+        return null; // Возвращаем null вместо выбрасывания ошибки
+      }
+
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
         const msg = error.response?.data
           ? JSON.stringify(error.response.data)
           : error.message;
-        this.logger.error(`getDownloadHref failed: ${msg}`);
+
+        // Улучшенное логирование с полной информацией
+        this.logger.error(
+          `getDownloadHref failed for path="${path}": status=${status ?? 'n/a'}, message=${msg}, code=${error.code ?? 'n/a'}`,
+        );
 
         // 404 - файл не найден, возвращаем null
         if (status === 404) {
           this.logger.warn(`File missing on Yandex Disk: ${path}`);
+          return null;
+        }
+
+        // 400 - неверный запрос, возвращаем null
+        if (status === 400) {
+          this.logger.warn(
+            `Bad request to Yandex Disk (400) for path="${path}". Path format might be incorrect.`,
+          );
+          return null;
+        }
+
+        // 403 - недостаточно прав, возвращаем null
+        if (status === 403) {
+          this.logger.warn(
+            `Access forbidden (403) to Yandex Disk for path="${path}". Check token permissions.`,
+          );
           return null;
         }
 
@@ -197,13 +234,31 @@ export class AttachmentsService {
           );
           return null;
         }
+
+        // Сетевые ошибки (timeout, connection refused и т.д.)
+        if (
+          !status &&
+          (error.code === 'ECONNABORTED' ||
+            error.code === 'ECONNREFUSED' ||
+            error.code === 'ETIMEDOUT')
+        ) {
+          this.logger.warn(
+            `Network error when accessing Yandex Disk for path="${path}": ${error.code}. Returning null for placeholder.`,
+          );
+          return null;
+        }
       } else if (error instanceof Error) {
         this.logger.error(`getDownloadHref failed: ${error.message}`);
       } else {
         this.logger.error('getDownloadHref failed: Unknown error');
       }
 
-      // Только для критических ошибок выбрасываем исключение
+      // Только для действительно критических ошибок выбрасываем исключение
+      // Логируем полную информацию об ошибке перед выбрасыванием
+      this.logger.error(
+        `Critical error in getDownloadHref for path="${path}": ${errorMessage}. Throwing InternalServerErrorException.`,
+        error instanceof Error ? error.stack : undefined,
+      );
       throw new InternalServerErrorException('Storage error');
     }
   }

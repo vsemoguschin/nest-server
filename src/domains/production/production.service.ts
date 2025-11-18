@@ -293,12 +293,12 @@ export class ProductionService {
         0,
       ),
 
-      els: masterReports.reduce((a, b) => a + b.els, 0),
-      metrs: masterReports.reduce((a, b) => a + b.metrs, 0),
+      els: masterReports.reduce((a, b) => a + b.els, 0)+masterReports.reduce((a, b) => a + (b.lightingElements || 0), 0),
+      metrs: masterReports.reduce((a, b) => a + b.metrs, 0)+masterReports.reduce((a, b) => a + (b.lightingLength || 0), 0),
       mastersSalary: masterReports.reduce(
         (a, b) => a + (b.cost - b.penaltyCost),
         0,
-      ),
+      ) + masterReports.reduce((a, b) => a + (b.lightingCost || 0), 0),
       mastersReports: masterReports.length,
       packersReports: packersReports.length,
       packages: packersReports.reduce((a, b) => a + b.items, 0),
@@ -1367,6 +1367,7 @@ export class ProductionService {
             date: true,
             els: true,
             type: true, // Добавляем выбор типа отчета
+            lightingElements: true,
           },
         },
         masterShifts: {
@@ -1404,7 +1405,7 @@ export class ProductionService {
             (specialElsSumByDate[report.date] || 0) + report.els;
         } else {
           regularElsSumByDate[report.date] =
-            (regularElsSumByDate[report.date] || 0) + report.els;
+            (regularElsSumByDate[report.date] || 0) + report.els + (report.lightingElements || 0);
         }
       });
     });
@@ -1432,7 +1433,7 @@ export class ProductionService {
             (elsByDate[report.date].special || 0) + report.els;
         } else {
           elsByDate[report.date].regular =
-            (elsByDate[report.date].regular || 0) + report.els;
+            (elsByDate[report.date].regular || 0) + report.els + (report.lightingElements || 0);
         }
       });
 

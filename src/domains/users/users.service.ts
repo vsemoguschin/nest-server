@@ -13,7 +13,14 @@ export class UsersService {
   async getProfile(userId: number): Promise<UserProfileDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId, deletedAt: null },
-      include: { role: true, boards: true }, // Включаем связанную модель Role
+      include: {
+        role: true,
+        boards: {
+          where: {
+            deletedAt: null,
+          },
+        },
+      }, // Включаем связанную модель Role
     });
 
     if (!user) {
@@ -164,7 +171,9 @@ export class UsersService {
     }
 
     if (dto.roleId !== undefined) {
-      const role = await this.prisma.role.findUnique({ where: { id: dto.roleId } });
+      const role = await this.prisma.role.findUnique({
+        where: { id: dto.roleId },
+      });
       if (!role) throw new NotFoundException(`Role ${dto.roleId} not found`);
       data.roleId = dto.roleId;
     }
@@ -177,7 +186,14 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id },
       data,
-      select: { id: true, fullName: true, email: true, tg: true, tg_id: true, roleId: true },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        tg: true,
+        tg_id: true,
+        roleId: true,
+      },
     });
   }
 

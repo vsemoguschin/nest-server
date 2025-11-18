@@ -296,16 +296,17 @@ export class YandexDiskClient {
   }
 
   async getDownloadLink(path: string): Promise<string> {
+    const normalizedPath = this.normalizePath(path);
     try {
       const response = await this.http.get<{ href: string }>(
         '/resources/download',
-        { params: { path } },
+        { params: { path: normalizedPath } },
       );
       return response.data.href;
     } catch (error) {
       throw this.wrapError(
         error,
-        `Не удалось получить ссылку на скачивание «${path}»`,
+        `Не удалось получить ссылку на скачивание «${normalizedPath}»`,
       );
     }
   }

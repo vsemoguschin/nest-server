@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-async function main() {
+async function seedEasyneonCategories() {
   console.log('Начинаем создание категорий EASYNEON...\n');
 
   // Создаем категорию "Доходы" -> "EASYNEON"
@@ -118,6 +118,10 @@ async function main() {
   }
 
   console.log('');
+}
+
+async function main() {
+  await seedEasyneonCategories();
 
   // Мягкое удаление доски "ИЗИБУК"
   const boardToDelete = await prisma.board.findFirst({
@@ -140,6 +144,111 @@ async function main() {
   } else {
     console.log('✓ Доска "ИЗИБУК" не найдена или уже удалена');
   }
+
+  // Удаление категории расходов с id=139
+  const categoryToDelete = await prisma.expenseCategory.findUnique({
+    where: {
+      id: 139,
+    },
+    include: {
+      children: true,
+      counterPartiesIncome: true,
+      counterPartiesOutcome: true,
+      operationPositions: true,
+    },
+  });
+
+  if (categoryToDelete) {
+    // Проверяем наличие связанных записей
+    const hasChildren = categoryToDelete.children.length > 0;
+    const hasCounterPartiesIncome =
+      categoryToDelete.counterPartiesIncome.length > 0;
+    const hasCounterPartiesOutcome =
+      categoryToDelete.counterPartiesOutcome.length > 0;
+    const hasOperationPositions =
+      categoryToDelete.operationPositions.length > 0;
+
+    if (
+      hasChildren ||
+      hasCounterPartiesIncome ||
+      hasCounterPartiesOutcome ||
+      hasOperationPositions
+    ) {
+      console.log(
+        `⚠ Категория расходов (ID: 139, название: "${categoryToDelete.name}") не удалена, так как имеет связанные записи:`,
+      );
+      if (hasChildren) {
+        console.log(
+          `  - Дочерние категории: ${categoryToDelete.children.length}`,
+        );
+      }
+      if (hasCounterPartiesIncome) {
+        console.log(
+          `  - Контрагенты (доходы): ${categoryToDelete.counterPartiesIncome.length}`,
+        );
+      }
+      if (hasCounterPartiesOutcome) {
+        console.log(
+          `  - Контрагенты (расходы): ${categoryToDelete.counterPartiesOutcome.length}`,
+        );
+      }
+      if (hasOperationPositions) {
+        console.log(
+          `  - Позиции операций: ${categoryToDelete.operationPositions.length}`,
+        );
+      }
+    } else {
+      await prisma.expenseCategory.delete({
+        where: {
+          id: 139,
+        },
+      });
+      console.log(
+        `✓ Категория расходов (ID: 139, название: "${categoryToDelete.name}") удалена`,
+      );
+    }
+  } else {
+    console.log('✓ Категория расходов с ID 139 не найдена или уже удалена');
+  }
+
+  // Разархивация задач с указанными параметрами
+  const BOARD_IDS = [3];
+  const IGNORE_COLUMNS_IDS = [18, 19, 20, 21, 22, 23, 24, 104, 42];
+
+  const archivedTasks = await prisma.kanbanTask.findMany({
+    where: {
+      boardId: { in: BOARD_IDS },
+      columnId: { in: IGNORE_COLUMNS_IDS },
+      archived: true,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  console.log(
+    `\nНайдено архивированных задач для разархивации: ${archivedTasks.length}`,
+  );
+
+  // if (archivedTasks.length > 0) {
+  //   const unarchiveResult = await prisma.kanbanTask.updateMany({
+  //     where: {
+  //       id: {
+  //         in: archivedTasks.map((task) => task.id),
+  //       },
+  //     },
+  //     data: {
+  //       archived: false,
+  //     },
+  //   });
+
+  //   console.log(
+  //     `✓ Разархивировано задач: ${unarchiveResult.count}\nДоска: ${BOARD_IDS.join(', ')}, Колонки: ${IGNORE_COLUMNS_IDS.join(', ')}`,
+  //   );
+  // } else {
+  //   console.log('✓ Нет архивированных задач для разархивации');
+  // }
 
   console.log('\n✓ Seed script completed successfully.');
 }

@@ -432,12 +432,16 @@ export class NotificationSchedulerService {
     const startTime = new Date();
     try {
       const BOARD_IDS = [3];
+      const IGNORE_COLUMNS_IDS = [18, 19, 20, 21, 22, 23, 24, 104, 42];
       const DAYS = 5;
       const fiveDaysAgo = new Date();
       fiveDaysAgo.setDate(fiveDaysAgo.getDate() - DAYS);
 
       this.logger.log(
         `[autoArchiveOldTasks] Starting at ${startTime.toISOString()}, checking tasks older than ${fiveDaysAgo.toISOString()}`,
+      );
+      this.logger.log(
+        `[autoArchiveOldTasks] Ignoring columns: ${IGNORE_COLUMNS_IDS.join(', ')}`,
       );
 
       // Получаем все активные задачи с их аудитом и comments
@@ -446,6 +450,7 @@ export class NotificationSchedulerService {
           deletedAt: null,
           archived: false,
           boardId: { in: BOARD_IDS },
+          columnId: { notIn: IGNORE_COLUMNS_IDS }, // Исключаем задачи из указанных колонок
         },
         select: {
           id: true,
@@ -521,7 +526,7 @@ export class NotificationSchedulerService {
       if (tasksToArchive.length === 0) {
         this.logger.log('[autoArchiveOldTasks] No tasks to archive');
         await this.notifyAdmins(
-          `🗂️ Автоархив задач: нет задач для архивации\nПроверено: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}`,
+          `🗂️ Автоархив задач: нет задач для архивации\nПроверено: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}`,
         );
         return;
       }
@@ -541,7 +546,7 @@ export class NotificationSchedulerService {
       );
 
       await this.notifyAdmins(
-        `🗂️ Автоархив задач завершён.\nАрхивировано: ${archivedCount}\nДоски: ${BOARD_IDS.join(', ')}\nПроверено задач: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}\nВремя выполнения: ${(duration / 1000).toFixed(1)}с`,
+        `🗂️ Автоархив задач завершён.\nАрхивировано: ${archivedCount}\nДоски: ${BOARD_IDS.join(', ')}\nПроверено задач: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}\nВремя выполнения: ${(duration / 1000).toFixed(1)}с`,
       );
     } catch (e: unknown) {
       const endTime = new Date();

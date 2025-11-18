@@ -34,11 +34,15 @@ import {
 } from './dto/other-report.dto';
 import { CreateFrezerReportDto } from './dto/create-frezer-report.dto';
 import { UpdateFrezerReportDto } from './dto/update-frezer-report.dto';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @UseGuards(RolesGuard)
 @Controller('production')
 export class ProductionController {
-  constructor(private readonly productionService: ProductionService) {}
+  constructor(
+    private readonly productionService: ProductionService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get('predata')
   @Roles(
@@ -51,7 +55,7 @@ export class ProductionController {
     'LOGIST',
     'PACKER',
     'FINANCIER',
-    'FRZ'
+    'FRZ',
   )
   async getPredata(@CurrentUser() user: UserDto) {
     return this.productionService.getPredata(user);
@@ -130,9 +134,266 @@ export class ProductionController {
     @Body() createMasterReportDto: CreateMasterReportDto,
     // @CurrentUser() user: UserDto,
   ) {
+    // Получаем пользователя отчета для проверки workSpaceId
+    const reportUser = await this.prisma.user.findUnique({
+      where: { id: createMasterReportDto.userId },
+      select: { workSpaceId: true },
+    });
+
+    if (!reportUser) {
+      throw new BadRequestException('Пользователь не найден');
+    }
+
+    // Пересчитываем основную стоимость на основе workSpaceId пользователя отчета
+    if (
+      createMasterReportDto.metrs &&
+      createMasterReportDto.els &&
+      createMasterReportDto.type
+    ) {
+      let cost = 0;
+      const { metrs, els, type } = createMasterReportDto;
+
+      if (reportUser.workSpaceId === 8) {
+        switch (type) {
+          case 'Стандартная':
+          case 'ВБ':
+          case 'ОЗОН':
+          case 'Подарок':
+            cost = metrs * 60 + els * 30;
+            break;
+          case 'Уличная':
+            cost = metrs * 90 + els * 45;
+            break;
+          case 'Уличный контражур':
+            cost = metrs * 54 + els * 37;
+            break;
+          case 'РГБ Контражур':
+            cost = metrs * 80 + els * 67;
+            break;
+          case 'РГБ':
+          case 'Смарт':
+            cost = metrs * 84 + els * 42;
+            break;
+          case 'Контражур':
+            cost = metrs * 36 + els * 18;
+            break;
+          default:
+            cost = 0;
+        }
+      } else {
+        switch (type) {
+          case 'Стандартная':
+          case 'ВБ':
+          case 'ОЗОН':
+          case 'Подарок':
+            cost = metrs * 100 + els * 50;
+            break;
+          case 'Уличная':
+          case 'РГБ Контражур':
+            cost = metrs * 130 + els * 70;
+            break;
+          case 'РГБ':
+          case 'Смарт':
+            cost = metrs * 140 + els * 150;
+            break;
+          case 'Контражур':
+            cost = metrs * 60 + els * 30;
+            break;
+          default:
+            cost = 0;
+        }
+      }
+
+      createMasterReportDto.cost = cost;
+    }
+
+    // Пересчитываем стоимость подсветки на основе workSpaceId пользователя отчета
+    if (
+      createMasterReportDto.lightingType &&
+      createMasterReportDto.lightingType !== 'none' &&
+      createMasterReportDto.lightingType !== '' &&
+      createMasterReportDto.lightingLength &&
+      createMasterReportDto.lightingElements
+    ) {
+      let lightingCost = 0;
+      const { lightingType, lightingLength, lightingElements } =
+        createMasterReportDto;
+
+      if (reportUser.workSpaceId === 8) {
+        switch (lightingType) {
+          case 'Контражур':
+            lightingCost = lightingLength * 36 + lightingElements * 18;
+            break;
+          case 'РГБ Контражур':
+            lightingCost = lightingLength * 80 + lightingElements * 67;
+            break;
+          default:
+            lightingCost = 0;
+        }
+      } else {
+        switch (lightingType) {
+          case 'Контражур':
+            lightingCost = lightingLength * 60 + lightingElements * 30;
+            break;
+          case 'РГБ Контражур':
+            lightingCost = lightingLength * 130 + lightingElements * 70;
+            break;
+          default:
+            lightingCost = 0;
+        }
+      }
+
+      createMasterReportDto.lightingCost = lightingCost;
+    } else {
+      createMasterReportDto.lightingCost = 0;
+    }
+
     return this.productionService.createMasterReport(
       createMasterReportDto,
       //   user,
+    );
+  }
+
+  @Patch('master-report/:id')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER')
+  async update(
+    @Param('id') id: string,
+    @Body() updateMasterReportDto: UpdateMasterReportDto,
+    @CurrentUser() user: UserDto,
+  ) {
+    // Получаем существующий отчет для получения userId и других полей
+    const existingReport = await this.prisma.masterReport.findUnique({
+      where: { id: +id },
+      select: { userId: true, metrs: true, els: true, type: true },
+    });
+
+    if (!existingReport) {
+      throw new BadRequestException('Отчет не найден');
+    }
+
+    // Получаем пользователя отчета для проверки workSpaceId
+    const reportUser = await this.prisma.user.findUnique({
+      where: { id: existingReport.userId },
+      select: { workSpaceId: true },
+    });
+
+    if (!reportUser) {
+      throw new BadRequestException('Пользователь не найден');
+    }
+
+    // Пересчитываем основную стоимость на основе workSpaceId пользователя отчета
+    // Используем значения из DTO, если они есть, иначе из существующего отчета
+    const metrs = updateMasterReportDto.metrs ?? existingReport.metrs;
+    const els = updateMasterReportDto.els ?? existingReport.els;
+    const type = updateMasterReportDto.type ?? existingReport.type;
+
+    if (metrs && els && type) {
+      let cost = 0;
+
+      if (reportUser.workSpaceId === 8) {
+        switch (type) {
+          case 'Стандартная':
+          case 'ВБ':
+          case 'ОЗОН':
+          case 'Подарок':
+            cost = metrs * 60 + els * 30;
+            break;
+          case 'Уличная':
+            cost = metrs * 90 + els * 45;
+            break;
+          case 'Уличный контражур':
+            cost = metrs * 54 + els * 37;
+            break;
+          case 'РГБ Контражур':
+            cost = metrs * 80 + els * 67;
+            break;
+          case 'РГБ':
+          case 'Смарт':
+            cost = metrs * 84 + els * 42;
+            break;
+          case 'Контражур':
+            cost = metrs * 36 + els * 18;
+            break;
+          default:
+            cost = 0;
+        }
+      } else {
+        switch (type) {
+          case 'Стандартная':
+          case 'ВБ':
+          case 'ОЗОН':
+          case 'Подарок':
+            cost = metrs * 100 + els * 50;
+            break;
+          case 'Уличная':
+          case 'РГБ Контражур':
+            cost = metrs * 130 + els * 70;
+            break;
+          case 'РГБ':
+          case 'Смарт':
+            cost = metrs * 140 + els * 150;
+            break;
+          case 'Контражур':
+            cost = metrs * 60 + els * 30;
+            break;
+          default:
+            cost = 0;
+        }
+      }
+
+      updateMasterReportDto.cost = cost;
+    }
+
+    // Пересчитываем стоимость подсветки на основе workSpaceId пользователя отчета
+    if (
+      updateMasterReportDto.lightingType &&
+      updateMasterReportDto.lightingType !== 'none' &&
+      updateMasterReportDto.lightingType !== '' &&
+      updateMasterReportDto.lightingLength &&
+      updateMasterReportDto.lightingElements
+    ) {
+      let lightingCost = 0;
+      const { lightingType, lightingLength, lightingElements } =
+        updateMasterReportDto;
+
+      if (reportUser.workSpaceId === 8) {
+        switch (lightingType) {
+          case 'Контражур':
+            lightingCost = lightingLength * 36 + lightingElements * 18;
+            break;
+          case 'РГБ Контражур':
+            lightingCost = lightingLength * 80 + lightingElements * 67;
+            break;
+          default:
+            lightingCost = 0;
+        }
+      } else {
+        switch (lightingType) {
+          case 'Контражур':
+            lightingCost = lightingLength * 60 + lightingElements * 30;
+            break;
+          case 'РГБ Контражур':
+            lightingCost = lightingLength * 130 + lightingElements * 70;
+            break;
+          default:
+            lightingCost = 0;
+        }
+      }
+
+      updateMasterReportDto.lightingCost = lightingCost;
+    } else if (
+      updateMasterReportDto.lightingType === 'none' ||
+      updateMasterReportDto.lightingType === '' ||
+      !updateMasterReportDto.lightingType
+    ) {
+      // Если тип подсветки пустой или "none", обнуляем стоимость
+      updateMasterReportDto.lightingCost = 0;
+    }
+
+    return this.productionService.updateMasterReport(
+      +id,
+      updateMasterReportDto,
+      user,
     );
   }
 
@@ -186,20 +447,6 @@ export class ProductionController {
     return this.productionService.updateFrezerReport(
       +id,
       updateFrezerReport,
-      user,
-    );
-  }
-
-  @Patch('master-report/:id')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER')
-  async update(
-    @Param('id') id: string,
-    @Body() updateMasterReportDto: UpdateMasterReportDto,
-    @CurrentUser() user: UserDto,
-  ) {
-    return this.productionService.updateMasterReport(
-      +id,
-      updateMasterReportDto,
       user,
     );
   }
@@ -280,7 +527,7 @@ export class ProductionController {
   }
 
   @Post('packer-report')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST','MASTER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST', 'MASTER')
   async createPackerReport(
     @Body() createPackerReportDto: CreatePackerReportDto,
   ) {
@@ -308,7 +555,7 @@ export class ProductionController {
   }
 
   @Patch('packer-report/:id')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST','MASTER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST', 'MASTER')
   async updatePackerReport(
     @Param('id') id: string,
     @Body() updatePackerReportDto: UpdatePackerReportDto,
@@ -328,7 +575,7 @@ export class ProductionController {
   }
 
   @Post('packer/:packerId/shifts')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST','MASTER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST', 'MASTER')
   async createPackerShifts(
     @Param('packerId', ParseIntPipe) packerId: number,
     @Body() dto: CreatePackerShiftsDto,
@@ -337,7 +584,7 @@ export class ProductionController {
   }
 
   @Get('packer/:packerId/shifts')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST','MASTER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST', 'MASTER')
   async getPackerShifts(
     @Param('packerId', ParseIntPipe) packerId: number,
     @Query('period') period: string,
@@ -383,7 +630,11 @@ export class ProductionController {
     @Param('id') id: string,
     @Body() updateOtherReportDto: UpdateOtherReportDto,
   ) {
-    return this.productionService.updateOtherReport(+id, updateOtherReportDto, user);
+    return this.productionService.updateOtherReport(
+      +id,
+      updateOtherReportDto,
+      user,
+    );
   }
 
   @Delete('other-report/:id')
