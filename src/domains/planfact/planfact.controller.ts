@@ -17,8 +17,6 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { PlanfactService } from './planfact.service';
 import { ApiTags } from '@nestjs/swagger';
 import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
-import { CurrentUser } from 'src/common/decorators/current-user.decorator';
-import { UserDto } from '../users/dto/user.dto';
 import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
@@ -30,20 +28,7 @@ import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
 @Controller('planfact')
 export class PlanfactController {
   constructor(private readonly planfactService: PlanfactService) { }
-  
-  @Get('pl')
-  @Roles('ADMIN', 'G', 'KD', 'BUKH')
-  async getPLDatas(
-    @Query('period') period: string,
-    @CurrentUser() user: UserDto,
-  ) {
-    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
-      throw new BadRequestException(
-        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
-      );
-    }
-    return this.planfactService.getPLDatas(period, user);
-  }
+
 
   @Get('accounts')
   @Roles('ADMIN', 'G', 'KD', 'BUKH')

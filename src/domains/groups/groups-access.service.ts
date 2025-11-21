@@ -20,8 +20,8 @@ export class GroupsAccessService {
       deletedAt: null,
       id: { gt: 0 },
     };
-    if (!this.privilegedShortNames.includes(user.role.shortName)) {
-      scope.id = user.groupId ?? scope.id;
+    if (!this.privilegedShortNames.includes(user.role.shortName) || user.groupId === 19) {
+      scope.id = user.groupId;
     }
 
     if (

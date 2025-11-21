@@ -850,7 +850,7 @@ export class CommercialDatasService {
     };
   }
   /** данные по мопу */
-  private async getMopDatas(user: UserDto, period: string, managerId: number) {
+  private async getMopDatas( period: string, managerId: number) {
     const m = await this.prisma.user.findUnique({
       where: {
         id: managerId,
@@ -955,10 +955,16 @@ export class CommercialDatasService {
     const factBonus = +(fact * factPercentage).toFixed(2);
     const temp = this.calculateTemp(totalSales, period);
     /** стоимость заявки в проекте*/
-    const { callCost, isOverRopPlan, tops } = await this.getManagerGroupDatas(
-      m.groupId,
-      period,
-    );
+
+    const [
+      { callCost, isOverRopPlan, tops },
+      { dealsInfo, dealsInfoPrevMounth, dopsInfo, dopsInfoPrevMounth },
+      { pays, salaryPays, salaryCorrections, shift, shiftBonus },
+    ] = await Promise.all([
+      this.getManagerGroupDatas(m.groupId, period),
+      this.getManagerSalesDatas(m.id, period),
+      this.getManagerSalaryDatas(m.id, period),
+    ]);
 
     /** Стредний чек */
     const averageBill = dealsAmount ? +(totalSales / dealsAmount).toFixed() : 0;
@@ -1021,8 +1027,6 @@ export class CommercialDatasService {
       0,
     );
 
-    const { dealsInfo, dealsInfoPrevMounth, dopsInfo, dopsInfoPrevMounth } =
-      await this.getManagerSalesDatas(m.id, period);
     const dealPays = +dealsInfo.reduce((a, b) => a + b.toSalary, 0).toFixed(2);
     const dopPays = +dopsInfo.reduce((a, b) => a + b.toSalary, 0).toFixed(2);
     const prevPeriodsDealsPays = +dealsInfoPrevMounth
@@ -1031,8 +1035,7 @@ export class CommercialDatasService {
     const prevPeriodsDopsPays = +dopsInfoPrevMounth
       .reduce((a, b) => a + b.toSalary, 0)
       .toFixed(2);
-    const { pays, salaryPays, salaryCorrections, shift, shiftBonus } =
-      await this.getManagerSalaryDatas(m.id, period);
+
     const isIntern = m.managerReports.find((r) => r.isIntern === true)
       ? true
       : false;
@@ -1994,7 +1997,7 @@ export class CommercialDatasService {
     if (!m) {
       throw new NotFoundException('Manager not found');
     }
-    return await this.getMopDatas(user, period, managerId);
+    return await this.getMopDatas(period, managerId);
     // if (['MOV', 'MOP'].includes(m.role.shortName)) {
     // } else if (['DO'].includes(m.role.shortName)) {
     //   return await this.getDODatas(user, period, managerId);

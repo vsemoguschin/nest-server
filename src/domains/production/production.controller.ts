@@ -164,7 +164,7 @@ export class ProductionController {
           case 'Уличная':
             cost = metrs * 90 + els * 45;
             break;
-          case 'Уличный контражур':
+          case 'Уличная подсветка':
             cost = metrs * 54 + els * 37;
             break;
           case 'РГБ Контражур':
@@ -301,7 +301,7 @@ export class ProductionController {
           case 'Уличная':
             cost = metrs * 90 + els * 45;
             break;
-          case 'Уличный контражур':
+          case 'Уличная подсветка':
             cost = metrs * 54 + els * 37;
             break;
           case 'РГБ Контражур':

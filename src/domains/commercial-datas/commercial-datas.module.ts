@@ -4,6 +4,7 @@ import { CommercialDatasService } from './commercial-datas.service';
 
 @Module({
   controllers: [CommercialDatasController],
-  providers: [CommercialDatasService]
+  providers: [CommercialDatasService],
+  exports: [CommercialDatasService],
 })
 export class CommercialDatasModule {}

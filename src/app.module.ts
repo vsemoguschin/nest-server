@@ -45,6 +45,7 @@ import { VkAdsModule } from './domains/vk-ads/vk-ads.module';
 import { CommercialDatasModule } from './domains/commercial-datas/commercial-datas.module';
 import { AutoCategoryRulesModule } from './domains/auto-category-rules/auto-category-rules.module';
 import { YandexDiskModule } from './integrations/yandex-disk/yandex-disk.module';
+import { PnlModule } from './domains/pnl/pnl.module';
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { YandexDiskModule } from './integrations/yandex-disk/yandex-disk.module'
     VkAdsModule,
     CommercialDatasModule,
     AutoCategoryRulesModule,
+    PnlModule,
 
     // другие модули
   ],

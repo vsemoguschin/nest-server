@@ -424,6 +424,12 @@ export class ReportsService {
                 },
               },
             },
+            group: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
           },
         },
       },
@@ -473,6 +479,8 @@ export class ReportsService {
         userId: r.userId,
         workSpaceId: r.user.workSpaceId,
         workSpace: r.user.workSpace.title,
+        groupId: r.user.groupId,
+        group: r.user.group.title,
         calls,
         dealSales,
         dealsAmount,

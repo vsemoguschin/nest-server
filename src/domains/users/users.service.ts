@@ -1,10 +1,15 @@
 // Пример для UsersService
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
 import { UserProfileDto } from 'src/profile/dto/user-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
@@ -45,7 +50,7 @@ export class UsersService {
     });
     if (!group) {
       throw new NotFoundException(
-        `Рабочее пространство с id ${createUserDto.groupId} не найдено.`,
+        `Группа с id ${createUserDto.groupId} не найдена.`, // ← исправлено
       );
     }
     const role = await this.prisma.role.findUnique({
@@ -60,19 +65,36 @@ export class UsersService {
     // Хешируем пароль
     const hashedPassword = await bcrypt.hash(createUserDto.password, 3);
 
-    const createdUser = await this.prisma.user.create({
-      data: {
-        fullName: createUserDto.fullName,
-        email: createUserDto.email,
-        password: hashedPassword,
-        workSpaceId: createUserDto.workSpaceId,
-        groupId: createUserDto.groupId,
-        roleId: createUserDto.roleId,
-        tg: createUserDto.tg,
-      },
-    });
-    console.log({ ...createdUser, role });
-    return { ...createdUser, role };
+    try {
+      const createdUser = await this.prisma.user.create({
+        data: {
+          fullName: createUserDto.fullName,
+          email: createUserDto.email,
+          password: hashedPassword,
+          workSpaceId: createUserDto.workSpaceId,
+          groupId: createUserDto.groupId,
+          roleId: createUserDto.roleId,
+          tg: createUserDto.tg,
+        },
+      });
+      console.log({ ...createdUser, role });
+      return { ...createdUser, role };
+    } catch (error) {
+      // Обработка ошибки уникального ограничения
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const target = error.meta?.target;
+        if (Array.isArray(target) && target.includes('email')) {
+          throw new ConflictException(
+            `Пользователь с email "${createUserDto.email}" уже существует. Пожалуйста, используйте другой email.`,
+          );
+        }
+      }
+      // Пробрасываем другие ошибки дальше
+      throw error;
+    }
   }
 
   async findAll() {
