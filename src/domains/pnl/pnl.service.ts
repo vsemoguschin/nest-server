@@ -3,7 +3,6 @@ import { UserDto } from '../users/dto/user.dto';
 import { subMonths, format } from 'date-fns';
 import { CommercialDatasService } from '../commercial-datas/commercial-datas.service';
 import { PrismaService } from 'src/prisma/prisma.service';
-import pLimit from 'p-limit';
 
 type resType = {
   periods: string[];
@@ -92,8 +91,6 @@ export class PnlService {
     private readonly prisma: PrismaService,
     private readonly commercialDatasService: CommercialDatasService,
   ) {}
-
-  private readonly concurrencyLimit = pLimit(5); // Ограничение: 5 одновременных запросов
 
   private async getIncomeDatas(
     periods: string[],
@@ -990,7 +987,7 @@ export class PnlService {
 
   async getBookPLDatas(period: string, user: UserDto) {
     const periods = getLastMonths(period, 4);
-
+    
     type ManagerDatasResult = Awaited<
       ReturnType<typeof this.commercialDatasService.getManagerDatas>
     >;
@@ -1012,7 +1009,7 @@ export class PnlService {
       managerDatasCache.set(cacheKey, data);
       return data;
     };
-
+  
     // Оптимизация 1: Получаем списки пользователей один раз (вне цикла периодов)
     const [mops, rops, movs] = await Promise.all([
       this.prisma.user.findMany({
@@ -1025,7 +1022,7 @@ export class PnlService {
         where: { role: { shortName: 'MOV' }, groupId: 19 },
       }),
     ]);
-
+  
     // Оптимизация 2: Запускаем все запросы параллельно
     const [
       income,
@@ -1038,22 +1035,22 @@ export class PnlService {
     ] = await Promise.all([
       // Income
       this.getIncomeDatas(periods, { in: [19] }),
-
+  
       // Расходы на производство - оптимизированный запрос
       this.getExpensesByCategory(periods, 143),
-
+  
       // Расходы на дизайн - оптимизированный запрос
       this.getExpensesByCategory(periods, 141),
-
+  
       // Расходы на рекламу - оптимизированный запрос
       this.getAdExpensesByPeriods(periods, 19),
-
+  
       // Зарплаты (используем уже полученные списки пользователей)
       this.getSalariesForUsers(periods, mops, getManagerDatasCached),
       this.getSalariesForUsers(periods, rops, getManagerDatasCached),
       this.getSalariesForUsers(periods, movs, getManagerDatasCached),
     ]);
-
+  
     return {
       periods,
       income,
@@ -1065,7 +1062,7 @@ export class PnlService {
       designExpensesByPeriod,
     };
   }
-
+  
   // Приватная функция: один запрос на все периоды
   private async getExpensesByCategory(
     periods: string[],
@@ -1073,16 +1070,16 @@ export class PnlService {
   ): Promise<{ period: string; value: number }[]> {
     // Один запрос вместо 4-х
     const allExpenses = await this.prisma.operationPosition.findMany({
-      where: {
-        expenseCategoryId: categoryId,
-        OR: periods.map((p) => ({
-          originalOperation: {
-            operationDate: {
-              startsWith: p,
-            },
+        where: {
+            expenseCategoryId: categoryId,
+            OR: periods.map(p => ({
+              originalOperation: {
+                operationDate: {
+                  startsWith: p,
+                },
+              },
+            })),
           },
-        })),
-      },
       select: {
         amount: true,
         originalOperation: {
@@ -1092,21 +1089,19 @@ export class PnlService {
         },
       },
     });
-
+  
     // Группируем по периодам
-    const grouped = periods.map((period) => {
+    const grouped = periods.map(period => {
       const value = allExpenses
-        .filter((exp) =>
-          exp.originalOperation?.operationDate.startsWith(period),
-        )
+        .filter(exp => exp.originalOperation?.operationDate.startsWith(period))
         .reduce((sum, exp) => sum + exp.amount, 0);
-
+      
       return { period, value };
     });
-
+  
     return grouped;
   }
-
+  
   // Приватная функция: один запрос на рекламные расходы
   private async getAdExpensesByPeriods(
     periods: string[],
@@ -1116,24 +1111,24 @@ export class PnlService {
     const allAdExpenses = await this.prisma.adExpense.findMany({
       where: {
         groupId,
-        OR: periods.map((p) => ({ date: { startsWith: p } })),
+        OR: periods.map(p => ({ date: { startsWith: p } })),
       },
       select: {
         price: true,
         date: true,
       },
     });
-
+  
     // Группируем по периодам
-    return periods.map((period) => {
+    return periods.map(period => {
       const value = allAdExpenses
-        .filter((ad) => ad.date.startsWith(period))
+        .filter(ad => ad.date.startsWith(period))
         .reduce((sum, ad) => sum + ad.price, 0);
-
+      
       return { period, value };
     });
   }
-
+  
   // Приватная функция: расчет зарплат для списка пользователей
   private async getSalariesForUsers(
     periods: string[],
@@ -1144,16 +1139,15 @@ export class PnlService {
       periods.map(async (period) => {
         const salaries = await Promise.all(
           users.map(async (u) => {
-            return this.concurrencyLimit(() =>
-              getManagerDatasCached(period, u.id),
-            );
+            const result = await getManagerDatasCached(period, u.id);
+            return result;
           }),
         );
-
+  
         const value = +salaries
           .reduce((sum, data) => sum + data.totalSalary, 0)
           .toFixed(2);
-
+  
         return { value, period };
       }),
     );
