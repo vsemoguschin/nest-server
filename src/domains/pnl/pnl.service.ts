@@ -985,9 +985,9 @@ export class PnlService {
     return res;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async getBookPLDatas(period: string, user: UserDto) {
     const periods = getLastMonths(period, 4);
+    
     type ManagerDatasResult = Awaited<
       ReturnType<typeof this.commercialDatasService.getManagerDatas>
     >;
@@ -1009,183 +1009,147 @@ export class PnlService {
       managerDatasCache.set(cacheKey, data);
       return data;
     };
-
-    const income = await this.getIncomeDatas(periods, { in: [19] });
-
-    const prodExpensesByPeriod = await Promise.all(
-      periods.map(async (period) => {
-        const prodExpenses = await this.prisma.operationPosition.findMany({
-          where: {
-            originalOperation: {
-              operationDate: {
-                startsWith: period,
-              },
-            },
-            expenseCategoryId: 143,
-          },
-          select: {
-            amount: true,
-            originalOperation: {
-              select: {
-                operationDate: true,
-              },
-            },
-          },
-        });
-        const value = prodExpenses.reduce((sum, op) => sum + op.amount, 0);
-
-        return {
-          period,
-          value,
-        };
+  
+    // Оптимизация 1: Получаем списки пользователей один раз (вне цикла периодов)
+    const [mops, rops, movs] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { role: { shortName: 'MOP' }, groupId: 19 },
       }),
-    );
-
-    const designExpensesByPeriod = await Promise.all(
-      periods.map(async (period) => {
-        const designExpenses = await this.prisma.operationPosition.findMany({
-          where: {
-            originalOperation: {
-              operationDate: {
-                startsWith: period,
-              },
-            },
-            expenseCategoryId: 141,
-          },
-          select: {
-            amount: true,
-            originalOperation: {
-              select: {
-                operationDate: true,
-              },
-            },
-          },
-        });
-        const value = designExpenses.reduce((sum, op) => sum + op.amount, 0);
-        return {
-          period,
-          value,
-        };
+      this.prisma.user.findMany({
+        where: { role: { shortName: 'ROP' }, groupId: 19 },
       }),
-    );
-
-    const adExpenses = await Promise.all(
-      periods.map(async (period) => {
-        const adExpenses = await this.prisma.adExpense.findMany({
-          where: {
-            date: {
-              startsWith: period,
-            },
-            groupId: 19,
-          },
-        });
-        const value = adExpenses.reduce((sum, ad) => sum + ad.price, 0);
-        return {
-          period,
-          value,
-        };
+      this.prisma.user.findMany({
+        where: { role: { shortName: 'MOV' }, groupId: 19 },
       }),
-    );
-
-    const mopSalaries = await Promise.all(
-      periods.map(async (p) => {
-        const mops = await this.prisma.user.findMany({
-          where: {
-            role: {
-              shortName: { in: ['MOP'] },
-            },
-            groupId: 19,
-          },
-        });
-
-        // Параллельная обработка всех менеджеров
-        const salaries = await Promise.all(
-          mops.map(async (m) => {
-            const result = await getManagerDatasCached(p, m.id);
-            return result;
-          }),
-        );
-
-        const value = +salaries
-          .reduce((sum, data) => sum + data.totalSalary, 0)
-          .toFixed(2);
-
-        return {
-          value,
-          period: p,
-        };
-      }),
-    );
-
-    const ropSalaries = await Promise.all(
-      periods.map(async (p) => {
-        const mops = await this.prisma.user.findMany({
-          where: {
-            role: {
-              shortName: { in: ['ROP'] },
-            },
-            groupId: 19,
-          },
-        });
-
-        // Параллельная обработка всех менеджеров
-        const salaries = await Promise.all(
-          mops.map(async (m) => {
-            const result = await getManagerDatasCached(p, m.id);
-            return result;
-          }),
-        );
-
-        const value = +salaries
-          .reduce((sum, data) => sum + data.totalSalary, 0)
-          .toFixed(2);
-
-        return {
-          value,
-          period: p,
-        };
-      }),
-    );
-
-    const movSalaries = await Promise.all(
-      periods.map(async (p) => {
-        const mops = await this.prisma.user.findMany({
-          where: {
-            role: {
-              shortName: { in: ['MOV'] },
-            },
-            groupId: 19,
-          },
-        });
-
-        // Параллельная обработка всех менеджеров
-        const salaries = await Promise.all(
-          mops.map(async (m) => {
-            const result = await getManagerDatasCached(p, m.id);
-            return result;
-          }),
-        );
-
-        const value = +salaries
-          .reduce((sum, data) => sum + data.totalSalary, 0)
-          .toFixed(2);
-
-        return {
-          value,
-          period: p,
-        };
-      }),
-    );
-
+    ]);
+  
+    // Оптимизация 2: Запускаем все запросы параллельно
+    const [
+      income,
+      prodExpensesByPeriod,
+      designExpensesByPeriod,
+      adExpenses,
+      mopSalaries,
+      ropSalaries,
+      movSalaries,
+    ] = await Promise.all([
+      // Income
+      this.getIncomeDatas(periods, { in: [19] }),
+  
+      // Расходы на производство - оптимизированный запрос
+      this.getExpensesByCategory(periods, 143),
+  
+      // Расходы на дизайн - оптимизированный запрос
+      this.getExpensesByCategory(periods, 141),
+  
+      // Расходы на рекламу - оптимизированный запрос
+      this.getAdExpensesByPeriods(periods, 19),
+  
+      // Зарплаты (используем уже полученные списки пользователей)
+      this.getSalariesForUsers(periods, mops, getManagerDatasCached),
+      this.getSalariesForUsers(periods, rops, getManagerDatasCached),
+      this.getSalariesForUsers(periods, movs, getManagerDatasCached),
+    ]);
+  
     return {
       periods,
       income,
-      prodExpensesByPeriod, //Расходы на производство
-      adExpenses, //Расходы на рекламу
-      mopSalaries, //Зарплаты менеджеров отдела продаж
-      ropSalaries, //Зарплаты менеджеров отдела ропа
-      movSalaries, //Зарплаты менеджеров отдела ведения
-      designExpensesByPeriod, //Расходы на дизайн
+      prodExpensesByPeriod,
+      adExpenses,
+      mopSalaries,
+      ropSalaries,
+      movSalaries,
+      designExpensesByPeriod,
     };
+  }
+  
+  // Приватная функция: один запрос на все периоды
+  private async getExpensesByCategory(
+    periods: string[],
+    categoryId: number,
+  ): Promise<{ period: string; value: number }[]> {
+    // Один запрос вместо 4-х
+    const allExpenses = await this.prisma.operationPosition.findMany({
+        where: {
+            expenseCategoryId: categoryId,
+            OR: periods.map(p => ({
+              originalOperation: {
+                operationDate: {
+                  startsWith: p,
+                },
+              },
+            })),
+          },
+      select: {
+        amount: true,
+        originalOperation: {
+          select: {
+            operationDate: true,
+          },
+        },
+      },
+    });
+  
+    // Группируем по периодам
+    const grouped = periods.map(period => {
+      const value = allExpenses
+        .filter(exp => exp.originalOperation?.operationDate.startsWith(period))
+        .reduce((sum, exp) => sum + exp.amount, 0);
+      
+      return { period, value };
+    });
+  
+    return grouped;
+  }
+  
+  // Приватная функция: один запрос на рекламные расходы
+  private async getAdExpensesByPeriods(
+    periods: string[],
+    groupId: number,
+  ): Promise<{ period: string; value: number }[]> {
+    // Один запрос вместо 4-х
+    const allAdExpenses = await this.prisma.adExpense.findMany({
+      where: {
+        groupId,
+        OR: periods.map(p => ({ date: { startsWith: p } })),
+      },
+      select: {
+        price: true,
+        date: true,
+      },
+    });
+  
+    // Группируем по периодам
+    return periods.map(period => {
+      const value = allAdExpenses
+        .filter(ad => ad.date.startsWith(period))
+        .reduce((sum, ad) => sum + ad.price, 0);
+      
+      return { period, value };
+    });
+  }
+  
+  // Приватная функция: расчет зарплат для списка пользователей
+  private async getSalariesForUsers(
+    periods: string[],
+    users: { id: number }[],
+    getManagerDatasCached: (period: string, userId: number) => Promise<any>,
+  ): Promise<{ period: string; value: number }[]> {
+    return await Promise.all(
+      periods.map(async (period) => {
+        const salaries = await Promise.all(
+          users.map(async (u) => {
+            const result = await getManagerDatasCached(period, u.id);
+            return result;
+          }),
+        );
+  
+        const value = +salaries
+          .reduce((sum, data) => sum + data.totalSalary, 0)
+          .toFixed(2);
+  
+        return { value, period };
+      }),
+    );
   }
 }
