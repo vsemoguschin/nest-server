@@ -226,6 +226,10 @@ export class NotificationSchedulerService {
   // Импорт «только новых клиентов» за прошедший день, с надёжным восстановлением пропущенных дат
   @Cron('5 0 3 * * *', { timeZone: 'Europe/Moscow' })
   async importNewCustomersDaily() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip importNewCustomersDaily`);
+      return;
+    }
     // Защита от повторного выполнения
     if (this.isCustomerImportRunning) {
       this.logger.warn(
@@ -241,11 +245,6 @@ export class NotificationSchedulerService {
       this.logger.log(
         `[Customer Import] Starting import at ${startTime.toISOString()}`,
       );
-
-      if (this.env === 'development') {
-        this.logger.debug(`[dev] skip importNewCustomersDaily`);
-        return;
-      }
 
       const key = 'dailyCustomers';
       const ymdInMoscow = (d: Date) =>
@@ -429,6 +428,10 @@ export class NotificationSchedulerService {
   // Сейчас — только для boardId=3
   @Cron('0 10 3 * * *', { timeZone: 'Europe/Moscow' })
   async autoArchiveOldTasks() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip autoArchiveOldTasks`);
+      return;
+    }
     const startTime = new Date();
     try {
       const BOARD_IDS = [3];
@@ -563,6 +566,10 @@ export class NotificationSchedulerService {
   // Автоматическая синхронизация операций Т-Банка каждый час с 8 утра до полуночи
   @Cron('0 0 * * * *', { timeZone: 'Europe/Moscow' })
   async syncTbankOperations() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip syncTbankOperations`);
+      return;
+    }
     // Защита от повторного выполнения
     if (this.isTbankSyncRunning) {
       this.logger.warn('[T-Bank] Sync is already running, skipping...');
@@ -576,11 +583,6 @@ export class NotificationSchedulerService {
       this.logger.log(
         `[T-Bank] Starting operations sync at ${startTime.toISOString()}`,
       );
-
-      if (this.env === 'development') {
-        this.logger.debug(`[dev] skip T-Bank sync`);
-        return;
-      }
 
       // Используем текущую дату как fromDate
       const fromDate = new Date().toISOString().split('T')[0];
@@ -609,6 +611,10 @@ export class NotificationSchedulerService {
   // Нормализация позиций задач во всех колонках
   @Cron('0 30 4 * * *', { timeZone: 'Europe/Moscow' })
   async normalizeTaskPositions() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip normalizeTaskPositions`);
+      return;
+    }
     // Защита от повторного выполнения
     if (this.isPositionNormalizationRunning) {
       this.logger.warn('[Position Normalization] Already running, skipping...');

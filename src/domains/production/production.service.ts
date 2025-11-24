@@ -1478,11 +1478,12 @@ export class ProductionService {
     const userSearch = ['PACKER', 'LOGIST'].includes(user.role.shortName) || user.id === 129
       ? user.id
       : { gt: 0 };
+    console.log(userSearch);
 
     const users = await this.prisma.user.findMany({
       where: {
         role: {
-          shortName: { in: ['PACKER', 'LOGIST'] },
+          shortName: { in: ['PACKER', 'LOGIST', 'MASTER'] },
         },
         id: userSearch,
         workSpaceId:

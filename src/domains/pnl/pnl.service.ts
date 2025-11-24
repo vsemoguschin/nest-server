@@ -96,140 +96,100 @@ export class PnlService {
     periods: string[],
     groupSearch: { gt: number } | { in: number[] },
   ) {
-    const income = await periods.reduce(
-      async (
-        accPromise: Promise<
-          {
-            period: string;
-            allDealsPrice: number;
-            revenue: number;
-            sendDeals: number;
-          }[]
-        >,
-        p,
-      ) => {
-        const acc = await accPromise;
+    // Запускаем обработку всех периодов параллельно
+    const income = await Promise.all(
+      periods.map(async (p) => {
         const periodStart = Date.now();
-        console.log(`  [Income] Начало обработки периода ${p}`);
+        // console.log(`  [Income] Начало обработки периода ${p}`);
 
-        const deals = await this.prisma.deal.findMany({
-          where: {
-            saleDate: {
-              startsWith: p,
-            },
-            reservation: false,
-            status: { not: 'Возврат' },
-            groupId: groupSearch,
-          },
-          select: {
-            price: true,
-          },
-        });
-        console.log(
-          `  [Income] Запрос deals для ${p}: ${Date.now() - periodStart}ms`,
-        );
-
-        const dops = await this.prisma.dop.findMany({
-          where: {
-            saleDate: {
-              startsWith: p,
-            },
-            deal: {
-              reservation: false,
-              status: { not: 'Возврат' },
-              deletedAt: null,
-            },
-            groupId: groupSearch,
-          },
-          select: {
-            price: true,
-          },
-        });
-        console.log(
-          `  [Income] Запрос dops для ${p}: ${Date.now() - periodStart}ms`,
-        );
-
-        const dopsPrice = dops.reduce((a, b) => a + b.price, 0);
-        const allDealsPrice =
-          deals.reduce((a, b) => a + b.price, 0) + dopsPrice;
-
-        const payments = await this.prisma.payment.findMany({
-          where: {
-            date: {
-              startsWith: p,
-            },
-            deal: {
+        // Все 4 запроса для одного периода выполняются параллельно
+        const [deals, dops, payments, sendDeliveries] = await Promise.all([
+          this.prisma.deal.findMany({
+            where: {
+              saleDate: { startsWith: p },
               reservation: false,
               status: { not: 'Возврат' },
               deletedAt: null,
               groupId: groupSearch,
             },
-          },
-          select: {
-            price: true,
-          },
-        });
-        console.log(
-          `  [Income] Запрос payments для ${p}: ${Date.now() - periodStart}ms`,
-        );
+            select: { price: true },
+          }),
 
-        const revenue = payments.reduce((a, b) => a + b.price, 0);
-
-        // Отправленные доставки
-        const sendDeliveries = await this.prisma.delivery.findMany({
-          where: {
-            date: {
-              startsWith: p,
-            },
-            // status: 'Отправлена',
-            deal: {
-              status: { not: 'Возврат' },
-              reservation: false,
-              deletedAt: null,
+          this.prisma.dop.findMany({
+            where: {
+              saleDate: { startsWith: p },
+              deal: {
+                reservation: false,
+                status: { not: 'Возврат' },
+                deletedAt: null,
+              },
               groupId: groupSearch,
             },
-          },
-          include: {
-            deal: {
-              include: {
-                dops: true,
+            select: { price: true },
+          }),
+
+          this.prisma.payment.findMany({
+            where: {
+              date: { startsWith: p },
+              deal: {
+                reservation: false,
+                status: { not: 'Возврат' },
+                deletedAt: null,
+                groupId: groupSearch,
               },
             },
-          },
-        });
-        console.log(
-          `  [Income] Запрос deliveries для ${p}: ${Date.now() - periodStart}ms`,
-        );
+            select: { price: true },
+          }),
 
+          this.prisma.delivery.findMany({
+            where: {
+              date: { startsWith: p },
+              deal: {
+                status: { not: 'Возврат' },
+                reservation: false,
+                deletedAt: null,
+                groupId: groupSearch,
+              },
+            },
+            include: {
+              deal: {
+                include: { dops: true },
+              },
+            },
+          }),
+        ]);
+
+        const dopsPrice = dops.reduce((a, b) => a + b.price, 0);
+        // console.log(
+        //   deals.reduce((a, b) => a + b.price, 0),
+        //   'dealsPrice',
+        // );
+        // console.log(dopsPrice, 'dopsPrice');
+        const allDealsPrice =
+          deals.reduce((a, b) => a + b.price, 0) + dopsPrice;
+        const revenue = payments.reduce((a, b) => a + b.price, 0);
         const sendDeals = sendDeliveries.reduce(
           (a, b) =>
             a + b.deal.price + b.deal.dops.reduce((a, b) => a + b.price, 0),
           0,
         );
 
-        console.log(
-          `  [Income] ✓ Период ${p} обработан за ${Date.now() - periodStart}ms`,
-        );
-        acc.push({
+        // console.log(
+        //   `  [Income] ✓ Период ${p} обработан за ${Date.now() - periodStart}ms`,
+        // );
+        return {
           period: p,
           allDealsPrice,
           revenue,
           sendDeals,
-        });
-        return acc;
-      },
-      Promise.resolve([]),
+        };
+      }),
     );
 
     return income;
   }
 
   async getPLDatas(period: string, project: string = 'all', user: UserDto) {
-    const startTime = Date.now();
-    console.log(
-      `[PNL] Начало выполнения getPLDatas для периода ${period}, проект: ${project}`,
-    );
-
     let groupSearch: { gt: number } | { in: number[] } = { gt: 0 };
     if (project === 'all') {
       groupSearch = { gt: 0 };
@@ -239,9 +199,9 @@ export class PnlService {
       groupSearch = { in: [19] };
     }
     const periods = getLastMonths(period, 4);
-    console.log(
-      `[PNL] Определение групп и периодов: ${Date.now() - startTime}ms`,
-    );
+    // console.log(
+    //   `[PNL] Определение групп и периодов: ${Date.now() - startTime}ms`,
+    // );
     type ManagerDatasResult = Awaited<
       ReturnType<typeof this.commercialDatasService.getManagerDatas>
     >;
@@ -321,7 +281,7 @@ export class PnlService {
     };
 
     const income = await this.getIncomeDatas(periods, groupSearch);
-    console.log(`[PNL] Получение income данных: ${Date.now() - startTime}ms`);
+    // console.log(`[PNL] Получение income данных: ${Date.now() - startTime}ms`);
 
     // Присваивание в нужный формат с расчетом changePercent
     res.income = {
@@ -362,9 +322,9 @@ export class PnlService {
               ).toFixed(2),
       })),
     };
-    console.log(
-      `[PNL] Форматирование income с changePercent: ${Date.now() - startTime}ms`,
-    );
+    // console.log(
+    //   `[PNL] Форматирование income с changePercent: ${Date.now() - startTime}ms`,
+    // );
 
     if (project !== 'book') {
       const supplieCategories = await this.prisma.suppliePosition.findMany({
@@ -425,9 +385,9 @@ export class PnlService {
       });
 
       res.expenses.production.supplies.totals = getTotals(supplies);
-      console.log(
-        `[PNL] Получение и обработка supplies: ${Date.now() - startTime}ms`,
-      );
+      // console.log(
+      //   `[PNL] Получение и обработка supplies: ${Date.now() - startTime}ms`,
+      // );
 
       const prodRoles = [
         'Упаковщики',
@@ -622,9 +582,9 @@ export class PnlService {
         data: sortedProdSalaries,
         totals: prodSalariesTotals,
       };
-      console.log(
-        `[PNL] Получение и обработка production salaries: ${Date.now() - startTime}ms`,
-      );
+      // console.log(
+      //   `[PNL] Получение и обработка production salaries: ${Date.now() - startTime}ms`,
+      // );
     }
     const adSources = await this.prisma.adSource.findMany({
       select: {
@@ -684,9 +644,9 @@ export class PnlService {
     });
 
     res.expenses.commercial.adExpenses.totals = getTotals(adExpenses);
-    console.log(
-      `[PNL] Получение и обработка ad expenses: ${Date.now() - startTime}ms`,
-    );
+    // console.log(
+    //   `[PNL] Получение и обработка ad expenses: ${Date.now() - startTime}ms`,
+    // );
 
     // Параллельная обработка MOP и ROP одновременно
     const salariesStartTime = Date.now();
@@ -706,9 +666,9 @@ export class PnlService {
               ],
             },
           });
-          console.log(
-            `  [MOP] Найдено ${mops.length} менеджеров для периода ${p}`,
-          );
+          // console.log(
+          //   `  [MOP] Найдено ${mops.length} менеджеров для периода ${p}`,
+          // );
 
           // Параллельная обработка всех менеджеров
           const salariesStart = Date.now();
@@ -717,15 +677,15 @@ export class PnlService {
               const start = Date.now();
               const result = await getManagerDatasCached(p, m.id);
               const time = Date.now() - start;
-              if (time > 1000) {
-                console.log(`    ⚠️ Медленный менеджер [${m.id}]: ${time}ms`);
-              }
+              // if (time > 1000) {
+              //   console.log(`    ⚠️ Медленный менеджер [${m.id}]: ${time}ms`);
+              // }
               return result;
             }),
           );
-          console.log(
-            `  [MOP] Обработка ${mops.length} менеджеров заняла ${Date.now() - salariesStart}ms`,
-          );
+          // console.log(
+          //   `  [MOP] Обработка ${mops.length} менеджеров заняла ${Date.now() - salariesStart}ms`,
+          // );
 
           const value = salaries.reduce(
             (sum, data) => sum + data.totalSalary,
@@ -755,7 +715,7 @@ export class PnlService {
               ],
             },
           });
-          console.log(`  [ROP] Найдено ${rops.length} РОПов для периода ${p}`);
+          // console.log(`  [ROP] Найдено ${rops.length} РОПов для периода ${p}`);
 
           // Параллельная обработка всех РОПов
           const salariesStart = Date.now();
@@ -764,13 +724,13 @@ export class PnlService {
               const start = Date.now();
               const result = await getManagerDatasCached(p, r.id);
               const time = Date.now() - start;
-              console.log(`    [ROP ${r.id}] Обработка заняла: ${time}ms`);
+              // console.log(`    [ROP ${r.id}] Обработка заняла: ${time}ms`);
               return result;
             }),
           );
-          console.log(
-            `  [ROP] Обработка ${rops.length} РОПов заняла ${Date.now() - salariesStart}ms`,
-          );
+          // console.log(
+          //   `  [ROP] Обработка ${rops.length} РОПов заняла ${Date.now() - salariesStart}ms`,
+          // );
 
           const value = salaries.reduce(
             (sum, data) => sum + data.totalSalary,
@@ -788,9 +748,9 @@ export class PnlService {
         }),
       ),
     ]);
-    console.log(
-      `[PNL] ✓ Получение MOP и ROP salaries завершено за: ${Date.now() - salariesStartTime}ms (общее время: ${Date.now() - startTime}ms)`,
-    );
+    // console.log(
+    //   `[PNL] ✓ Получение MOP и ROP salaries завершено за: ${Date.now() - salariesStartTime}ms (общее время: ${Date.now() - startTime}ms)`,
+    // );
 
     const disSalaries = await Promise.all(
       periods.map(async (p, index) => {
@@ -834,13 +794,16 @@ export class PnlService {
         const movs = await this.prisma.user.findMany({
           where: {
             role: {
-              shortName: 'MOV',
+              shortName: {
+                in: ['MOV', 'ROV'],
+              },
             },
+            groupId: 4,
           },
           include: {
             salaryPays: {
               where: {
-                period,
+                period: p,
               },
             },
           },
@@ -912,9 +875,9 @@ export class PnlService {
 
     res.expenses.commercial.commercialSalaries.totals =
       getTotals(comSalariesData);
-    console.log(
-      `[PNL] Получение всех commercial salaries (MOP, ROP, DIZ, MOV, KD): ${Date.now() - startTime}ms`,
-    );
+    // console.log(
+    //   `[PNL] Получение всех commercial salaries (MOP, ROP, DIZ, MOV, KD): ${Date.now() - startTime}ms`,
+    // );
 
     const mainTotals = [
       {
@@ -979,78 +942,352 @@ export class PnlService {
 
     res.expenses.totals.totals = getTotals(mainTotals);
 
-    console.log(
-      `[PNL] ✅ Завершение getPLDatas. Общее время: ${Date.now() - startTime}ms`,
-    );
+    // console.log(
+    //   `[PNL] ✅ Завершение getPLDatas. Общее время: ${Date.now() - startTime}ms`,
+    // );
     return res;
   }
 
-  async getBookPLDatas(period: string, user: UserDto) {
+  async getNeonPLDatas(period: string) {
+    const groupSearch = { in: [2, 3, 4, 18] };
     const periods = getLastMonths(period, 4);
-    
-    type ManagerDatasResult = Awaited<
-      ReturnType<typeof this.commercialDatasService.getManagerDatas>
-    >;
-    const managerDatasCache = new Map<string, ManagerDatasResult>();
-    const getManagerDatasCached = async (
-      periodKey: string,
-      managerId: number,
-    ) => {
-      const cacheKey = `${managerId}:${periodKey}`;
-      const cached = managerDatasCache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-      const data = await this.commercialDatasService.getManagerDatas(
-        user,
-        periodKey,
-        managerId,
-      );
-      managerDatasCache.set(cacheKey, data);
-      return data;
+
+    const income = await this.getIncomeDatas(periods, groupSearch);
+    // console.log({income});
+
+    const adExpenses = await Promise.all(
+      periods.map(async (p) => {
+        const adExpenses = await this.prisma.adExpense.findMany({
+          where: {
+            date: {
+              startsWith: p,
+            },
+            groupId: groupSearch,
+          },
+          include: {
+            adSource: {
+              select: {
+                title: true,
+              },
+            },
+          },
+        });
+        const value = adExpenses.reduce((a, b) => a + b.price, 0);
+
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+
+    const disSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const designers = await this.prisma.user.findMany({
+          where: {
+            role: {
+              shortName: 'DIZ',
+            },
+          },
+          include: {
+            salaryPays: {
+              where: {
+                period: p,
+              },
+            },
+          },
+        });
+        const value = designers.reduce(
+          (a, b) => a + b.salaryPays.reduce((a, b) => a + b.price, 0),
+          0,
+        );
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+    const movSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const movs = await this.prisma.user.findMany({
+          where: {
+            role: {
+              shortName: {
+                in: ['MOV', 'ROV'],
+              },
+            },
+            groupId: groupSearch,
+          },
+          include: {
+            salaryPays: {
+              where: {
+                period: p,
+              },
+            },
+          },
+        });
+        const value = movs.reduce(
+          (a, b) => a + b.salaryPays.reduce((a, b) => a + b.price, 0),
+          0,
+        );
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+    const kdSalaries = await Promise.all(
+      periods.map(async (p) => {
+        return {
+          period: p,
+          value: 100_000,
+        };
+      }),
+    );
+    const prodExpenses = await Promise.all(
+      periods.map(async (p) => {
+        const supplies = await this.prisma.suppliePosition.findMany({
+          where: {
+            supplie: {
+              date: {
+                startsWith: p,
+              },
+            },
+          },
+        });
+        const value = supplies.reduce(
+          (a, b) => a + b.priceForItem * b.quantity,
+          0,
+        );
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+    const mastersSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const reports = await this.prisma.masterReport.findMany({
+          where: {
+            date: {
+              startsWith: p,
+            },
+          },
+        });
+        const reportsCost = reports.reduce(
+          (a, b) => a + (b.cost + b.lightingCost - b.penaltyCost),
+          0,
+        );
+
+        const value = reportsCost;
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+    const packersSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const reports = await this.prisma.packerReport.findMany({
+          where: {
+            date: {
+              startsWith: p,
+            },
+          },
+        });
+        const reportsCost = reports.reduce(
+          (a, b) => a + b.cost - b.penaltyCost,
+          0,
+        );
+
+        const value = reportsCost;
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+    const frezerSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const reports = await this.prisma.frezerReport.findMany({
+          where: {
+            date: {
+              startsWith: p,
+            },
+          },
+        });
+        const reportsCost = reports.reduce(
+          (a, b) => a + b.cost - b.penaltyCost,
+          0,
+        );
+        const value = reportsCost;
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+    const mastersRepairsSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const reports = await this.prisma.masterRepairReport.findMany({
+          where: {
+            date: {
+              startsWith: p,
+            },
+          },
+        });
+        const reportsCost = reports.reduce(
+          (a, b) => a + (b.cost - b.penaltyCost),
+          0,
+        );
+        const value = reportsCost;
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+    const otherSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const reports = await this.prisma.otherReport.findMany({
+          where: {
+            date: {
+              startsWith: p,
+            },
+          },
+        });
+        const reportsCost = reports.reduce(
+          (a, b) => a + b.cost - b.penaltyCost,
+          0,
+        );
+        const value = reportsCost;
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+    const logisticsSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const reports = await this.prisma.logistShift.findMany({
+          where: {
+            shift_date: {
+              startsWith: p,
+            },
+          },
+        });
+        const reportsCost = reports.reduce((a, b) => a + b.cost, 0);
+        return {
+          period: p,
+          value: reportsCost,
+        };
+      }),
+    );
+
+    const mopSalaries = await Promise.all(periods.map(async (p) => {
+      const value = await this.commercialDatasService.getMOPNeonPNLDatas(p);
+      return {
+        period: p,
+        value,
+      };
+    }));
+    // console.log({mopSalaries});
+    //вывести зп сереги
+    //вывести зп мопов юли
+    //вывести
+
+    return {
+      periods,
+      income, //доходы
+      //расходы
+      //Отдел производства
+      prodExpenses, //расходы на поставки
+      //зарплаты производства
+      mastersSalaries, // мастера
+      mastersRepairsSalaries, // ремонты
+      packersSalaries, // упаковщиков
+      frezerSalaries, // фрезеровщики
+      otherSalaries, // другие расходы
+      logisticsSalaries, // логисты
+
+      //Коммерческий отдел
+      adExpenses, //расходы на рекламу
+      // зарплаты коммерческого отдела
+      disSalaries, // дизайнеры
+      movSalaries, // менеджеры отдела ведения
+      kdSalaries, // коммерческий директор
     };
-  
-    // Оптимизация 1: Получаем списки пользователей один раз (вне цикла периодов)
-    const [mops, rops, movs] = await Promise.all([
-      this.prisma.user.findMany({
-        where: { role: { shortName: 'MOP' }, groupId: 19 },
+  }
+
+  async getBookPLDatas(period: string) {
+    const periods = getLastMonths(period, 4);
+
+    const movSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const value = await this.commercialDatasService.getMOVBookPNLDatas(p);
+        return {
+          period: p,
+          value,
+        };
       }),
-      this.prisma.user.findMany({
-        where: { role: { shortName: 'ROP' }, groupId: 19 },
+    );
+
+    const mopSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const value = await this.commercialDatasService.getMOPBookPNLDatas(p);
+        return {
+          period: p,
+          value,
+        };
       }),
-      this.prisma.user.findMany({
-        where: { role: { shortName: 'MOV' }, groupId: 19 },
-      }),
-    ]);
-  
+    );
+    // console.log(mopSalaries);
+
     // Оптимизация 2: Запускаем все запросы параллельно
     const [
       income,
       prodExpensesByPeriod,
       designExpensesByPeriod,
       adExpenses,
-      mopSalaries,
-      ropSalaries,
-      movSalaries,
+      // mopSalaries,
+      // ropSalaries,
+      // movSalaries,
     ] = await Promise.all([
       // Income
       this.getIncomeDatas(periods, { in: [19] }),
-  
+
       // Расходы на производство - оптимизированный запрос
       this.getExpensesByCategory(periods, 143),
-  
+
       // Расходы на дизайн - оптимизированный запрос
       this.getExpensesByCategory(periods, 141),
-  
+
       // Расходы на рекламу - оптимизированный запрос
       this.getAdExpensesByPeriods(periods, 19),
-  
+
       // Зарплаты (используем уже полученные списки пользователей)
-      this.getSalariesForUsers(periods, mops, getManagerDatasCached),
-      this.getSalariesForUsers(periods, rops, getManagerDatasCached),
-      this.getSalariesForUsers(periods, movs, getManagerDatasCached),
+      // this.getSalariesForUsers(periods, mops, getManagerDatasCached),
+      // this.getSalariesForUsers(periods, rops, getManagerDatasCached),
+      // this.getSalariesForUsers(periods, movs, getManagerDatasCached),
     ]);
-  
+
+    const rops = await this.prisma.user.findMany({
+      where: {
+        role: {
+          shortName: 'ROP',
+        },
+        groupId: 19,
+      },
+    });
+
+    const ropSalaries = income.map((i) => {
+      // console.log(i.revenue);
+      return {
+        period: i.period,
+        value: i.revenue * 0.01 * rops.length,
+      };
+    });
+
     return {
       periods,
       income,
@@ -1062,7 +1299,7 @@ export class PnlService {
       designExpensesByPeriod,
     };
   }
-  
+
   // Приватная функция: один запрос на все периоды
   private async getExpensesByCategory(
     periods: string[],
@@ -1070,16 +1307,16 @@ export class PnlService {
   ): Promise<{ period: string; value: number }[]> {
     // Один запрос вместо 4-х
     const allExpenses = await this.prisma.operationPosition.findMany({
-        where: {
-            expenseCategoryId: categoryId,
-            OR: periods.map(p => ({
-              originalOperation: {
-                operationDate: {
-                  startsWith: p,
-                },
-              },
-            })),
+      where: {
+        expenseCategoryId: categoryId,
+        OR: periods.map((p) => ({
+          originalOperation: {
+            operationDate: {
+              startsWith: p,
+            },
           },
+        })),
+      },
       select: {
         amount: true,
         originalOperation: {
@@ -1089,19 +1326,21 @@ export class PnlService {
         },
       },
     });
-  
+
     // Группируем по периодам
-    const grouped = periods.map(period => {
+    const grouped = periods.map((period) => {
       const value = allExpenses
-        .filter(exp => exp.originalOperation?.operationDate.startsWith(period))
+        .filter((exp) =>
+          exp.originalOperation?.operationDate.startsWith(period),
+        )
         .reduce((sum, exp) => sum + exp.amount, 0);
-      
+
       return { period, value };
     });
-  
+
     return grouped;
   }
-  
+
   // Приватная функция: один запрос на рекламные расходы
   private async getAdExpensesByPeriods(
     periods: string[],
@@ -1111,24 +1350,24 @@ export class PnlService {
     const allAdExpenses = await this.prisma.adExpense.findMany({
       where: {
         groupId,
-        OR: periods.map(p => ({ date: { startsWith: p } })),
+        OR: periods.map((p) => ({ date: { startsWith: p } })),
       },
       select: {
         price: true,
         date: true,
       },
     });
-  
+
     // Группируем по периодам
-    return periods.map(period => {
+    return periods.map((period) => {
       const value = allAdExpenses
-        .filter(ad => ad.date.startsWith(period))
+        .filter((ad) => ad.date.startsWith(period))
         .reduce((sum, ad) => sum + ad.price, 0);
-      
+
       return { period, value };
     });
   }
-  
+
   // Приватная функция: расчет зарплат для списка пользователей
   private async getSalariesForUsers(
     periods: string[],
@@ -1143,11 +1382,11 @@ export class PnlService {
             return result;
           }),
         );
-  
+
         const value = +salaries
           .reduce((sum, data) => sum + data.totalSalary, 0)
           .toFixed(2);
-  
+
         return { value, period };
       }),
     );

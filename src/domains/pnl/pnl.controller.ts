@@ -20,7 +20,7 @@ export class PnlController {
   @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getPLDatas(
     @Query('period') period: string,
-    @Query('project') project: string = 'all',
+    @Query('project') project: string = 'neon',
     @CurrentUser() user: UserDto,
   ) {
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
@@ -28,14 +28,30 @@ export class PnlController {
         'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
       );
     }
+    // await this.pnlService.getNeonPLDatas(period);
     return this.pnlService.getPLDatas(period, project, user);
+  }
+
+  @Get('neon')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async getNeonPLDatas(
+    @Query('period') period: string,
+    // @CurrentUser() user: UserDto,
+  ) {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+
+    return this.pnlService.getNeonPLDatas(period);
   }
 
   @Get('book')
   @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getBookPLDatas(
     @Query('period') period: string,
-    @CurrentUser() user: UserDto,
+    // @CurrentUser() user: UserDto,
   ) {
     if (!period || !/^\d{4}-\d{2}$/.test(period)) {
       throw new BadRequestException(
@@ -43,6 +59,6 @@ export class PnlController {
       );
     }
       
-    return this.pnlService.getBookPLDatas(period, user);
+    return this.pnlService.getBookPLDatas(period);
   }
 }

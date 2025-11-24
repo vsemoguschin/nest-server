@@ -49,6 +49,10 @@ export class VkAdsCronService {
   // Каждый день в 01:00 по Москве собираем последние 5 дней
   @Cron('0 0 1 * * *', { timeZone: 'Europe/Moscow' })
   async nightlyCollector() {
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.debug(`[dev] skip nightlyCollector`);
+      return;
+    }
     // Защита от повторного выполнения
     if (this.isRunning) {
       this.logger.warn(
