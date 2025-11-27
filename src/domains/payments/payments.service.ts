@@ -1,8 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -10,6 +6,7 @@ import { UserDto } from '../users/dto/user.dto';
 import axios from 'axios';
 import { createHash } from 'crypto';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
+import { CreateOfferLinkDto } from './dto/create-offer-link.dto';
 
 @Injectable()
 export class PaymentsService {
@@ -54,20 +51,75 @@ export class PaymentsService {
     return { ...newPayment, message: 'Платеж создан' };
   }
 
-  async createLink(createPaymentLinkDto: CreatePaymentLinkDto, user: UserDto) {
-    function generateToken(Data): string {
-      const hash = createHash('sha256')
-        .update(Data.join(''), 'utf8')
-        .digest('hex');
-      return hash;
+  async createOfferLink(
+    createOfferLinkDto: CreateOfferLinkDto,
+    jwtToken: string = '',
+  ) {
+    const { Name } = createOfferLinkDto;
+    const Amount = createOfferLinkDto.Amount * 100;
+    const Description =
+      Name === 'Изготовление неоновой вывески'
+        ? 'Оплата неоновой вывески'
+        : 'Оплата фотокниги';
+
+    // Создаем предзапись с офертой (без оплаты)
+    // В этом случае создается только запись в БД payment-service, ссылка в Tinkoff НЕ создается
+    // Email и Phone не требуются - клиент заполнит email на странице оферты
+    const paymentServiceUrl =
+      process.env.PAYMENT_SERVICE_URL || 'http://localhost:5001';
+    try {
+      const { data } = await axios.post(
+        `${paymentServiceUrl}/api/payments/draft`,
+        {
+          amount: Amount,
+          name: Name,
+          description: Description,
+          terminal: createOfferLinkDto.terminal,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+          },
+        },
+      );
+
+      // Возвращаем только публичную ссылку на страницу оферты, без ссылки на оплату
+      // Ссылка на оплату будет создана позже после принятия оферты клиентом
+      return {
+        link: '', // Нет прямой ссылки на оплату
+        publicLink: data.publicLink,
+        PaymentId: '', // Будет заполнен после создания платежа
+      };
+    } catch (error) {
+      console.error('Ошибка при создании предзаписи:', error);
+      if (error.response) {
+        console.error('Ответ сервера:', error.response.data);
+        console.error('Статус:', error.response.status);
+      }
+      throw error;
     }
-    // console.log(createPaymentLinkDto);
+  }
+
+  async createLink(
+    createPaymentLinkDto: CreatePaymentLinkDto,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _user: UserDto | null = null,
+    jwtToken: string = '',
+  ) {
     const { Name, Phone, Email } = createPaymentLinkDto;
     const Amount = createPaymentLinkDto.Amount * 100;
     const Description =
       Name === 'Изготовление неоновой вывески'
         ? 'Оплата неоновой вывески'
         : 'Оплата фотокниги';
+
+    // Обычная логика создания ссылки на оплату через Tinkoff
+    function generateToken(Data): string {
+      const hash = createHash('sha256')
+        .update(Data.join(''), 'utf8')
+        .digest('hex');
+      return hash;
+    }
     const OrderId = new Date().getTime();
     // console.log(OrderId);
 
@@ -149,9 +201,50 @@ export class PaymentsService {
       body,
     );
 
-    // console.log(data);
+    // Извлекаем токен из PaymentURL (например, Sw8PE55H из https://pay.tbank.ru/Sw8PE55H)
+    const paymentUrl: string = data.PaymentURL;
+    const urlObj = new URL(paymentUrl);
+    const pathSegments = urlObj.pathname.split('/').filter(Boolean);
+    const token = pathSegments[pathSegments.length - 1];
 
-    return { link: data.PaymentURL, PaymentId: data.PaymentId };
+    // Отправляем данные в микросервис для сохранения
+    const paymentServiceUrl =
+      process.env.PAYMENT_SERVICE_URL || 'http://localhost:5001';
+    try {
+      await axios.post(
+        `${paymentServiceUrl}/api/payments/save`,
+        {
+          token,
+          paymentUrl,
+          paymentId: data.PaymentId,
+          amount: Amount,
+          name: Name,
+          description: Description,
+          email: Email,
+          phone: Phone,
+          terminal: createPaymentLinkDto.terminal,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${jwtToken}`, // Передаем реальный JWT токен пользователя
+          },
+        },
+      );
+    } catch (error) {
+      // Логируем ошибку, но не прерываем процесс
+      console.error('Ошибка при сохранении в микросервис:', error);
+      if (error.response) {
+        console.error('Ответ сервера:', error.response.data);
+        console.error('Статус:', error.response.status);
+      }
+    }
+
+    // Для обычной ссылки на оплату возвращаем только ссылку от банка
+    // publicLink не возвращается - клиент переходит напрямую на оплату
+    return {
+      link: data.PaymentURL,
+      PaymentId: data.PaymentId,
+    };
   }
 
   async checkPaymentByLink(link: string) {
@@ -188,7 +281,7 @@ export class PaymentsService {
       }
 
       return result;
-    } catch (error) {
+    } catch {
       // console.log(error);
       return result;
       throw new NotFoundException(`Ошибка при проверке оплаты`);

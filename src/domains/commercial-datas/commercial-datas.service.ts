@@ -426,7 +426,7 @@ export class CommercialDatasService {
   }
 
   /** Получение данных по продажам ROP по группе */
-  private async getROPSalesDatas(groupId: number, period: string) {
+  async getROPSalesDatas(groupId: number, period: string) {
     //находим все платежи внесенные в этот период
     const payments = await this.prisma.payment.findMany({
       where: {
@@ -592,7 +592,7 @@ export class CommercialDatasService {
             saleDate: true,
             title: true,
             dops: {
-              where: { userId: userId },
+              // where: { userId: userId },
               select: {
                 id: true,
                 price: true,
@@ -3246,14 +3246,97 @@ export class CommercialDatasService {
     ]);
 
     const getPersentageDatas = async (period: string, managerId: number) => {
-      
-     }
+      const m = await this.prisma.user.findUnique({
+        where: {
+          id: managerId,
+        },
+        include: {
+          role: true,
+          workSpace: true,
+          group: true,
+          managersPlans: {
+            where: {
+              period,
+            },
+          },
+          dealSales: {
+            where: {
+              deal: {
+                saleDate: {
+                  startsWith: period,
+                },
+                reservation: false,
+                deletedAt: null,
+                status: { not: 'Возврат' },
+              },
+            },
+            include: {
+              deal: {
+                include: {
+                  client: true,
+                  payments: true,
+                },
+              },
+            },
+          },
+          dops: {
+            where: {
+              saleDate: {
+                startsWith: period,
+              },
+              deal: {
+                reservation: false,
+                deletedAt: null,
+                status: { not: 'Возврат' },
+              },
+            },
+            include: {
+              deal: {
+                select: {
+                  title: true,
+                  price: true,
+                  payments: true,
+                  dops: true,
+                },
+              },
+            },
+          },
+          managerReports: {
+            where: {
+              period,
+            },
+          },
+        },
+      });
+      if (!m) {
+        throw new NotFoundException('Менеджер не найден.');
+      }
+      const isIntern = m.managerReports.some((r) => r.isIntern === true);
+      const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
+      const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
+      const totalSales = dealSales + dopSales;
+      const { bonusPercentage, bonus, dopsPercentage } =
+        this.getBonusPercentage(
+          totalSales,
+          m.workSpaceId,
+          m.groupId,
+          isIntern,
+          m.role.shortName,
+          period,
+        );
+      return {
+        bonusPercentage,
+        bonus,
+        dopsPercentage,
+        period,
+      };
+    };
 
     const mops = await this.prisma.user.findMany({
       where: {
         groupId: {
-          // in: [2, 3, 18],
-          in: [2],
+          in: [2, 3, 18],
+          // in: [2],
         },
       },
       include: {
@@ -3337,168 +3420,190 @@ export class CommercialDatasService {
         },
       },
     });
-    // console.log('payments', payments.reduce((a, b) => a + b.price, 0), period);
-    const sales = mops.map((m) => {
-      const totalSales =
-        m.dealSales.reduce((sum, sale) => sum + sale.price, 0) +
-        m.dops.reduce((sum, dop) => sum + dop.price, 0);
-      const isIntern = m.managerReports.some((r) => r.isIntern === true);
-      // console.log({totalSales}, period);
+    const paymentsPeriods = Array.from(
+      new Set(payments.map((p) => p.deal.saleDate.slice(0, 7))),
+    );
 
-      // console.log({bonusPercentage, dopsPercentage, bonus}, period);
-
-      let forDealsThisPeriod: number = 0;
-      let forDopsThisPeriod: number = 0;
-      let forDealsPrevPeriod: number = 0;
-      let forDopsPrevPeriod: number = 0;
-      const dealsInfo: {
-        id: number;
-        price: number;
-        saleDate: string;
-        title: string;
-        toSalary: number;
-        paid: number;
-        bonusPercentage: number;
-      }[] = [];
-      const checkedDeals: number[] = [];
-      payments.map((p) => {
-        const { bonusPercentage } = this.getBonusPercentage(
-          totalSales,
-          m.workSpaceId,
-          m.groupId,
-          isIntern,
-          m.role.shortName,
-          p.deal.saleDate.slice(0, 7),
+    const sales = await Promise.all(
+      mops.map(async (m) => {
+        const periodsDatas = await Promise.all(
+          paymentsPeriods.map(async (p) => {
+            return getPersentageDatas(p, m.id);
+          }),
         );
-        if (checkedDeals.includes(p.deal.id)) {
-          return;
-        }
-        checkedDeals.push(p.deal.id);
-        const payPeriod = p.date.slice(0, 7);
-        const deal = p.deal;
-        const dealPrice = p.deal.price;
-        const dealers = p.deal.dealers;
-        const dops = p.deal.dops;
-        //платежи до выбраного периода
-        const dealPaymentsLastPeriod = deal.payments
-          .filter((p) => p.date.slice(0, 7) < payPeriod)
-          .reduce((a, b) => a + b.price, 0);
-        //платежи за выбранный период
-        const dealPaymentsThisPeriod = deal.payments
-          .filter((p) => p.date.slice(0, 7) === payPeriod)
-          .reduce((a, b) => a + b.price, 0);
+        // console.log({totalSales}, period);
 
-        let dealPaid = 0;
-        let dopPaid = 0;
-        // елси сделка оплачена, остаток в допы
-        if (dealPrice < dealPaymentsLastPeriod + dealPaymentsThisPeriod) {
-          dopPaid = dealPaymentsLastPeriod + dealPaymentsThisPeriod - dealPrice;
-          if (dealPrice < dealPaymentsLastPeriod) {
-            dopPaid = dealPaymentsThisPeriod;
+        // console.log({bonusPercentage, dopsPercentage, bonus}, period);
+
+        let forDealsThisPeriod: number = 0;
+        let forDopsThisPeriod: number = 0;
+        let forDealsPrevPeriod: number = 0;
+        let forDopsPrevPeriod: number = 0;
+        const dealsInfo: {
+          id: number;
+          price: number;
+          saleDate: string;
+          title: string;
+          toSalary: number;
+          paid: number;
+          bonusPercentage: number;
+        }[] = [];
+        const dopsInfo: {
+          id: number;
+          price: number;
+          saleDate: string;
+          title: string;
+          toSalary: number;
+          paid: number;
+          bonusPercentage: number;
+        }[] = [];
+        const checkedDeals: number[] = [];
+        payments.map((p) => {
+          const bonusPercentage =
+            periodsDatas.find((d) => d.period === p.deal.saleDate.slice(0, 7))
+              ?.bonusPercentage ?? 0;
+          if (checkedDeals.includes(p.deal.id)) {
+            return;
           }
-          dealPaid =
-            dealPrice - dealPaymentsLastPeriod < 0
-              ? 0
-              : dealPrice - dealPaymentsLastPeriod;
-        }
-        //елси сделка неоплачена, остаток в сделку
-        if (dealPrice >= dealPaymentsLastPeriod + dealPaymentsThisPeriod) {
-          dealPaid = dealPaymentsThisPeriod;
-          dopPaid = 0;
-        }
-        //если менеджер участник сделки
-        const dealer = dealers.find((d) => d.userId === m.id);
-        if (dealer) {
-          const dealerPrice = dealer.price;
-          const dealerPart = dealerPrice / dealPrice;
-          const paid = +(dealPaid * dealerPart).toFixed(2);
-          const salePeriod = deal.saleDate.slice(0, 7);
-          // forDeals += paid * bonusPercentage;
-          if (salePeriod === period) {
-            forDealsThisPeriod += paid * bonusPercentage;
-          } else {
-            forDealsPrevPeriod += paid * bonusPercentage;
-            dealsInfo.push({
-              id: deal.id,
-              price: dealPrice,
-              saleDate: deal.saleDate,
-              title: deal.title,
-              toSalary: paid * bonusPercentage,
-              paid,
-              bonusPercentage: bonusPercentage,
+          checkedDeals.push(p.deal.id);
+          const payPeriod = p.date.slice(0, 7);
+          const deal = p.deal;
+          const dealPrice = p.deal.price;
+          const dealers = p.deal.dealers;
+          const dops = p.deal.dops;
+          //платежи до выбраного периода
+          const dealPaymentsLastPeriod = deal.payments
+            .filter((p) => p.date.slice(0, 7) < payPeriod)
+            .reduce((a, b) => a + b.price, 0);
+          //платежи за выбранный период
+          const dealPaymentsThisPeriod = deal.payments
+            .filter((p) => p.date.slice(0, 7) === payPeriod)
+            .reduce((a, b) => a + b.price, 0);
+
+          let dealPaid = 0;
+          let dopPaid = 0;
+          // елси сделка оплачена, остаток в допы
+          if (dealPrice < dealPaymentsLastPeriod + dealPaymentsThisPeriod) {
+            dopPaid =
+              dealPaymentsLastPeriod + dealPaymentsThisPeriod - dealPrice;
+            if (dealPrice < dealPaymentsLastPeriod) {
+              dopPaid = dealPaymentsThisPeriod;
+            }
+            dealPaid =
+              dealPrice - dealPaymentsLastPeriod < 0
+                ? 0
+                : dealPrice - dealPaymentsLastPeriod;
+          }
+          //елси сделка неоплачена, остаток в сделку
+          if (dealPrice >= dealPaymentsLastPeriod + dealPaymentsThisPeriod) {
+            dealPaid = dealPaymentsThisPeriod;
+            dopPaid = 0;
+          }
+          //если менеджер участник сделки
+          const dealer = dealers.find((d) => d.userId === m.id);
+          if (dealer) {
+            const dealerPrice = dealer.price;
+            const dealerPart = dealerPrice / dealPrice;
+            const paid = +(dealPaid * dealerPart).toFixed(2);
+            const salePeriod = deal.saleDate.slice(0, 7);
+            // forDeals += paid * bonusPercentage;
+            if (salePeriod === period) {
+              forDealsThisPeriod += paid * bonusPercentage;
+            } else {
+              forDealsPrevPeriod += paid * bonusPercentage;
+              // dealsInfo.push({
+              //   id: deal.id,
+              //   price: dealPrice,
+              //   saleDate: deal.saleDate,
+              //   title: deal.title,
+              //   toSalary: paid * bonusPercentage,
+              //   paid,
+              //   bonusPercentage: bonusPercentage,
+              // });
+            }
+          }
+          // если есть допы менеджера
+          const managerDops = dops.filter((d) => d.userId === m.id);
+          if (managerDops.length) {
+            const dealDopsPrice = dops.reduce((a, b) => a + b.price, 0);
+            managerDops.map((d) => {
+              const dopsPercentage =
+                periodsDatas.find((p) => p.period === d.saleDate.slice(0, 7))
+                  ?.dopsPercentage ?? 0;
+              const dealerPart = d.price / dealDopsPrice;
+              const paid = +(dopPaid * dealerPart).toFixed(2);
+              const salePeriod = d.saleDate.slice(0, 7);
+              // forDops += paid * dopsPercentage;
+              if (salePeriod === period) {
+                forDopsThisPeriod += paid * dopsPercentage;
+              } else {
+                forDopsPrevPeriod += paid * dopsPercentage;
+                // dopsInfo.push({
+                //   id: d.id,
+                //   price: d.price,
+                //   saleDate: d.saleDate,
+                //   title: d.type,
+                //   toSalary: paid * dopsPercentage,
+                //   paid,
+                //   bonusPercentage: dopsPercentage,
+                // });
+              }
             });
           }
-        }
-        // если есть допы менеджера
-        const managerDops = dops.filter((d) => d.userId === m.id);
-        if (managerDops.length) {
-          const { dopsPercentage } = this.getBonusPercentage(
-            totalSales,
-            m.workSpaceId,
-            m.groupId,
-            isIntern,
-            m.role.shortName,
-            p.deal.saleDate.slice(0, 7),
-          );
-          const dealDopsPrice = dops.reduce((a, b) => a + b.price, 0);
-          managerDops.map((d) => {
-            const dealerPart = d.price / dealDopsPrice;
-            const paid = +(dopPaid * dealerPart).toFixed(2);
-            const salePeriod = d.saleDate.slice(0, 7);
-            // forDops += paid * dopsPercentage;
-            if (salePeriod === period) {
-              forDopsThisPeriod += paid * dopsPercentage;
-            } else {
-              forDopsPrevPeriod += paid * dopsPercentage;
-            }
-          });
-        }
-      });
-      const isOverRopPlan =
-        m.groupId === 2
-          ? avitoDatas.isOverRopPlan
-          : m.groupId === 3
-            ? vkDatas.isOverRopPlan
-            : vkAvitoDatas.isOverRopPlan;
-      const groupPlanBonus =
-        isOverRopPlan &&
-        m.deletedAt === null &&
-        (m.groupId === 3 || m.groupId === 2) &&
-        m.role.shortName !== 'DO'
-          ? 3000
-          : 0;
-      const topBonus =
-        m.groupId === 2
-          ? (avitoDatas.tops.find((m) => m.id === m.id && m.groupId === 2)
-              ?.topBonus ?? 0)
-          : m.groupId === 3
-            ? (vkDatas.tops.find((m) => m.id === m.id && m.groupId === 3)
-                ?.topBonus ?? 0)
-            : (vkAvitoDatas.tops.find((m) => m.id === m.id && m.groupId === 18)
-                ?.topBonus ?? 0);
-      return {
-        toSalary:
-          forDealsThisPeriod +
-          forDopsThisPeriod +
-          // bonus +
-          groupPlanBonus +
+        });
+        const isOverRopPlan =
+          m.groupId === 2
+            ? avitoDatas.isOverRopPlan
+            : m.groupId === 3
+              ? vkDatas.isOverRopPlan
+              : vkAvitoDatas.isOverRopPlan;
+        const groupPlanBonus =
+          isOverRopPlan &&
+          m.deletedAt === null &&
+          (m.groupId === 3 || m.groupId === 2) &&
+          m.role.shortName !== 'DO'
+            ? 3000
+            : 0;
+        const topBonus =
+          m.groupId === 2
+            ? (avitoDatas.tops.find(
+                (manager) => manager.id === m.id && manager.groupId === 2,
+              )?.topBonus ?? 0)
+            : m.groupId === 3
+              ? (vkDatas.tops.find(
+                  (manager) => manager.id === m.id && manager.groupId === 3,
+                )?.topBonus ?? 0)
+              : (vkAvitoDatas.tops.find(
+                  (manager) => manager.id === m.id && manager.groupId === 18,
+                )?.topBonus ?? 0);
+        const { bonus } = await getPersentageDatas(period, m.id);
+        return {
+          toSalary:
+            forDealsThisPeriod +
+            forDopsThisPeriod +
+            forDopsPrevPeriod +
+            forDealsPrevPeriod +
+            bonus +
+            groupPlanBonus +
+            topBonus,
+          fullName: m.fullName,
+          // bonusPercentage,
+          // totalSales,
+          forDealsThisPeriod,
+          forDopsThisPeriod,
+          forDealsPrevPeriod,
+          forDopsPrevPeriod,
+          bonus,
+          groupPlanBonus,
           topBonus,
-        fullName: m.fullName,
-        // bonusPercentage,
-        totalSales,
-        forDealsThisPeriod,
-        forDopsThisPeriod,
-        forDealsPrevPeriod,
-        forDopsPrevPeriod,
-        // dopsInfo,
-        dealsInfo,
-        dealsInfoLength: dealsInfo.length,
-      };
-    });
+          group: m.groupId,
+          // dopsInfo,
+          // dealsInfo,
+          dealsInfoLength: dealsInfo.length,
+        };
+      }),
+    );
 
-    if (period === '2025-11') {
-      console.log(period, sales.filter((s) => s.toSalary > 0)[0]);
-    }
     const mopsSalary =
       mopsShiftsPay + //59985
       sales.reduce((a, b) => a + b.toSalary, 0) +

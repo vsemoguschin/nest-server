@@ -1084,6 +1084,13 @@ export class ProductionService {
     if (!report) {
       throw new NotFoundException(`Report with ID ${id} not found`);
     }
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      dto.date &&
+      dto.date < new Date().toISOString().slice(0, 10)
+    ) {
+      throw new BadRequestException('Отчет изменить нельзя');
+    }
     return this.prisma.frezerReport.update({
       where: { id },
       data: {

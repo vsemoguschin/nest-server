@@ -28,7 +28,6 @@ export class PnlController {
         'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
       );
     }
-    // await this.pnlService.getNeonPLDatas(period);
     return this.pnlService.getPLDatas(period, project, user);
   }
 

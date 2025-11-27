@@ -1040,7 +1040,7 @@ export class PnlService {
       periods.map(async (p) => {
         return {
           period: p,
-          value: 100_000,
+          value: 0,
         };
       }),
     );
@@ -1184,17 +1184,15 @@ export class PnlService {
       }),
     );
 
-    const mopSalaries = await Promise.all(periods.map(async (p) => {
-      const value = await this.commercialDatasService.getMOPNeonPNLDatas(p);
-      return {
-        period: p,
-        value,
-      };
-    }));
-    // console.log({mopSalaries});
-    //вывести зп сереги
-    //вывести зп мопов юли
-    //вывести
+    const mopSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const value = await this.commercialDatasService.getMOPNeonPNLDatas(p);
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
 
     return {
       periods,
@@ -1213,6 +1211,7 @@ export class PnlService {
       //Коммерческий отдел
       adExpenses, //расходы на рекламу
       // зарплаты коммерческого отдела
+      mopSalaries, // мопы
       disSalaries, // дизайнеры
       movSalaries, // менеджеры отдела ведения
       kdSalaries, // коммерческий директор

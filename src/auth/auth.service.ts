@@ -149,6 +149,10 @@ export class AuthService {
   // Периодическая очистка токенов каждый день в 3:00 по UTC
   @Cron('0 0 3 * * *', { timeZone: 'UTC' })
   async scheduledCleanup() {
+    if (process.env.NODE_ENV === 'development') {
+      this.logger.debug(`[dev] skip scheduledCleanup`);
+      return;
+    }
     this.logger.log('Запуск периодической очистки refresh токенов...');
     try {
       const deletedCount = await this.cleanupExpiredTokens();

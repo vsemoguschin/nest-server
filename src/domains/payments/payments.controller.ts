@@ -11,7 +11,9 @@ import {
   BadRequestException,
   DefaultValuePipe,
   ParseArrayPipe,
+  Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -20,6 +22,9 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
+import { CreateOfferLinkDto } from './dto/create-offer-link.dto';
+import { CreatePaymentLinkFromDraftDto } from './dto/create-payment-link-from-draft.dto';
+import { Public } from '../../auth/public.decorator';
 
 type PaymentListItem = {
   id: number;
@@ -125,8 +130,23 @@ export class PaymentsController {
   async createPaymentLink(
     @Body() dto: CreatePaymentLinkDto,
     @CurrentUser() user: UserDto,
+    @Req() req: Request,
   ) {
-    return this.paymentsService.createLink(dto, user);
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.replace('Bearer ', '') || '';
+    return this.paymentsService.createLink(dto, user, token);
+  }
+
+  @Post('offer-link')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  async createOfferLink(
+    @Body() dto: CreateOfferLinkDto,
+    @CurrentUser() user: UserDto,
+    @Req() req: Request,
+  ) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.replace('Bearer ', '') || '';
+    return this.paymentsService.createOfferLink(dto, token);
   }
 
   @Get('checkPayment')
@@ -142,5 +162,27 @@ export class PaymentsController {
   @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   async checkPaymentByLink(@Query('link') link: string) {
     return this.paymentsService.checkPaymentByLink(link);
+  }
+
+  @Post('link-from-draft')
+  @Public()
+  async createPaymentLinkFromDraft(@Body() dto: CreatePaymentLinkFromDraftDto) {
+    // Проверка внутреннего токена для межсервисного взаимодействия
+    const internalToken =
+      process.env.PAYMENT_SERVICE_INTERNAL_TOKEN || 'internal-secret-token';
+    if (dto.internalToken !== internalToken) {
+      throw new BadRequestException('Неверный внутренний токен');
+    }
+
+    // Преобразуем DTO в формат CreatePaymentLinkDto
+    const createPaymentLinkDto: CreatePaymentLinkDto = {
+      Name: dto.name,
+      Amount: dto.amount,
+      Email: dto.email,
+      Phone: '', // Не требуется для создания из предзаписи
+      terminal: dto.terminal,
+    };
+
+    return this.paymentsService.createLink(createPaymentLinkDto, null, '');
   }
 }

@@ -132,7 +132,7 @@ export class ProductionController {
   @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER')
   async create(
     @Body() createMasterReportDto: CreateMasterReportDto,
-    // @CurrentUser() user: UserDto,
+    @CurrentUser() user: UserDto,
   ) {
     // Получаем пользователя отчета для проверки workSpaceId
     const reportUser = await this.prisma.user.findUnique({
@@ -142,6 +142,13 @@ export class ProductionController {
 
     if (!reportUser) {
       throw new BadRequestException('Пользователь не найден');
+    }
+
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      createMasterReportDto.date < new Date().toISOString().slice(0, 10)
+    ) {
+      throw new BadRequestException('Дата не может быть в прошлом');
     }
 
     // Пересчитываем основную стоимость на основе workSpaceId пользователя отчета
@@ -270,6 +277,7 @@ export class ProductionController {
     if (!existingReport) {
       throw new BadRequestException('Отчет не найден');
     }
+
 
     // Получаем пользователя отчета для проверки workSpaceId
     const reportUser = await this.prisma.user.findUnique({
@@ -489,7 +497,15 @@ export class ProductionController {
   @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER')
   async createRepairReport(
     @Body() createMasterRepairReportDto: CreateMasterRepairReportDto,
+    @CurrentUser() user: UserDto,
   ) {
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      createMasterRepairReportDto.date &&
+      createMasterRepairReportDto.date < new Date().toISOString().slice(0, 10)
+    ) {
+      throw new BadRequestException('Дата не может быть в прошлом');
+    }
     return this.productionService.createMasterRepairReport(
       createMasterRepairReportDto,
     );
@@ -530,7 +546,15 @@ export class ProductionController {
   @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PACKER', 'LOGIST', 'MASTER')
   async createPackerReport(
     @Body() createPackerReportDto: CreatePackerReportDto,
+    @CurrentUser() user: UserDto,
   ) {
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      createPackerReportDto.date &&
+      createPackerReportDto.date < new Date().toISOString().slice(0, 10)
+    ) {
+      throw new BadRequestException('Дата не может быть в прошлом');
+    }
     return this.productionService.createPackerReport(createPackerReportDto);
   }
 
@@ -619,7 +643,17 @@ export class ProductionController {
 
   @Post('other-report')
   @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER', 'LOGIST')
-  async createOtherReport(@Body() createOtherReportDto: CreateOtherReportDto) {
+  async createOtherReport(
+    @CurrentUser() user: UserDto,
+    @Body() createOtherReportDto: CreateOtherReportDto,
+  ) {
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      createOtherReportDto.date &&
+      createOtherReportDto.date < new Date().toISOString().slice(0, 10)
+    ) {
+      throw new BadRequestException('Дата не может быть в прошлом');
+    }
     return this.productionService.createOtherReport(createOtherReportDto);
   }
 
@@ -685,9 +719,16 @@ export class ProductionController {
   @Post('frezer-report')
   @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'FRZ')
   async createFrezerReport(
+    @CurrentUser() user: UserDto,
     @Body() createFrezerReportDto: CreateFrezerReportDto,
-    // @CurrentUser() user: UserDto,
   ) {
+    if (
+      !['ADMIN', 'DP', 'RP'].includes(user.role.shortName) &&
+      createFrezerReportDto.date &&
+      createFrezerReportDto.date < new Date().toISOString().slice(0, 10)
+    ) {
+      throw new BadRequestException('Дата не может быть в прошлом');
+    }
     return this.productionService.createFrezerReport(
       createFrezerReportDto,
       //   user,
