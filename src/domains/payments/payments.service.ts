@@ -248,9 +248,6 @@ export class PaymentsService {
   }
 
   async checkPaymentByLink(link: string) {
-    // console.log(link);
-    const linkEnd = link.split('/').reverse()[0];
-
     const result = {
       isConfirmed: false,
       message: 'Оплата не подтверждена',
@@ -259,16 +256,63 @@ export class PaymentsService {
     };
 
     try {
+      // Проверяем, это наша ссылка (pay.easy-crm.pro) или ссылка банка
+      const isOurLink =
+        link.includes('pay.easy-crm.pro') || link.includes('localhost:3001');
+
+      if (isOurLink) {
+        // Это ссылка на наш payment-frontend - проверяем через payment-service
+        const token = link.split('/').reverse()[0];
+        const paymentServiceUrl =
+          process.env.PAYMENT_SERVICE_URL || 'http://localhost:5001';
+
+        const { data } = await axios.get(
+          `${paymentServiceUrl}/api/payments/public/${token}`,
+        );
+
+        if (data.paid) {
+          result.isConfirmed = true;
+          result.message = 'Оплата подтверждена';
+          result.price = data.amount || 0;
+          result.paymentId = data.paymentId || '';
+        } else if (data.paymentUrl) {
+          // Если есть ссылка на банк, проверяем её статус
+          return this.checkBankPaymentLink(data.paymentUrl);
+        }
+
+        return result;
+      } else {
+        // Это ссылка банка - проверяем напрямую
+        return this.checkBankPaymentLink(link);
+      }
+    } catch (error) {
+      console.error('Ошибка при проверке оплаты:', error.message);
+      return result;
+    }
+  }
+
+  // Проверка ссылки на оплату через API банка
+  private async checkBankPaymentLink(link: string) {
+    const result = {
+      isConfirmed: false,
+      message: 'Оплата не подтверждена',
+      price: 0,
+      paymentId: '',
+    };
+
+    try {
+      const linkEnd = link.split('/').reverse()[0];
+
       const { data } = await axios.get<{
         status?: { value: string };
         merchant?: { successUrl?: string };
       }>(`https://payapi.tbank.ru/api/v2/pf/sessions/${linkEnd}`);
-      // console.log(linkEnd,data);
+
       if (data.status?.value === 'SUCCESS' && data.merchant?.successUrl) {
         const successUrl = new URL(data.merchant.successUrl);
         const amountParam = successUrl.searchParams.get('Amount');
         const paymentId = successUrl.searchParams.get('PaymentId') ?? '';
-        // console.log(data.status);
+
         if (amountParam) {
           const amount = Number.parseInt(amountParam, 10);
           if (!Number.isNaN(amount)) {
@@ -282,9 +326,7 @@ export class PaymentsService {
 
       return result;
     } catch {
-      // console.log(error);
       return result;
-      throw new NotFoundException(`Ошибка при проверке оплаты`);
     }
   }
 
