@@ -13,6 +13,7 @@ import multer from 'multer';
 import { getSchemaPath, ApiExtraModels } from '@nestjs/swagger';
 import { ErrorResponse } from './common/errors/error.response';
 import { TelegramService } from './services/telegram.service';
+import { UserActivityInterceptor } from './common/interceptors/user-activity.interceptor';
 
 dotenv.config();
 
@@ -61,6 +62,9 @@ async function bootstrap() {
 
   const telegramService = app.get(TelegramService);
   app.useGlobalFilters(new HttpErrorFilter(telegramService));
+
+  // Отслеживание действий пользователя #113
+  app.useGlobalInterceptors(new UserActivityInterceptor());
 
   // Настройка Swagger
   const config = new DocumentBuilder()

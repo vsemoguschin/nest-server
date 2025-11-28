@@ -154,112 +154,41 @@ export class AttachmentsService {
       const errorMessage =
         error instanceof Error ? error.message : String(error ?? 'unknown');
 
-      // Постоянные ошибки - возвращаем null для показа placeholder
-      if (
+      // === НОВЫЙ КОД: Логируем и возвращаем null для ЛЮБОЙ ошибки ===
+
+      // Проверяем известные "мягкие" ошибки
+      const isSoftError =
         error instanceof NotFoundException ||
-        errorMessage.includes('DiskNotFoundError') ||
-        errorMessage.includes('Resource not found')
-      ) {
-        this.logger.warn(`File missing on Yandex Disk: ${path}`);
-        return null;
-      }
-
-      // Временные ошибки - возвращаем null для показа placeholder
-      if (
         error instanceof ServiceUnavailableException ||
-        errorMessage.includes('Service Unavailable') ||
-        errorMessage.includes('Bad Gateway') ||
-        errorMessage.includes('502') ||
-        errorMessage.includes('503')
-      ) {
+        error instanceof BadRequestException ||
+        error instanceof ForbiddenException ||
+        error instanceof InternalServerErrorException || // <-- ДОБАВЛЕНО
+        errorMessage.includes('DiskNotFoundError') ||
+        errorMessage.includes('Resource not found') ||
+        errorMessage.includes('отсутствует'); // <-- ДОБАВЛЕНО для "Ответ от Яндекс.Диска отсутствует"
+
+      if (isSoftError) {
         this.logger.warn(
-          `Temporary Yandex Disk error for path="${path}": ${errorMessage}. Returning null for placeholder.`,
+          `Yandex Disk error for path="${path}": ${errorMessage}. Returning null for placeholder.`,
         );
         return null;
       }
 
-      // Обработка BadRequestException (400) - возможно неверный формат пути
-      if (error instanceof BadRequestException) {
-        this.logger.error(
-          `Bad request to Yandex Disk for path="${path}": ${errorMessage}. This might indicate path format issue.`,
-        );
-        return null; // Возвращаем null вместо выбрасывания ошибки
-      }
-
-      // Обработка ForbiddenException (403) - недостаточно прав
-      if (error instanceof ForbiddenException) {
-        this.logger.error(
-          `Access forbidden to Yandex Disk for path="${path}": ${errorMessage}. Check token permissions.`,
-        );
-        return null; // Возвращаем null вместо выбрасывания ошибки
-      }
-
+      // Axios ошибки тоже возвращаем null
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
-        const msg = error.response?.data
-          ? JSON.stringify(error.response.data)
-          : error.message;
-
-        // Улучшенное логирование с полной информацией
-        this.logger.error(
-          `getDownloadHref failed for path="${path}": status=${status ?? 'n/a'}, message=${msg}, code=${error.code ?? 'n/a'}`,
+        this.logger.warn(
+          `Axios error for path="${path}": status=${status ?? 'no-response'}, message=${errorMessage}. Returning null for placeholder.`,
         );
-
-        // 404 - файл не найден, возвращаем null
-        if (status === 404) {
-          this.logger.warn(`File missing on Yandex Disk: ${path}`);
-          return null;
-        }
-
-        // 400 - неверный запрос, возвращаем null
-        if (status === 400) {
-          this.logger.warn(
-            `Bad request to Yandex Disk (400) for path="${path}". Path format might be incorrect.`,
-          );
-          return null;
-        }
-
-        // 403 - недостаточно прав, возвращаем null
-        if (status === 403) {
-          this.logger.warn(
-            `Access forbidden (403) to Yandex Disk for path="${path}". Check token permissions.`,
-          );
-          return null;
-        }
-
-        // 502, 503 - временные ошибки, возвращаем null
-        if (status === 502 || status === 503) {
-          this.logger.warn(
-            `Temporary Yandex Disk error (${status}) for path="${path}". Returning null for placeholder.`,
-          );
-          return null;
-        }
-
-        // Сетевые ошибки (timeout, connection refused и т.д.)
-        if (
-          !status &&
-          (error.code === 'ECONNABORTED' ||
-            error.code === 'ECONNREFUSED' ||
-            error.code === 'ETIMEDOUT')
-        ) {
-          this.logger.warn(
-            `Network error when accessing Yandex Disk for path="${path}": ${error.code}. Returning null for placeholder.`,
-          );
-          return null;
-        }
-      } else if (error instanceof Error) {
-        this.logger.error(`getDownloadHref failed: ${error.message}`);
-      } else {
-        this.logger.error('getDownloadHref failed: Unknown error');
+        return null;
       }
 
-      // Только для действительно критических ошибок выбрасываем исключение
-      // Логируем полную информацию об ошибке перед выбрасыванием
+      // Для любых других ошибок тоже возвращаем null (не падаем!)
       this.logger.error(
-        `Critical error in getDownloadHref for path="${path}": ${errorMessage}. Throwing InternalServerErrorException.`,
+        `Unknown error in getDownloadHref for path="${path}": ${errorMessage}. Returning null for placeholder.`,
         error instanceof Error ? error.stack : undefined,
       );
-      throw new InternalServerErrorException('Storage error');
+      return null; // <-- Изменено с throw на return null
     }
   }
 
