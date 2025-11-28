@@ -34,6 +34,9 @@ export class TaskFilesService {
   private readonly baseFolder = 'EasyCRM';
   private readonly logger = new Logger(TaskFilesService.name);
 
+  private readonly createdFolders = new Set<string>();
+  private readonly maxCacheSize = 10000; // Лимит записей
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly yandexDisk: YandexDiskClient,
@@ -108,11 +111,45 @@ export class TaskFilesService {
 
     const payload = await this.createPayload(file);
     let resource: YandexDiskResource;
-    try {
-      resource = await this.yandexDisk.uploadFile(absPath, payload);
-    } finally {
-      await this.cleanupTempFile(file);
+
+    // === ДОБАВИТЬ RETRY ===
+    const maxAttempts = 3;
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        resource = await this.yandexDisk.uploadFile(absPath, payload);
+        break; // Успех — выходим из цикла
+      } catch (error) {
+        lastError = error as Error;
+        const message = error instanceof Error ? error.message : String(error);
+
+        // Если это не retriable ошибка — выбрасываем сразу
+        if (!message.includes('отсутствует') && !message.includes('timeout')) {
+          await this.cleanupTempFile(file);
+          throw error;
+        }
+
+        this.logger.warn(
+          `Upload attempt ${attempt}/${maxAttempts} failed for ${absPath}: ${message}`,
+        );
+
+        if (attempt < maxAttempts) {
+          // Ждём перед повтором (exponential backoff)
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
+        }
+      }
     }
+
+    await this.cleanupTempFile(file);
+
+    if (!resource!) {
+      this.logger.error(
+        `All ${maxAttempts} upload attempts failed for ${absPath}`,
+      );
+      throw lastError ?? new Error('Upload failed after retries');
+    }
+    // === КОНЕЦ RETRY ===
 
     const safeName =
       this.decodeOriginalName(file.originalname) || resource.name || yaName;
@@ -321,11 +358,25 @@ export class TaskFilesService {
   private async ensureHierarchy(directory: string): Promise<void> {
     const segments = directory.split('/').filter(Boolean);
     let current = this.baseFolder;
-    await this.yandexDisk.ensureFolder(current);
+
+    // Очистка кеша если превышен лимит
+    if (this.createdFolders.size > this.maxCacheSize) {
+      this.logger.warn(`Folder cache exceeded ${this.maxCacheSize}, clearing`);
+      this.createdFolders.clear();
+    }
+
+    if (!this.createdFolders.has(current)) {
+      await this.yandexDisk.ensureFolder(current);
+      this.createdFolders.add(current);
+    }
+
     for (const segment of segments) {
       current = `${current}/${segment}`;
+      if (this.createdFolders.has(current)) continue;
+
       this.logger.debug(`TaskFiles ensure folder: ${current}`);
       await this.yandexDisk.ensureFolder(current);
+      this.createdFolders.add(current);
     }
   }
 
