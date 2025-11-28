@@ -164,6 +164,21 @@ export class PaymentsController {
     return this.paymentsService.checkPaymentByLink(link);
   }
 
+  // Публичный endpoint для межсервисного взаимодействия (payment-service)
+  @Get('checkPaymentLink/internal')
+  @Public()
+  async checkPaymentByLinkInternal(
+    @Query('link') link: string,
+    @Query('internalToken') internalToken: string,
+  ) {
+    const validToken =
+      process.env.PAYMENT_SERVICE_INTERNAL_TOKEN || 'internal-secret-token';
+    if (internalToken !== validToken) {
+      throw new BadRequestException('Неверный внутренний токен');
+    }
+    return this.paymentsService.checkPaymentByLink(link);
+  }
+
   @Post('link-from-draft')
   @Public()
   async createPaymentLinkFromDraft(@Body() dto: CreatePaymentLinkFromDraftDto) {

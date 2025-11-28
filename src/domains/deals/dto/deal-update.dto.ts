@@ -173,4 +173,8 @@ export class UpdateDealDto {
   @IsInt()
   @IsOptional()
   pages?: number;
+
+  @IsInt({ message: 'clientId должен быть целым числом (ID клиента).' })
+  @IsOptional()
+  clientId?: number;
 }

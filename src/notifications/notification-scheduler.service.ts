@@ -12,6 +12,7 @@ export class NotificationSchedulerService {
   private isTbankSyncRunning = false; // Защита от повторного выполнения T-Bank синхронизации
   private isCustomerImportRunning = false; // Защита от повторного выполнения импорта клиентов
   private isPositionNormalizationRunning = false; // Защита от повторного выполнения нормализации позиций
+  private isVkAdsExpenseSyncRunning = false; // Защита от повторного выполнения синхронизации расходов VK Ads
 
   constructor(
     private readonly prisma: PrismaService,
@@ -722,6 +723,142 @@ export class NotificationSchedulerService {
       );
     } finally {
       this.isPositionNormalizationRunning = false;
+    }
+  }
+
+  // Автоматическая синхронизация расходов VK Ads в AdExpense
+  // Если за вчерашний день нет записи AdExpense, создаём на основе VkAdsDailyStat
+  @Cron('0 0 8 * * *', { timeZone: 'Europe/Moscow' })
+  async syncVkAdsExpenses() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip syncVkAdsExpenses`);
+      return;
+    }
+
+    // Защита от повторного выполнения
+    if (this.isVkAdsExpenseSyncRunning) {
+      this.logger.warn(
+        '[VK Ads Expenses] Sync is already running, skipping...',
+      );
+      return;
+    }
+
+    this.isVkAdsExpenseSyncRunning = true;
+    const startTime = new Date();
+
+    try {
+      this.logger.log(
+        `[VK Ads Expenses] Starting sync at ${startTime.toISOString()}`,
+      );
+
+      // Вычисляем вчерашнюю дату в формате YYYY-MM-DD
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+      this.logger.log(
+        `[VK Ads Expenses] Checking expenses for date: ${yesterdayStr}`,
+      );
+
+      // Конфигурация проектов
+      const projectConfigs = [
+        { project: 'neon', adSourceId: 1, workSpaceId: 3, groupId: 3 },
+        { project: 'book', adSourceId: 19, workSpaceId: 3, groupId: 19 },
+      ];
+
+      const results: string[] = [];
+
+      for (const config of projectConfigs) {
+        this.logger.log(
+          `[VK Ads Expenses] Processing project: ${config.project}`,
+        );
+
+        // Проверяем, есть ли уже запись AdExpense за вчера для этого проекта
+        const existingExpense = await this.prisma.adExpense.findFirst({
+          where: {
+            adSourceId: config.adSourceId,
+            workSpaceId: config.workSpaceId,
+            groupId: config.groupId,
+            date: {
+              startsWith: yesterdayStr,
+            },
+          },
+        });
+
+        if (existingExpense) {
+          this.logger.log(
+            `[VK Ads Expenses] ${config.project}: AdExpense already exists for ${yesterdayStr} (id=${existingExpense.id}, price=${existingExpense.price})`,
+          );
+          results.push(
+            `${config.project}: уже есть (${existingExpense.price}₽)`,
+          );
+          continue;
+        }
+
+        // Записи нет — ищем VkAdsDailyStat за вчера
+        const vkStats = await this.prisma.vkAdsDailyStat.findMany({
+          where: {
+            project: config.project,
+            date: yesterdayStr,
+            entity: 'ad_plans',
+          },
+        });
+
+        if (vkStats.length === 0) {
+          this.logger.log(
+            `[VK Ads Expenses] ${config.project}: No VkAdsDailyStat found for ${yesterdayStr}`,
+          );
+          results.push(`${config.project}: нет данных VK Ads`);
+          continue;
+        }
+
+        // Суммируем spentNds по всем записям
+        const totalSpentNds = vkStats.reduce(
+          (sum, stat) => sum + stat.spentNds,
+          0,
+        );
+        const priceInt = Math.round(totalSpentNds);
+
+        this.logger.log(
+          `[VK Ads Expenses] ${config.project}: Found ${vkStats.length} VkAdsDailyStat records, totalSpentNds=${totalSpentNds}, priceInt=${priceInt}`,
+        );
+
+        // Создаём запись AdExpense
+        const newExpense = await this.prisma.adExpense.create({
+          data: {
+            price: priceInt,
+            date: yesterdayStr,
+            period: '',
+            adSourceId: config.adSourceId,
+            workSpaceId: config.workSpaceId,
+            groupId: config.groupId,
+          },
+        });
+
+        this.logger.log(
+          `[VK Ads Expenses] ${config.project}: Created AdExpense id=${newExpense.id}, price=${newExpense.price}`,
+        );
+        results.push(`${config.project}: создано ${priceInt}₽`);
+      }
+
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+
+      this.logger.log(`[VK Ads Expenses] Sync completed in ${duration}ms`);
+
+      await this.notifyAdmins(
+        `📊 Синхронизация расходов VK Ads за ${yesterdayStr}:\n${results.join('\n')}\nВремя: ${(duration / 1000).toFixed(1)}с`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[VK Ads Expenses] Failed: ${error.message}`,
+        error.stack,
+      );
+      await this.notifyAdmins(
+        `🔥 Синхронизация расходов VK Ads упала: ${error.message}`,
+      );
+    } finally {
+      this.isVkAdsExpenseSyncRunning = false;
     }
   }
 }

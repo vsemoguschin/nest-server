@@ -921,9 +921,27 @@ export class DealsService {
     // console.log('updateDealDto', updateDealDto);
     const dealExists = await this.prisma.deal.findUnique({
       where: { id },
+      include: { client: true },
     });
     if (!dealExists) {
       throw new NotFoundException(`Сделка с ID ${id} не найдена`);
+    }
+
+    // Проверяем существование нового клиента если передан clientId
+    let newClient: { id: number; fullName: string } | null = null;
+    if (
+      updateDealDto.clientId &&
+      updateDealDto.clientId !== dealExists.clientId
+    ) {
+      const foundClient = await this.prisma.client.findUnique({
+        where: { id: updateDealDto.clientId },
+      });
+      if (!foundClient) {
+        throw new NotFoundException(
+          `Клиент с ID ${updateDealDto.clientId} не найден`,
+        );
+      }
+      newClient = foundClient;
     }
 
     // Словарь для маппинга полей на русские названия
@@ -1022,6 +1040,18 @@ export class DealsService {
           }),
         ),
       );
+    }
+
+    // Логируем изменение клиента отдельно
+    if (newClient) {
+      await this.prisma.dealAudit.create({
+        data: {
+          dealId: id,
+          userId: user.id,
+          action: 'Обновление',
+          comment: `Изменение клиента: с "${dealExists.client?.fullName || 'не указан'}" на "${newClient.fullName}"`,
+        },
+      });
     }
 
     return updatedDeal;
