@@ -726,6 +726,150 @@ export class NotificationSchedulerService {
     }
   }
 
+  // Автоматическая архивация задач старше 7 дней для доски 17
+  // ВАЖНО: Установите время выполнения на текущее время + 10 минут
+  // Формат cron: 'секунды минуты часы день месяц день_недели'
+  // Например, для выполнения в 15:25: '0 25 15 * * *'
+  // TODO: Обновите время выполнения перед деплоем!
+  @Cron('0 20 3 * * *', { timeZone: 'Europe/Moscow' })
+  async autoArchiveBoard17Tasks() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip autoArchiveBoard17Tasks`);
+      return;
+    }
+    const startTime = new Date();
+    try {
+      const BOARD_IDS = [17];
+      const IGNORE_COLUMNS_IDS: number[] = []; // Можно добавить ID колонок для исключения
+      const DAYS = 7;
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - DAYS);
+
+      this.logger.log(
+        `[autoArchiveBoard17Tasks] Starting at ${startTime.toISOString()}, checking tasks older than ${sevenDaysAgo.toISOString()}`,
+      );
+      this.logger.log(
+        `[autoArchiveBoard17Tasks] Ignoring columns: ${IGNORE_COLUMNS_IDS.length > 0 ? IGNORE_COLUMNS_IDS.join(', ') : 'none'}`,
+      );
+
+      // Получаем все активные задачи с их аудитом и comments
+      const tasks = await this.prisma.kanbanTask.findMany({
+        where: {
+          deletedAt: null,
+          archived: false,
+          boardId: { in: BOARD_IDS },
+          ...(IGNORE_COLUMNS_IDS.length > 0 && {
+            columnId: { notIn: IGNORE_COLUMNS_IDS },
+          }),
+        },
+        select: {
+          id: true,
+          title: true,
+          boardId: true,
+          columnId: true,
+          audits: {
+            select: {
+              id: true,
+              createdAt: true,
+              action: true,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
+          comments: {
+            where: {
+              deletedAt: null, // Исключаем удаленные комментарии
+            },
+            select: {
+              id: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(
+        `[autoArchiveBoard17Tasks] Found ${tasks.length} active tasks to check`,
+      );
+
+      const tasksToArchive: number[] = [];
+      const tasksWithoutAudit: number[] = [];
+      const tasksWithRecentActivity: number[] = [];
+      const tasksWithRecentComments: number[] = [];
+
+      // Проверяем каждую задачу
+      for (const task of tasks) {
+        // Если у задачи нет записей аудита, пропускаем
+        if (task.audits.length === 0) {
+          tasksWithoutAudit.push(task.id);
+          continue;
+        }
+
+        // Проверяем, все ли записи аудита старше 7 дней
+        const allAuditsOld = task.audits.every(
+          (audit) => audit.createdAt < sevenDaysAgo,
+        );
+
+        // Проверяем, все ли comments старше 7 дней (если есть)
+        const allCommentsOld =
+          task.comments.length === 0 ||
+          task.comments.every((comment) => comment.updatedAt < sevenDaysAgo);
+
+        // Архивируем только если все условия выполнены
+        if (allAuditsOld && allCommentsOld) {
+          tasksToArchive.push(task.id);
+        } else {
+          if (!allAuditsOld) {
+            tasksWithRecentActivity.push(task.id);
+          }
+          if (!allCommentsOld) {
+            tasksWithRecentComments.push(task.id);
+          }
+        }
+      }
+
+      this.logger.log(
+        `[autoArchiveBoard17Tasks] Tasks without audit: ${tasksWithoutAudit.length}, with recent activity: ${tasksWithRecentActivity.length}, with recent comments: ${tasksWithRecentComments.length}, to archive: ${tasksToArchive.length}`,
+      );
+
+      if (tasksToArchive.length === 0) {
+        this.logger.log('[autoArchiveBoard17Tasks] No tasks to archive');
+        await this.notifyAdmins(
+          `🗂️ Автоархив задач (доска 17): нет задач для архивации\nПроверено: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}${IGNORE_COLUMNS_IDS.length > 0 ? `\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}` : ''}`,
+        );
+        return;
+      }
+
+      // Архивируем задачи через raw SQL без изменения updatedAt
+      const archivedCount = await this.prisma.$executeRaw`
+        UPDATE "KanbanTask"
+        SET archived = true
+        WHERE id = ANY(${tasksToArchive}::int[])
+      `;
+
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+
+      this.logger.log(
+        `[autoArchiveBoard17Tasks] Archived ${archivedCount} tasks in ${duration}ms`,
+      );
+
+      await this.notifyAdmins(
+        `🗂️ Автоархив задач (доска 17) завершён.\nАрхивировано: ${archivedCount}\nДоски: ${BOARD_IDS.join(', ')}\nПроверено задач: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}${IGNORE_COLUMNS_IDS.length > 0 ? `\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}` : ''}\nВремя выполнения: ${(duration / 1000).toFixed(1)}с`,
+      );
+    } catch (e: unknown) {
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      this.logger.error(
+        `[autoArchiveBoard17Tasks] failed after ${duration}ms: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      await this.notifyAdmins(
+        `🔥 Автоархив задач (доска 17) упал: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   // Автоматическая синхронизация расходов VK Ads в AdExpense
   // Если за вчерашний день нет записи AdExpense, создаём на основе VkAdsDailyStat
   @Cron('0 0 8 * * *', { timeZone: 'Europe/Moscow' })
