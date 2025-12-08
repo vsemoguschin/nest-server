@@ -14,8 +14,6 @@ import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
 
-
-
 const tToken = process.env.TB_TOKEN;
 
 export interface OperationFromApi {
@@ -567,26 +565,52 @@ export class PlanfactService {
   }
 
   async getExpenseCategoriesByType(type: string) {
-    const categories = await this.prisma.expenseCategory.findMany({
+
+    // Получаем все категории нужного типа без include (более эффективно)
+    const allCategories = await this.prisma.expenseCategory.findMany({
       where: {
         type,
-        parent: null,
-      },
-      include: {
-        children: {
-          include: {
-            children: {
-              include: {
-                children: true,
-              },
-            },
-          },
-        },
       },
       orderBy: {
         name: 'asc',
       },
     });
+
+    // Создаем карту для быстрого доступа к детям по parentId
+    const childrenMap = new Map<number, typeof allCategories>();
+    for (const category of allCategories) {
+      if (category.parentId !== null) {
+        if (!childrenMap.has(category.parentId)) {
+          childrenMap.set(category.parentId, []);
+        }
+        childrenMap.get(category.parentId)!.push(category);
+      }
+    }
+
+    // Рекурсивная функция для построения дерева категорий с полной вложенностью
+    const buildCategoryTree = (category: (typeof allCategories)[0]) => {
+      const categoryData = {
+        ...category,
+        children: [] as typeof allCategories,
+      };
+
+      // Находим всех детей этой категории из карты
+      const children = childrenMap.get(category.id) || [];
+
+      // Рекурсивно строим дерево для каждого ребенка
+      categoryData.children = children.map((child) => buildCategoryTree(child));
+
+      return categoryData;
+    };
+
+    // Фильтруем только корневые категории (без родителей)
+    const rootCategories = allCategories.filter((cat) => cat.parentId === null);
+
+    // Строим дерево для каждой корневой категории
+    const categories = rootCategories.map((rootCategory) =>
+      buildCategoryTree(rootCategory),
+    );
+
 
     const flattenCategories = (categories, prefix = '') => {
       return categories.reduce((acc, cat) => {
@@ -761,8 +785,6 @@ export class PlanfactService {
     // console.log(accounts);
     return accounts;
   }
-
-
 
   async getOriginalOperations({
     from,
@@ -1507,7 +1529,6 @@ export class PlanfactService {
       outcomeExpenseCategoryId?: number;
     },
   ) {
-    console.log(counterPartyId);
     // Проверяем существование контрагента
     const counterParty = await this.prisma.counterParty.findUnique({
       where: { id: counterPartyId },
