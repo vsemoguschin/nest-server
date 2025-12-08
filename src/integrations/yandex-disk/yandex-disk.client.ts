@@ -4,7 +4,7 @@ import axios, {
   AxiosRequestHeaders,
   RawAxiosRequestConfig,
 } from 'axios';
-import https from 'https';
+import * as https from 'https';
 import {
   BadRequestException,
   ForbiddenException,
@@ -1084,20 +1084,15 @@ export class YandexDiskClient {
       const isNetworkError = errorCode && networkErrorCodes.includes(errorCode);
 
       // Улучшенные сообщения для SSL ошибок
-      let finalMessage = messageFromApi;
-      if (!finalMessage) {
-        if (status) {
-          finalMessage = `${fallback}. Код Яндекс.Диска: ${status}`;
-        } else if (isNetworkError) {
-          if (errorCode?.includes('CERT') || errorCode?.includes('SSL')) {
-            finalMessage = `${fallback}. SSL ошибка: ${errorCode}. Проверьте сертификаты или установите YANDEX_DISK_REJECT_UNAUTHORIZED=false`;
-          } else {
-            finalMessage = `${fallback}. Сетевая ошибка: ${errorCode}`;
-          }
-        } else {
-          finalMessage = `${fallback}. Ответ от Яндекс.Диска отсутствует`;
-        }
-      }
+      const finalMessage = messageFromApi
+        ? messageFromApi
+        : status
+          ? `${fallback}. Код Яндекс.Диска: ${status}`
+          : isNetworkError
+            ? errorCode?.includes('CERT') || errorCode?.includes('SSL')
+              ? `${fallback}. SSL ошибка: ${errorCode}. Проверьте сертификаты или установите YANDEX_DISK_REJECT_UNAUTHORIZED=false`
+              : `${fallback}. Сетевая ошибка: ${errorCode}`
+            : `${fallback}. Ответ от Яндекс.Диска отсутствует`;
 
       if (status) {
         this.logger.error(
@@ -1133,7 +1128,7 @@ export class YandexDiskClient {
           throw new ServiceUnavailableException(
             `${finalMessage}. Возможная причина: недостаточно свободного места на Яндекс.Диске`,
           );
-        default:
+        default: {
           // Обрабатываем сетевые ошибки как ServiceUnavailable для возможности retry
           if (isNetworkError || errorCode === 'ECONNABORTED') {
             const exception = new ServiceUnavailableException(
@@ -1151,6 +1146,7 @@ export class YandexDiskClient {
           (internalException as any).originalError = error;
           (internalException as any).errorCode = errorCode;
           throw internalException;
+        }
       }
     }
 
