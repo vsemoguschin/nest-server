@@ -167,12 +167,17 @@ export class YandexDiskClient {
 
     // Настройка SSL: по умолчанию проверяем сертификаты, но можно отключить через переменную окружения
     // ⚠️ ВНИМАНИЕ: отключение проверки SSL снижает безопасность!
-    const rejectUnauthorized =
-      this.config.get<string>('YANDEX_DISK_REJECT_UNAUTHORIZED', 'true') !==
-      'false';
+    const rejectUnauthorizedEnv = this.config.get<string>(
+      'YANDEX_DISK_REJECT_UNAUTHORIZED',
+      'true',
+    );
+    const rejectUnauthorized = rejectUnauthorizedEnv !== 'false';
     this.httpsAgent = new https.Agent({
       rejectUnauthorized,
     });
+    this.logger.log(
+      `YandexDisk SSL configuration: rejectUnauthorized=${rejectUnauthorized} (from env: ${rejectUnauthorizedEnv})`,
+    );
 
     this.uploadUserAgent =
       this.config.get<string>('YANDEX_DISK_UPLOAD_USER_AGENT') ??
