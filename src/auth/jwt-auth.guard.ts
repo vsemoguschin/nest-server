@@ -10,6 +10,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   canActivate(context: ExecutionContext) {
+    const request = context.switchToHttp().getRequest();
+    
+    // Пропускаем OPTIONS запросы (preflight для CORS)
+    if (request.method === 'OPTIONS') {
+      return true;
+    }
+    
     // Если маршрут отмечен как публичный, пропускаем его
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),

@@ -34,7 +34,7 @@ async function bootstrap() {
       'https://easy-crm.pro',
       'https://front.easy-crm.pro',
     ], // Разрешаем доступ с localhost:3001
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Разрешаем HTTP-методы
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS', // Разрешаем HTTP-методы, включая OPTIONS для preflight
     credentials: true, // Разрешаем передачу cookies и аутентификационных данных
     allowedHeaders: [
       'Authorization',

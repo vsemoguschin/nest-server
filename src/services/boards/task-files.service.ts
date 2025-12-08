@@ -9,11 +9,13 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as path from 'node:path';
 import { createReadStream, promises as fs } from 'node:fs';
+import axios from 'axios';
 import {
   YandexDiskClient,
   YandexDiskResource,
   type UploadPayload,
 } from 'src/integrations/yandex-disk/yandex-disk.client';
+import { TelegramService } from 'src/services/telegram.service';
 
 const YDS_ORDER = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
@@ -40,6 +42,7 @@ export class TaskFilesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly yandexDisk: YandexDiskClient,
+    private readonly telegramService?: TelegramService,
   ) {}
 
   private decodeOriginalName(name?: string): string {
@@ -112,9 +115,19 @@ export class TaskFilesService {
     const payload = await this.createPayload(file);
     let resource: YandexDiskResource;
 
-    // === ДОБАВИТЬ RETRY ===
+    // Улучшенная retry логика
     const maxAttempts = 3;
     let lastError: Error | null = null;
+
+    // Коды ошибок, при которых нужно повторять попытку
+    const retriableErrorCodes = [
+      'ECONNABORTED', // Таймаут
+      'ETIMEDOUT', // Таймаут соединения
+      'ENOTFOUND', // DNS ошибка
+      'ECONNRESET', // Соединение разорвано
+      'ECONNREFUSED', // Соединение отклонено
+      'EAI_AGAIN', // Временная DNS ошибка
+    ];
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -124,19 +137,40 @@ export class TaskFilesService {
         lastError = error as Error;
         const message = error instanceof Error ? error.message : String(error);
 
+        // Проверяем, является ли это сетевой ошибкой
+        const axiosError = axios.isAxiosError(error) ? error : null;
+        const errorCode =
+          axiosError?.code ||
+          (axiosError?.response?.status
+            ? String(axiosError.response.status)
+            : undefined);
+        const isNetworkError = errorCode
+          ? retriableErrorCodes.includes(errorCode)
+          : false;
+        const isRetriableMessage =
+          message.includes('отсутствует') ||
+          message.includes('timeout') ||
+          message.includes('Превышено время ожидания') ||
+          message.includes('ServiceUnavailable');
+
         // Если это не retriable ошибка — выбрасываем сразу
-        if (!message.includes('отсутствует') && !message.includes('timeout')) {
+        if (!isNetworkError && !isRetriableMessage) {
+          this.logger.error(
+            `Non-retriable error during upload: path=${absPath}, attempt=${attempt}, code=${errorCode}, message=${message}`,
+          );
           await this.cleanupTempFile(file);
           throw error;
         }
 
         this.logger.warn(
-          `Upload attempt ${attempt}/${maxAttempts} failed for ${absPath}: ${message}`,
+          `Upload attempt ${attempt}/${maxAttempts} failed for ${absPath}: code=${errorCode ?? 'unknown'}, message=${message}`,
         );
 
         if (attempt < maxAttempts) {
-          // Ждём перед повтором (exponential backoff)
-          await new Promise((r) => setTimeout(r, 1000 * attempt));
+          // Exponential backoff: 2s, 4s, 8s... (максимум 10s)
+          const delayMs = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
+          this.logger.debug(`Retrying upload in ${delayMs}ms...`);
+          await new Promise((r) => setTimeout(r, delayMs));
         }
       }
     }
@@ -144,12 +178,21 @@ export class TaskFilesService {
     await this.cleanupTempFile(file);
 
     if (!resource!) {
-      this.logger.error(
-        `All ${maxAttempts} upload attempts failed for ${absPath}`,
-      );
+      const errorMessage = `All ${maxAttempts} upload attempts failed for ${absPath}. Last error: ${lastError?.message ?? 'unknown'}`;
+      this.logger.error(errorMessage);
+
+      // Отправляем оповещение в Telegram админам
+      await this.notifyAdminsAboutUploadError({
+        path: absPath,
+        userId,
+        boardId,
+        commentId,
+        error: lastError,
+        attempts: maxAttempts,
+      });
+
       throw lastError ?? new Error('Upload failed after retries');
     }
-    // === КОНЕЦ RETRY ===
 
     const safeName =
       this.decodeOriginalName(file.originalname) || resource.name || yaName;
@@ -409,5 +452,82 @@ export class TaskFilesService {
     }
 
     return resource.preview ?? null;
+  }
+
+  /**
+   * Отправить оповещение админам в Telegram об ошибке загрузки файла
+   */
+  private async notifyAdminsAboutUploadError(params: {
+    path: string;
+    userId: number;
+    boardId: number;
+    commentId?: number;
+    error: Error | null;
+    attempts: number;
+  }): Promise<void> {
+    if (!this.telegramService) {
+      this.logger.debug('TelegramService not available, skipping notification');
+      return;
+    }
+
+    // Отправляем только в production
+    if (process.env.NODE_ENV !== 'production') {
+      return;
+    }
+
+    try {
+      // Получаем информацию о пользователе
+      const user = await this.prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { fullName: true },
+      });
+
+      const fileName = params.path.split('/').pop() || 'unknown';
+      const errorMessage = params.error?.message || 'Unknown error';
+      const axiosError =
+        params.error && axios.isAxiosError(params.error) ? params.error : null;
+      const errorCode = axiosError?.code || 'unknown';
+
+      const message =
+        `🚨 <b>Ошибка загрузки файла на Яндекс.Диск</b>\n\n` +
+        `📁 <b>Файл:</b> ${this.escapeHtml(fileName)}\n` +
+        `👤 <b>Пользователь:</b> ${this.escapeHtml(user?.fullName || `ID: ${params.userId}`)}\n` +
+        `📋 <b>Доска:</b> ${params.boardId}\n` +
+        (params.commentId
+          ? `💬 <b>Комментарий:</b> ${params.commentId}\n`
+          : '') +
+        `🔄 <b>Попыток:</b> ${params.attempts}\n` +
+        `❌ <b>Ошибка:</b> ${this.escapeHtml(errorMessage)}\n` +
+        (errorCode !== 'unknown' ? `🔢 <b>Код:</b> ${errorCode}\n` : '') +
+        `⏰ <b>Время:</b> ${new Date().toLocaleString('ru-RU')}`;
+
+      // ID админов из notification-scheduler.service.ts
+      const adminIds = ['317401874'];
+
+      await Promise.allSettled(
+        adminIds.map((id) =>
+          this.telegramService!.sendToChat(id, message, false),
+        ),
+      );
+    } catch (error) {
+      // Не логируем ошибки отправки уведомлений, чтобы не создавать цикл
+      this.logger.debug(
+        `Failed to send Telegram notification: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+    }
+  }
+
+  private escapeHtml(s: string): string {
+    return s.replace(
+      /[&<>"']/g,
+      (ch) =>
+        ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[ch as '&' | '<' | '>' | '"' | "'"] as string,
+    );
   }
 }

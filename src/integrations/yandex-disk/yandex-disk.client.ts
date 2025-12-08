@@ -147,6 +147,7 @@ export class YandexDiskClient {
   private readonly lockRetryBaseDelayMs: number;
   private readonly lockRetryMaxDelayMs: number;
   private readonly lockRetryBackoffFactor: number;
+  private readonly enableDetailedLogging: boolean;
 
   private accessToken: string | null;
   private readonly refreshToken: string | null;
@@ -157,6 +158,10 @@ export class YandexDiskClient {
 
   constructor(private readonly config: ConfigService) {
     const timeout = this.config.get<number>('YANDEX_DISK_TIMEOUT', 15_000);
+
+    this.enableDetailedLogging =
+      this.config.get<string>('YANDEX_DISK_DETAILED_LOGGING', 'false') ===
+      'true';
 
     this.uploadUserAgent =
       this.config.get<string>('YANDEX_DISK_UPLOAD_USER_AGENT') ??
@@ -202,17 +207,86 @@ export class YandexDiskClient {
     this.http = axios.create(baseConfig);
     this.http.defaults.headers.common['User-Agent'] = this.uploadUserAgent;
 
-    this.http.interceptors.request.use(async (config) => {
-      const token = await this.ensureAccessToken();
-      const headers = (config.headers ?? {}) as AxiosRequestHeaders;
-      headers.Authorization = `OAuth ${token}`;
-      config.headers = headers;
-      return config;
-    });
+    // Request interceptor с детальным логированием
+    this.http.interceptors.request.use(
+      async (config) => {
+        const token = await this.ensureAccessToken();
+        const headers = (config.headers ?? {}) as AxiosRequestHeaders;
+        headers.Authorization = `OAuth ${token}`;
+        config.headers = headers;
 
+        // Детальное логирование запроса
+        if (this.enableDetailedLogging) {
+          const requestId = Math.random().toString(36).substring(7);
+          (config as any).__requestId = requestId;
+          (config as any).__startTime = Date.now();
+
+          const url = config.url
+            ? `${config.baseURL}${config.url}`
+            : config.baseURL;
+          const method = config.method?.toUpperCase() || 'GET';
+          const params = config.params ? JSON.stringify(config.params) : 'none';
+
+          this.logger.log(
+            `[YD REQ ${requestId}] ${method} ${url} | params: ${params} | headers: ${JSON.stringify(
+              Object.keys(headers).filter((k) => k !== 'Authorization'),
+            )}`,
+          );
+        }
+
+        return config;
+      },
+      (error) => {
+        if (this.enableDetailedLogging) {
+          this.logger.error(
+            `[YD REQ ERROR] Failed to prepare request: ${error.message}`,
+          );
+        }
+        return Promise.reject(error);
+      },
+    );
+
+    // Response interceptor с детальным логированием
     this.http.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        if (this.enableDetailedLogging) {
+          const requestId = (response.config as any).__requestId || 'unknown';
+          const startTime = (response.config as any).__startTime || Date.now();
+          const duration = Date.now() - startTime;
+          const status = response.status;
+          const url = response.config.url || '';
+          const method = response.config.method?.toUpperCase() || 'GET';
+          const dataSize = response.data
+            ? JSON.stringify(response.data).length
+            : 0;
+          const contentType = response.headers['content-type'] || 'unknown';
+
+          this.logger.log(
+            `[YD RES ${requestId}] ${method} ${url} | status: ${status} | duration: ${duration}ms | size: ${dataSize} bytes | content-type: ${contentType}`,
+          );
+        }
+        return response;
+      },
       async (error: AxiosError) => {
+        if (this.enableDetailedLogging) {
+          const requestId = (error.config as any)?.__requestId || 'unknown';
+          const startTime = (error.config as any)?.__startTime || Date.now();
+          const duration = Date.now() - startTime;
+          const url = error.config?.url || 'unknown';
+          const method = error.config?.method?.toUpperCase() || 'UNKNOWN';
+          const status = error.response?.status || 'no-response';
+          const statusText = error.response?.statusText || 'no-status';
+          const errorCode = error.code || 'no-code';
+          const errorMessage = error.message || 'no-message';
+          const responseData = error.response?.data
+            ? JSON.stringify(error.response.data).substring(0, 500)
+            : 'no-data';
+
+          this.logger.error(
+            `[YD ERR ${requestId}] ${method} ${url} | status: ${status} (${statusText}) | duration: ${duration}ms | code: ${errorCode} | message: ${errorMessage} | response: ${responseData}`,
+          );
+        }
+
         if (error.response?.status === 409) {
           throw error;
         }
@@ -976,19 +1050,40 @@ export class YandexDiskClient {
   ): never {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status;
+      const errorCode = error.code;
       const messageFromApi = this.extractErrorMessage(error);
+
+      // Определяем, является ли это сетевой ошибкой
+      const networkErrorCodes = [
+        'ECONNABORTED',
+        'ETIMEDOUT',
+        'ENOTFOUND',
+        'ECONNRESET',
+        'ECONNREFUSED',
+        'EAI_AGAIN',
+      ];
+      const isNetworkError = errorCode && networkErrorCodes.includes(errorCode);
+
       const finalMessage =
         messageFromApi ??
         (status
           ? `${fallback}. Код Яндекс.Диска: ${status}`
-          : `${fallback}. Ответ от Яндекс.Диска отсутствует`);
+          : isNetworkError
+            ? `${fallback}. Сетевая ошибка: ${errorCode}`
+            : `${fallback}. Ответ от Яндекс.Диска отсутствует`);
 
       if (status) {
         this.logger.error(
           `YandexDisk API error. Status: ${status}. Message: ${messageFromApi ?? error.message ?? 'unknown'}`,
         );
-      } else if (error.code === 'ECONNABORTED') {
-        this.logger.error(`YandexDisk API timeout. Message: ${error.message}`);
+      } else if (isNetworkError) {
+        this.logger.error(
+          `YandexDisk network error. Code: ${errorCode}. Message: ${error.message}`,
+        );
+      } else {
+        this.logger.error(
+          `YandexDisk unknown error. Code: ${errorCode ?? 'unknown'}. Message: ${error.message ?? 'unknown'}`,
+        );
       }
 
       switch (status) {
@@ -1012,7 +1107,8 @@ export class YandexDiskClient {
             `${finalMessage}. Возможная причина: недостаточно свободного места на Яндекс.Диске`,
           );
         default:
-          if (error.code === 'ECONNABORTED') {
+          // Обрабатываем сетевые ошибки как ServiceUnavailable для возможности retry
+          if (isNetworkError || errorCode === 'ECONNABORTED') {
             throw new ServiceUnavailableException(
               `${finalMessage}. Превышено время ожидания ответа от Яндекс.Диска`,
             );
