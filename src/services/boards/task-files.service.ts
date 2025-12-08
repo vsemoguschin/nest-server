@@ -127,6 +127,9 @@ export class TaskFilesService {
       'ECONNRESET', // Соединение разорвано
       'ECONNREFUSED', // Соединение отклонено
       'EAI_AGAIN', // Временная DNS ошибка
+      'SELF_SIGNED_CERT_IN_CHAIN', // SSL ошибка (self-signed certificate)
+      'UNABLE_TO_VERIFY_LEAF_SIGNATURE', // SSL ошибка
+      'CERT_HAS_EXPIRED', // SSL ошибка
     ];
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -139,10 +142,17 @@ export class TaskFilesService {
 
         // Проверяем, является ли это сетевой ошибкой
         const axiosError = axios.isAxiosError(error) ? error : null;
+        // Проверяем, если ошибка обернута в HttpException с сохраненной оригинальной ошибкой
+        const originalError = (error as any)?.originalError;
         const errorCode =
           axiosError?.code ||
+          originalError?.code ||
+          (error as any)?.errorCode || // Код из HttpException
           (axiosError?.response?.status
             ? String(axiosError.response.status)
+            : undefined) ||
+          (originalError?.response?.status
+            ? String(originalError.response.status)
             : undefined);
         const isNetworkError = errorCode
           ? retriableErrorCodes.includes(errorCode)
@@ -151,7 +161,10 @@ export class TaskFilesService {
           message.includes('отсутствует') ||
           message.includes('timeout') ||
           message.includes('Превышено время ожидания') ||
-          message.includes('ServiceUnavailable');
+          message.includes('ServiceUnavailable') ||
+          message.includes('self-signed certificate') ||
+          message.includes('certificate') ||
+          message.includes('SSL');
 
         // Если это не retriable ошибка — выбрасываем сразу
         if (!isNetworkError && !isRetriableMessage) {

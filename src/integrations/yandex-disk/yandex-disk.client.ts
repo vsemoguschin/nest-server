@@ -4,6 +4,7 @@ import axios, {
   AxiosRequestHeaders,
   RawAxiosRequestConfig,
 } from 'axios';
+import https from 'https';
 import {
   BadRequestException,
   ForbiddenException,
@@ -148,6 +149,7 @@ export class YandexDiskClient {
   private readonly lockRetryMaxDelayMs: number;
   private readonly lockRetryBackoffFactor: number;
   private readonly enableDetailedLogging: boolean;
+  private readonly httpsAgent: https.Agent;
 
   private accessToken: string | null;
   private readonly refreshToken: string | null;
@@ -162,6 +164,15 @@ export class YandexDiskClient {
     this.enableDetailedLogging =
       this.config.get<string>('YANDEX_DISK_DETAILED_LOGGING', 'false') ===
       'true';
+
+    // Настройка SSL: по умолчанию проверяем сертификаты, но можно отключить через переменную окружения
+    // ⚠️ ВНИМАНИЕ: отключение проверки SSL снижает безопасность!
+    const rejectUnauthorized =
+      this.config.get<string>('YANDEX_DISK_REJECT_UNAUTHORIZED', 'true') !==
+      'false';
+    this.httpsAgent = new https.Agent({
+      rejectUnauthorized,
+    });
 
     this.uploadUserAgent =
       this.config.get<string>('YANDEX_DISK_UPLOAD_USER_AGENT') ??
@@ -347,6 +358,10 @@ export class YandexDiskClient {
           });
         } catch (error) {
           if (axios.isAxiosError(error) && error.response?.status === 409) {
+            // Папка уже существует - это нормально, не логируем как ошибку
+            this.logger.debug(
+              `Folder already exists: ${normalizedPath} (409 CONFLICT is expected)`,
+            );
             return;
           }
           throw error;
@@ -472,6 +487,7 @@ export class YandexDiskClient {
               'YANDEX_DISK_UPLOAD_TIMEOUT',
               30 * 60_000,
             ),
+            httpsAgent: this.httpsAgent,
           });
 
           const durationMs = Date.now() - startTime;
@@ -1061,16 +1077,27 @@ export class YandexDiskClient {
         'ECONNRESET',
         'ECONNREFUSED',
         'EAI_AGAIN',
+        'SELF_SIGNED_CERT_IN_CHAIN', // SSL ошибки
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+        'CERT_HAS_EXPIRED',
       ];
       const isNetworkError = errorCode && networkErrorCodes.includes(errorCode);
 
-      const finalMessage =
-        messageFromApi ??
-        (status
-          ? `${fallback}. Код Яндекс.Диска: ${status}`
-          : isNetworkError
-            ? `${fallback}. Сетевая ошибка: ${errorCode}`
-            : `${fallback}. Ответ от Яндекс.Диска отсутствует`);
+      // Улучшенные сообщения для SSL ошибок
+      let finalMessage = messageFromApi;
+      if (!finalMessage) {
+        if (status) {
+          finalMessage = `${fallback}. Код Яндекс.Диска: ${status}`;
+        } else if (isNetworkError) {
+          if (errorCode?.includes('CERT') || errorCode?.includes('SSL')) {
+            finalMessage = `${fallback}. SSL ошибка: ${errorCode}. Проверьте сертификаты или установите YANDEX_DISK_REJECT_UNAUTHORIZED=false`;
+          } else {
+            finalMessage = `${fallback}. Сетевая ошибка: ${errorCode}`;
+          }
+        } else {
+          finalMessage = `${fallback}. Ответ от Яндекс.Диска отсутствует`;
+        }
+      }
 
       if (status) {
         this.logger.error(
@@ -1109,11 +1136,21 @@ export class YandexDiskClient {
         default:
           // Обрабатываем сетевые ошибки как ServiceUnavailable для возможности retry
           if (isNetworkError || errorCode === 'ECONNABORTED') {
-            throw new ServiceUnavailableException(
+            const exception = new ServiceUnavailableException(
               `${finalMessage}. Превышено время ожидания ответа от Яндекс.Диска`,
             );
+            // Сохраняем оригинальную ошибку и код для извлечения в TaskFilesService
+            (exception as any).originalError = error;
+            (exception as any).errorCode = errorCode;
+            throw exception;
           }
-          throw new InternalServerErrorException(finalMessage);
+          const internalException = new InternalServerErrorException(
+            finalMessage,
+          );
+          // Сохраняем оригинальную ошибку и код для всех ошибок
+          (internalException as any).originalError = error;
+          (internalException as any).errorCode = errorCode;
+          throw internalException;
       }
     }
 
