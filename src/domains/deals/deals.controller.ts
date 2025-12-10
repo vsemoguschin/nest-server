@@ -33,7 +33,7 @@ export class DealsController {
     summary: 'Получить данные',
     description: 'Endpoint: GET /deals/datas. Получить данные.',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV', 'MARKETER')
   async getDatas(@CurrentUser() user: UserDto): Promise<any> {
     return this.dealsService.getDatas(user);
   }
