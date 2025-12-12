@@ -90,10 +90,10 @@ export class TaskNotifyService {
     link?: string;
     silent?: boolean;
   }) {
-    // if (this.env === 'development') {
-    //   this.logger.debug('[dev] skip telegram');
-    //   return;
-    // }
+    if (this.env === 'development') {
+      this.logger.debug('[dev] skip telegram');
+      return;
+    }
 
     const {
       taskId,

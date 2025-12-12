@@ -46,6 +46,8 @@ const POSITION_SAFE_LIMIT = POSITION_MAX_ABS - POSITION_STEP;
 const LOCKED_COLUMN_ID = 25;
 const TAG_REMOVAL_COLUMN_ID = 17;
 const TAG_ID_TO_REMOVE = 9;
+const BOOK_TAG_REMOVAL_COLUMN_ID = 92;
+const BOOK_TAG_ID_TO_REMOVE = 25;
 const PAYMENT_REQUIRED_COLUMN_IDS = [65, 79];
 
 const searchSelect = {
@@ -81,6 +83,7 @@ export class TasksService {
       include: {
         members: true,
         column: true,
+        tags: true,
       },
     });
     if (!task) throw new NotFoundException('Task not found');
@@ -1089,6 +1092,10 @@ export class TasksService {
         updateData.tags = { disconnect: { id: TAG_ID_TO_REMOVE } };
       }
 
+      if (targetColumn.id === BOOK_TAG_REMOVAL_COLUMN_ID) {
+        updateData.tags = { disconnect: { id: BOOK_TAG_ID_TO_REMOVE } };
+      }
+
       // обновление задачи
       const updated = await tx.kanbanTask.update({
         where: { id: task.id },
@@ -1208,6 +1215,9 @@ export class TasksService {
     };
     if (targetColumn.id === TAG_REMOVAL_COLUMN_ID) {
       updateData.tags = { disconnect: { id: TAG_ID_TO_REMOVE } };
+    }
+    if (targetColumn.id === BOOK_TAG_REMOVAL_COLUMN_ID) {
+      updateData.tags = { disconnect: { id: BOOK_TAG_ID_TO_REMOVE } };
     }
 
     const updated = await this.prisma.kanbanTask.update({
