@@ -1,7 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-
+import { PrismaService } from '../prisma/prisma.service';
+const prismaService = new PrismaService();
 const prisma = new PrismaClient();
+import { TelegramService } from '../services/telegram.service';
+const telegramService = new TelegramService(prismaService);
 
 const NEW_USER = {
   email: 'arinamyasnikova1987@gmail.com',
@@ -14,6 +17,42 @@ const NEW_USER = {
 
 async function createNewUser() {
   try {
+    const reports = await prisma.packerReport.findMany({
+      where: {
+        userId: 46,
+        date: {
+          gte: '2025-11-11',
+        },
+        name: {
+          contains: 'https://easy-crm.pro/boards/11',
+        },
+      },
+      include: {
+        user: true,
+      },
+    });
+    console.log(reports.length);
+    const text1 = reports.map(
+      (r) => `${r.name}, дата: ${r.date}`,
+    ).slice(0, 50).join('\n');
+    const text2 = reports.map(
+      (r) => `${r.name}, дата: ${r.date}`,
+    ).slice(51).join('\n');
+    console.log(reports.filter(r=>r.cost>180));
+
+    // const adminIds = ['317401874'];
+    // for (const id of adminIds) {
+    //   try {
+    //     await telegramService.sendToChat(id, text1);
+    //     await telegramService.sendToChat(id, text2);
+    //   } catch (e: unknown) {
+    //     console.error(
+    //       `Failed to notify ${id}: ${e instanceof Error ? e.message : e}`,
+    //     );
+    //   }
+    // }
+
+    return;
     // Проверяем, существует ли пользователь с таким email
     const userExists = await prisma.user.findUnique({
       where: { email: NEW_USER.email },

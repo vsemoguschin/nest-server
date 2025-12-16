@@ -47,6 +47,7 @@ export class NotificationSchedulerService {
     }
 
     try {
+      // const today = '2025-12-12';
       const today = new Date().toISOString().slice(0, 10);
 
       const groups = await this.prisma.group.findMany({
@@ -62,9 +63,24 @@ export class NotificationSchedulerService {
                 startsWith: today,
               },
               reservation: false,
+              deletedAt: null,
+              status: {
+                not: 'Возврат',
+              },
             },
-            include: {
-              dops: true,
+            // include: {
+            // },
+          },
+          dops: {
+            where: {
+              saleDate: today,
+              deal: {
+                reservation: false,
+                deletedAt: null,
+                status: {
+                  not: 'Возврат',
+                },
+              },
             },
           },
           adExpenses: {
@@ -77,36 +93,114 @@ export class NotificationSchedulerService {
         },
       });
 
+      const sendDeliveries = await this.prisma.delivery.findMany({
+        where: {
+          date: today,
+          deal: {
+            status: { not: 'Возврат' },
+            reservation: false,
+            deletedAt: null,
+          },
+        },
+        include: {
+          deal: {
+            include: {
+              dops: true,
+            },
+          },
+        },
+      });
+
       const msgs = groups.map((g) => {
         const projectName = g.title;
         const dealsSales = g.deals.reduce((a, b) => a + b.price, 0);
-        const dopsSales = g.deals
-          .flatMap((d) => d.dops)
-          .reduce((a, b) => a + b.price, 0);
+        const dopsSales = g.dops.reduce((a, b) => a + b.price, 0);
         const totalSales = dealsSales + dopsSales;
-        // const adExpenses = g.adExpenses.reduce((a, b) => a + b.price, 0);
+
+        const sendDeliveriesPrice = sendDeliveries
+          .filter((d) => d.deal.groupId === g.id)
+          .reduce(
+            (acc, d) =>
+              acc +
+              (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+            0,
+          );
+
         const text =
           `\n<u>${projectName}</u>\n` +
           `Сумма оформленных: ${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
           `<i> - Заказы: ${dealsSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
-          `<i> - Допы: ${dopsSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n`;
-        return totalSales > 0
+          `<i> - Допы: ${dopsSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+          `Сумма отправленных: ${sendDeliveriesPrice.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n`;
+        return totalSales > 0 || sendDeliveriesPrice > 0
           ? { totalSales, text }
           : { totalSales: 0, text: '' };
       });
 
       const totalSales = msgs.reduce((a, b) => a + b.totalSales, 0);
 
+      const reportsPerm = await this.prisma.masterReport.findMany({
+        where: {
+          date: today,
+          user: {
+            groupId: 12,
+          },
+        },
+      });
+      const reportsSPB = await this.prisma.masterReport.findMany({
+        where: {
+          date: today,
+          user: {
+            groupId: 6,
+          },
+        },
+      });
+
+      const totalElementsPerm = reportsPerm.reduce((a, b) => a + b.els, 0);
+      const totalElementsSPB = reportsSPB.reduce((a, b) => a + b.els, 0);
+
+      const prodInfo =
+        `<b>Производство</b>\n` +
+        `Элементы: ${totalElementsPerm + totalElementsSPB}\n` +
+        `- Пермь: ${totalElementsPerm}\n` +
+        `- СПБ: ${totalElementsSPB}`;
+
+      const sendDeliveriesPrice = sendDeliveries.reduce(
+        (acc, d) =>
+          acc + (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+        0,
+      );
+
+      const payments = await this.prisma.payment.findMany({
+        where: {
+          date: today,
+          deal: {
+            reservation: false,
+            deletedAt: null,
+            status: { not: 'Возврат' },
+          },
+        },
+      });
+
+      const fact = payments.reduce((acc, p) => acc + p.price, 0);
+
       // Формируем текст уведомления на основе собранных данных
       const summaryText =
         `<b>Ежедневный отчёт</b>\n` +
         `Общая сумма оформленных: <b>${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
-        msgs.map((m) => m.text).join('');
+        `<i>Сумма отправленных: ${sendDeliveriesPrice.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+        // `<i>Всего оформлено за месяц: ${monthSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+        // `<i>Темп: ${temp.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+        `<i>Выручка общая: ${fact.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+        msgs.map((m) => m.text).join('') +
+        '\n' +
+        prodInfo;
 
       // const chatId = 317401874;
       // await this.telegramService.sendToChat(chatId, summaryText);
 
       // Вариант 2: Если нужно уведомить конкретных пользователей (например, всех админов)
+      // const admins = ['317401874'];
       const admins = ['317401874', '368152093'];
       for (const admin of admins) {
         await this.telegramService.sendToChat(admin, summaryText);
@@ -118,8 +212,8 @@ export class NotificationSchedulerService {
     }
   }
 
-  @Cron('0 59 11 * * *')
-  //   @Cron('0 13 16 * * *')
+  @Cron('0 58 11 * * *')
+  // @Cron('20 22 16 * * *')
   async sendMainDailySummary() {
     this.logger.log('Starting daily data collection and notification...');
     if (this.env === 'development') {
@@ -131,7 +225,7 @@ export class NotificationSchedulerService {
       const yesterday = new Date(new Date().setDate(new Date().getDate() - 1))
         .toISOString()
         .slice(0, 10);
-
+      // const yesterday = '2025-12-12';
       const groups = await this.prisma.group.findMany({
         where: {
           workSpace: {
@@ -146,8 +240,17 @@ export class NotificationSchedulerService {
               },
               reservation: false,
             },
-            include: {
-              dops: true,
+          },
+          dops: {
+            where: {
+              saleDate: yesterday,
+              deal: {
+                reservation: false,
+                deletedAt: null,
+                status: {
+                  not: 'Возврат',
+                },
+              },
             },
           },
           adExpenses: {
@@ -160,26 +263,99 @@ export class NotificationSchedulerService {
         },
       });
 
+      const sendDeliveries = await this.prisma.delivery.findMany({
+        where: {
+          date: yesterday,
+          deal: {
+            status: { not: 'Возврат' },
+            reservation: false,
+            deletedAt: null,
+          },
+        },
+        include: {
+          deal: {
+            include: {
+              dops: true,
+            },
+          },
+        },
+      });
+
+      const managersReports = await this.prisma.managerReport.findMany({
+        where: {
+          date: yesterday,
+        },
+        include: {
+          user: {
+            select: {
+              groupId: true,
+            },
+          },
+        },
+      });
+
+      const payments = await this.prisma.payment.findMany({
+        where: {
+          date: yesterday,
+          deal: {
+            reservation: false,
+            deletedAt: null,
+            status: { not: 'Возврат' },
+          },
+        },
+        include: {
+          deal: { select: { groupId: true } },
+        },
+      });
+
+      const fact = payments.reduce((acc, p) => acc + p.price, 0);
+
       const msgs = groups
         .map((g) => {
           const projectName = g.title;
           const dealsSales = g.deals.reduce((a, b) => a + b.price, 0);
-          const dopsSales = g.deals
-            .flatMap((d) => d.dops)
-            .reduce((a, b) => a + b.price, 0);
+          const dopsSales = g.dops.reduce((a, b) => a + b.price, 0);
           const totalSales = dealsSales + dopsSales;
           const adExpenses = g.adExpenses.reduce((a, b) => a + b.price, 0);
           const drr = totalSales
             ? +((adExpenses / totalSales) * 100).toFixed(2)
             : 0;
+
+          const dealsAmount = g.deals.length;
+
+          const sendDeliveriesPrice = sendDeliveries
+            .filter((d) => d.deal.groupId === g.id)
+            .reduce(
+              (acc, d) =>
+                acc +
+                (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+              0,
+            );
+
+          const calls = managersReports
+            .filter((r) => r.user.groupId === g.id)
+            .reduce((a, b) => a + b.calls, 0);
+          const conversionDealsToCalls = calls
+            ? +((dealsAmount / calls) * 100).toFixed(2)
+            : 0;
+
+          const groupPayments = payments.filter((p) => p.deal.groupId === g.id);
+          const fact = groupPayments.reduce((a, b) => a + b.price, 0);
           const text =
             `\n<u>${projectName}</u>\n` +
             `Сумма оформленных: ${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
             `<i> - Заказы: ${dealsSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
             `<i> - Допы: ${dopsSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
-            `<i> - Расходы на рекламу: ${adExpenses.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
-            `<i> - ДРР: ${drr}%\n</i>`;
-          return totalSales > 0
+            `Сумма отправленных: ${sendDeliveriesPrice.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
+            `Выручка: ${fact.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
+            `<i> Расходы на рекламу: ${adExpenses.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+            `<i> ДРР: ${drr}%\n</i>` +
+            `<i> Заявки: ${calls}\n</i>` +
+            `<i> % из заявки в продажу: ${conversionDealsToCalls}%\n</i>`;
+          return totalSales > 0 ||
+            sendDeliveriesPrice > 0 ||
+            adExpenses > 0 ||
+            calls > 0
             ? { totalSales, text, adExpenses }
             : { totalSales: 0, text: '', adExpenses: 0 };
         })
@@ -191,21 +367,308 @@ export class NotificationSchedulerService {
         ? +((totalAdExpenses / totalSales) * 100).toFixed(2)
         : 0;
 
+      const reportsPerm = await this.prisma.masterReport.findMany({
+        where: {
+          date: yesterday,
+          user: {
+            groupId: 12,
+          },
+        },
+      });
+      const reportsSPB = await this.prisma.masterReport.findMany({
+        where: {
+          date: yesterday,
+          user: {
+            groupId: 6,
+          },
+        },
+      });
+
+      const totalElementsPerm = reportsPerm.reduce((a, b) => a + b.els, 0);
+      const totalElementsSPB = reportsSPB.reduce((a, b) => a + b.els, 0);
+      const sendDeliveriesPrice = sendDeliveries.reduce(
+        (acc, d) =>
+          acc + (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+        0,
+      );
+
+      const prodInfo =
+        `<b>Производство</b>\n` +
+        `Элементы: ${totalElementsPerm + totalElementsSPB}\n` +
+        `<i>- Пермь: ${totalElementsPerm}</i>\n` +
+        `<i>- СПБ: ${totalElementsSPB}</i>`;
+
+      const dealsAmount = groups.flatMap((g) => g.deals).length;
+
+      const calls = managersReports.reduce((a, b) => a + b.calls, 0);
+      const conversionDealsToCalls = calls
+        ? +((dealsAmount / calls) * 100).toFixed(2)
+        : 0;
+
       // Формируем текст уведомления на основе собранных данных
       const summaryText =
         `<b>Подробный отчет за вчерашний день</b>\n` +
         `Общая сумма оформленных: <b>${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
         `Общие расходы на рекламу: <b>${totalAdExpenses.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
         `ДРР: <b>${totalDRR}%</b>\n` +
-        msgs.map((m) => m.text).join('');
-      console.log(summaryText);
+        `Сумма отправленых: <b>${sendDeliveriesPrice.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
+        `Выручка общая: <b>${fact.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
+        `Заявки: <b>${calls}</b>\n` +
+        `Сделки: <b>${dealsAmount}</b>\n` +
+        `% из заявки в продажу: <b>${conversionDealsToCalls}%</b>\n` +
+        msgs.map((m) => m.text).join('') +
+        '\n' +
+        prodInfo;
 
       // const chatId = 317401874;
       // await this.telegramService.sendToChat(chatId, summaryText);
 
       // Вариант 2: Если нужно уведомить конкретных пользователей (например, всех админов)
       const admins = ['317401874', '368152093'];
-      // const admins = [317401874];
+      // const admins = ['317401874'];
+      for (const admin of admins) {
+        await this.telegramService.sendToChat(admin, summaryText);
+      }
+
+      this.logger.log('Daily notification sent successfully');
+    } catch (error) {
+      this.logger.error(`Error in daily summary: ${error.message}`);
+    }
+  }
+  // @Cron('0 59 11 * * *')
+  @Cron('30 59 23 * * *')
+  async sendMonthSummary() {
+    this.logger.log('Starting daily data collection and notification...');
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip telegram`);
+      return;
+    }
+
+    try {
+      const thisPeriod = new Date(new Date().setDate(new Date().getDate() - 1))
+        .toISOString()
+        .slice(0, 7);
+      // const thisPeriod = '2025-12-12';
+      const groups = await this.prisma.group.findMany({
+        where: {
+          workSpace: {
+            department: 'COMMERCIAL',
+          },
+        },
+        include: {
+          deals: {
+            where: {
+              saleDate: {
+                startsWith: thisPeriod,
+              },
+              reservation: false,
+            },
+          },
+          dops: {
+            where: {
+              saleDate: { startsWith: thisPeriod },
+              deal: {
+                reservation: false,
+                deletedAt: null,
+                status: {
+                  not: 'Возврат',
+                },
+              },
+            },
+          },
+          adExpenses: {
+            where: {
+              date: {
+                startsWith: thisPeriod,
+              },
+            },
+          },
+        },
+      });
+
+      const sendDeliveries = await this.prisma.delivery.findMany({
+        where: {
+          date: { startsWith: thisPeriod },
+          deal: {
+            status: { not: 'Возврат' },
+            reservation: false,
+            deletedAt: null,
+          },
+        },
+        include: {
+          deal: {
+            include: {
+              dops: true,
+            },
+          },
+        },
+      });
+
+      const managersReports = await this.prisma.managerReport.findMany({
+        where: {
+          date: { startsWith: thisPeriod },
+        },
+        include: {
+          user: {
+            select: {
+              groupId: true,
+            },
+          },
+        },
+      });
+
+      const payments = await this.prisma.payment.findMany({
+        where: {
+          date: { startsWith: thisPeriod },
+          deal: {
+            reservation: false,
+            deletedAt: null,
+            status: { not: 'Возврат' },
+          },
+        },
+        include: {
+          deal: { select: { groupId: true } },
+        },
+      });
+
+      const fact = payments.reduce((acc, p) => acc + p.price, 0);
+
+      function getDaysInMonth(year: number, month: number): number {
+        return new Date(year, month, 0).getDate();
+      }
+
+      const daysInMonth = getDaysInMonth(
+        +thisPeriod.split('-')[0],
+        +thisPeriod.split('-')[1],
+      );
+      const isThismounth =
+        thisPeriod.split('-')[1] === new Date().toISOString().slice(5, 7);
+      const todayDay = isThismounth
+        ? new Date().toISOString().slice(8, 10)
+        : daysInMonth;
+
+      const msgs = groups
+        .map((g) => {
+          const projectName = g.title;
+          const dealsSales = g.deals.reduce((a, b) => a + b.price, 0);
+          const dopsSales = g.dops.reduce((a, b) => a + b.price, 0);
+          const totalSales = dealsSales + dopsSales;
+          const adExpenses = g.adExpenses.reduce((a, b) => a + b.price, 0);
+          const drr = totalSales
+            ? +((adExpenses / totalSales) * 100).toFixed(2)
+            : 0;
+
+          const dealsAmount = g.deals.length;
+
+          const sendDeliveriesPrice = sendDeliveries
+            .filter((d) => d.deal.groupId === g.id)
+            .reduce(
+              (acc, d) =>
+                acc +
+                (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+              0,
+            );
+
+          const calls = managersReports
+            .filter((r) => r.user.groupId === g.id)
+            .reduce((a, b) => a + b.calls, 0);
+          const conversionDealsToCalls = calls
+            ? +((dealsAmount / calls) * 100).toFixed(2)
+            : 0;
+
+          const groupPayments = payments.filter((p) => p.deal.groupId === g.id);
+          const fact = groupPayments.reduce((a, b) => a + b.price, 0);
+          const temp = +((totalSales / +todayDay) * daysInMonth).toFixed();
+
+          const text =
+            `\n<u>${projectName}</u>\n` +
+            `Сумма оформленных: ${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
+            `<i> - Заказы: ${dealsSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+            `<i> - Допы: ${dopsSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+            `Темп: ${temp.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
+            `Сумма отправленных: ${sendDeliveriesPrice.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
+            `Выручка: ${fact.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽\n` +
+            `<i> Расходы на рекламу: ${adExpenses.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</i>\n` +
+            `<i> ДРР: ${drr}%\n</i>` +
+            `<i> Заявки: ${calls}\n</i>` +
+            `<i> % из заявки в продажу: ${conversionDealsToCalls}%\n</i>`;
+          return totalSales > 0 ||
+            sendDeliveriesPrice > 0 ||
+            adExpenses > 0 ||
+            calls > 0
+            ? { totalSales, text, adExpenses }
+            : { totalSales: 0, text: '', adExpenses: 0 };
+        })
+        .sort((a, b) => b.totalSales - a.totalSales);
+
+      const totalSales = msgs.reduce((a, b) => a + b.totalSales, 0);
+      const totalAdExpenses = msgs.reduce((a, b) => a + b.adExpenses, 0);
+      const totalDRR = totalSales
+        ? +((totalAdExpenses / totalSales) * 100).toFixed(2)
+        : 0;
+
+      const reportsPerm = await this.prisma.masterReport.findMany({
+        where: {
+          date: { startsWith: thisPeriod },
+          user: {
+            groupId: 12,
+          },
+        },
+      });
+      const reportsSPB = await this.prisma.masterReport.findMany({
+        where: {
+          date: { startsWith: thisPeriod },
+          user: {
+            groupId: 6,
+          },
+        },
+      });
+
+      const totalElementsPerm = reportsPerm.reduce((a, b) => a + b.els, 0);
+      const totalElementsSPB = reportsSPB.reduce((a, b) => a + b.els, 0);
+      const sendDeliveriesPrice = sendDeliveries.reduce(
+        (acc, d) =>
+          acc + (d.deal.price + d.deal.dops.reduce((a, b) => a + b.price, 0)),
+        0,
+      );
+
+      const prodInfo =
+        `<b>Производство</b>\n` +
+        `Элементы: ${totalElementsPerm + totalElementsSPB}\n` +
+        `<i>- Пермь: ${totalElementsPerm}</i>\n` +
+        `<i>- СПБ: ${totalElementsSPB}</i>`;
+
+      const dealsAmount = groups.flatMap((g) => g.deals).length;
+
+      const calls = managersReports.reduce((a, b) => a + b.calls, 0);
+      const conversionDealsToCalls = calls
+        ? +((dealsAmount / calls) * 100).toFixed(2)
+        : 0;
+
+      const temp = +((totalSales / +todayDay) * daysInMonth).toFixed();
+
+      // Формируем текст уведомления на основе собранных данных
+      const summaryText =
+        `<b>Подробный отчет за этот месяц</b>\n` +
+        `Сумма оформленных: <b>${totalSales.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
+        `Темп: <b>${temp.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
+        `Расходы на рекламу: <b>${totalAdExpenses.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
+        `ДРР: <b>${totalDRR}%</b>\n` +
+        `Сумма отправленых: <b>${sendDeliveriesPrice.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
+        `Выручка общая: <b>${fact.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}₽</b>\n` +
+        `Заявки: <b>${calls}</b>\n` +
+        `Сделки: <b>${dealsAmount}</b>\n` +
+        `% из заявки в продажу: <b>${conversionDealsToCalls}%</b>\n` +
+        msgs.map((m) => m.text).join('') +
+        '\n' +
+        prodInfo;
+
+      // const chatId = 317401874;
+      // await this.telegramService.sendToChat(chatId, summaryText);
+
+      // Вариант 2: Если нужно уведомить конкретных пользователей (например, всех админов)
+      const admins = ['317401874', '368152093'];
+      // const admins = ['317401874'];
       for (const admin of admins) {
         await this.telegramService.sendToChat(admin, summaryText);
       }
