@@ -1284,12 +1284,12 @@ async function updateOrderFittings() {
 
 async function main() {
   try {
-    // await updateDeliveries();
-    // await updateTaskOrdersWireLengthToWireInfo();
-    // await updateOrderHoles();
-    // await updateOrderPlug();
-    // await updateOrderAdapters();
-    // await updateOrderFittings();
+    await updateDeliveries();
+    await updateTaskOrdersWireLengthToWireInfo();
+    await updateOrderHoles();
+    await updateOrderPlug();
+    await updateOrderAdapters();
+    await updateOrderFittings();
 
     const oldLogist = await prisma.user.findUnique({
       where: { id: 46 },
