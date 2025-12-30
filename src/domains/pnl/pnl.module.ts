@@ -7,5 +7,6 @@ import { CommercialDatasModule } from '../commercial-datas/commercial-datas.modu
   imports: [CommercialDatasModule],
   controllers: [PnlController],
   providers: [PnlService],
+  exports: [PnlService],
 })
 export class PnlModule {}

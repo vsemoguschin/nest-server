@@ -845,6 +845,106 @@ export class DealsService {
     });
   }
 
+  async getDealCost(id: number) {
+    const deal = await this.prisma.deal.findUnique({
+      where: { id },
+      include: {
+        tasks: true,
+      },
+    });
+    const prodTasks = await this.prisma.kanbanTask.findMany({
+      where: {
+        dealId: id,
+        boardId: { in: [10, 5] },
+      },
+      include: {
+        orders: {
+          include: {
+            neons: true,
+            lightings: true,
+          },
+        },
+      },
+    });
+    const ordersIds = prodTasks.flatMap((task) => task.orders.map((o) => o.id));
+    const masterReports = await this.prisma.masterReport.findMany({
+      where: {
+        orderId: { in: ordersIds },
+      },
+    });
+    const prices = {
+      ['polik5']: 2666,
+      ['printPerm']: {
+        ['polik4']: 1636,
+        ['package']: 30, //упаковка фиксировано
+        ['paz']: 30, // погонный метр
+        ['print']: 1785, //м2
+        ['rezka']: 30, //погонный метр
+      },
+      neon: 190,
+      lightings: 120,
+      wire: {
+        ['Акустический']: 28,
+        ['Черный']: 31,
+        ['Белый']: 26,
+      },
+    };
+    const orders = prodTasks
+      .flatMap((t) =>
+        t.orders.map((order) => ({ ...order, boardId: t.boardId })),
+      )
+      .map((order) => {
+        const {
+          boardHeight,
+          boardWidth,
+          print,
+          neons,
+          lightings,
+          wireType,
+          wireLength,
+        } = order;
+        const polikSquare = (boardHeight * boardWidth) / 10000;
+        const policPerimetr = 2 * (boardHeight + boardWidth);
+        const paz = neons.reduce(
+          (sum, neon) => sum + neon.length.toNumber(),
+          0,
+        );
+        const lightingsLength = lightings.reduce(
+          (sum, lighting) => sum + lighting.length.toNumber(),
+          0,
+        );
+
+        if (order.boardId === 10) {
+          //если есть печать то считаем по ценам печати, нет - по ценам фрезеровки
+          const priceForPrint = print
+            ? prices['printPerm']['package'] +
+              prices['printPerm']['paz'] * paz +
+              prices['printPerm']['print'] * polikSquare +
+              prices['printPerm']['rezka'] * policPerimetr +
+              prices['printPerm']['polik4'] * polikSquare
+            : prices['polik5'] * polikSquare;
+
+          const neonPrice = paz * prices.neon;
+          const lightingPrice = lightingsLength * prices.lightings;
+          const masterReport = masterReports.find(
+            (r) => r.orderId === order.id,
+          );
+          const masterPrice = masterReport?.cost ?? 0;
+          const wireRate =
+            prices.wire[wireType as keyof typeof prices.wire] ?? 0;
+          const wireLengthNum = Number(wireLength) || 0;
+          const wirePrice = wireRate * wireLengthNum;
+
+          return {
+            title: order.title,
+            deadline: order.deadline,
+            polikSquare,
+          };
+        }
+      });
+
+    console.log(deal);
+  }
   async findOne(user: UserDto, id: number) {
     const groupsSearch = this.groupsAccessService.buildGroupsScope(user);
 

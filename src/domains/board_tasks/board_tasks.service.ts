@@ -15,9 +15,7 @@ import { Prisma } from '@prisma/client';
 import { UserDto } from '../users/dto/user.dto';
 import { SearchTasksDto } from './dto/search-tasks.dto';
 import { collectTaskWarnings } from './utils/task-warnings';
-import { DeliveryCreateDto } from '../deliveries/dto/delivery-create.dto';
 import { DeliveryForTaskCreateDto } from '../deliveries/dto/delivery-for-task-create.dto';
-import { title } from 'process';
 
 type FieldKey = 'title' | 'description' | 'chatLink' | 'columnId' | 'dealId';
 
@@ -215,7 +213,11 @@ export class TasksService {
       include: {
         orders: {
           where: { deletedAt: null },
-          include: { neons: true, lightings: true },
+          include: {
+            neons: true,
+            lightings: true,
+            package: { include: { items: true } },
+          },
         },
         // берем только zip-вложения
         attachments: {
@@ -281,6 +283,45 @@ export class TasksService {
 
       // Дублируем все заказы и их дочерние записи
       for (const order of srcTask.orders ?? []) {
+        const normalizedIsAcrylic =
+          typeof (order as any).isAcrylic === 'boolean'
+            ? (order as any).isAcrylic
+            : String(order?.acrylic ?? '').trim() !== '';
+        const normalizedAcrylic = normalizedIsAcrylic
+          ? ((order as any).acrylic ?? '')
+          : '';
+        const normalizedStand = (order as any).stand ?? false;
+        const packageItemsData = ((order as any).package?.items ?? [])
+          .filter((item: any) => {
+            const name = String(item?.name ?? '').trim();
+            if (name === '' || name === 'Нет') return false;
+            if (!normalizedIsAcrylic && item?.category === 'Акрил')
+              return false;
+            if (
+              !normalizedStand &&
+              item?.category === 'Поликарбонат' &&
+              item?.name === 'Подставка'
+            )
+              return false;
+            return true;
+          })
+          .map((item: any) => {
+            const quantity = Number(item?.quantity ?? 0) || 0;
+            const isAcrylic = item?.category === 'Акрил';
+            const isStand =
+              item?.category === 'Поликарбонат' && item?.name === 'Подставка';
+            const minQuantity = isAcrylic || isStand ? 0.1 : 1;
+            const normalizedQuantity = Math.max(minQuantity, quantity);
+            return {
+              name: item?.name ?? '',
+              category: item?.category ?? 'Комплектующие для упаковки',
+              quantity:
+                isAcrylic || isStand
+                  ? Math.round(normalizedQuantity * 100) / 100
+                  : normalizedQuantity,
+            };
+          });
+
         await tx.taskOrder.create({
           data: {
             taskId: created.id,
@@ -291,23 +332,42 @@ export class TasksService {
             boardWidth: order.boardWidth ?? 0,
             boardHeight: order.boardHeight ?? 0,
             holeType: order.holeType ?? '',
+            holeInfo: (order as any).holeInfo ?? '',
             stand: order.stand ?? false,
             laminate: order.laminate ?? '',
             print: order.print ?? false,
             printQuality: order.printQuality ?? false,
-            acrylic: order.acrylic ?? '',
+            acrylic: normalizedAcrylic,
+            isAcrylic: normalizedIsAcrylic,
             type: order.type ?? '',
+            wireInfo: order.wireInfo ?? '',
+            wireType: order.wireType ?? 'Акустический',
             wireLength: order.wireLength ?? '',
             elements: order.elements ?? 0,
             gift: order.gift ?? false,
             adapter: order.adapter ?? '',
+            adapterInfo: (order as any).adapterInfo ?? '',
+            adapterModel: (order as any).adapterModel ?? '',
             plug: order.plug ?? '',
+            plugColor: (order as any).plugColor ?? '',
+            plugLength: (order as any).plugLength ?? 0,
             switch: order.switch ?? true,
             fitting: order.fitting ?? '',
             dimmer: order.dimmer ?? false,
             giftPack: order.giftPack ?? false,
             description: order.description ?? '',
             docs: (order as any).docs ?? false,
+            package: {
+              create: {
+                items: packageItemsData.length
+                  ? {
+                      createMany: {
+                        data: packageItemsData,
+                      },
+                    }
+                  : undefined,
+              },
+            },
 
             neons:
               (order.neons?.length ?? 0)
@@ -601,7 +661,7 @@ export class TasksService {
       },
     } as const;
 
-    let task = await this.prisma.kanbanTask.findFirst({
+    const task = await this.prisma.kanbanTask.findFirst({
       where: {
         id: taskId,
         deletedAt: null,
@@ -788,23 +848,30 @@ export class TasksService {
     const q = dto.q.trim();
     if (q.length < 2) return [];
     const userBoards = user.boards.map((b) => b.id);
+    const parsedId = Number(q);
+    const hasId = Number.isSafeInteger(parsedId) && /^[0-9]+$/.test(q);
+    const or: Prisma.KanbanTaskWhereInput[] = [
+      {
+        chatLink: { contains: q, mode: 'insensitive' },
+      },
+      {
+        title: { contains: q, mode: 'insensitive' },
+      },
+      {
+        deliveries: {
+          some: { track: { contains: q, mode: 'insensitive' } },
+        },
+      },
+    ];
+
+    if (hasId) {
+      or.push({ id: parsedId });
+    }
 
     const tasks = await this.prisma.kanbanTask.findMany({
       where: {
         deletedAt: null,
-        OR: [
-          {
-            chatLink: { contains: q, mode: 'insensitive' },
-          },
-          {
-            title: { contains: q, mode: 'insensitive' },
-          },
-          {
-            deliveries: {
-              some: { track: { contains: q, mode: 'insensitive' } },
-            },
-          },
-        ],
+        OR: or,
         boardId: ['ADMIN', 'KD', 'G'].includes(user.role.shortName)
           ? { gt: 0 }
           : { in: userBoards },
@@ -1356,9 +1423,55 @@ export class TasksService {
       include: {
         neons: true,
         lightings: true,
+        package: { include: { items: true } },
       },
     });
-    return items;
+    const orderIds = items.map((order) => order.id);
+    const reports = orderIds.length
+      ? await this.prisma.masterReport.findMany({
+          where: { orderId: { in: orderIds }, deletedAt: null },
+          orderBy: { id: 'desc' },
+          select: {
+            user: {
+              select: {
+                fullName: true,
+                id: true,
+              },
+            },
+            orderId: true,
+          },
+        })
+      : [];
+    const packerReport = await this.prisma.packerReport.findFirst({
+      where: { taskId, deletedAt: null },
+      orderBy: { id: 'desc' },
+      select: {
+        id: true,
+        taskId: true,
+        user: {
+          select: {
+            fullName: true,
+            id: true,
+          },
+        },
+      },
+    });
+    const reportByOrderId = new Map<number, (typeof reports)[number]>();
+    for (const report of reports) {
+      if (report.orderId == null) continue;
+      if (reportByOrderId.has(report.orderId)) continue;
+      reportByOrderId.set(report.orderId, report);
+    }
+    return items.map((order) => {
+      return {
+        ...order,
+        neons: order.neons,
+        lightings: order.lightings,
+        package: order.package,
+        report: reportByOrderId.get(order.id) ?? null,
+        packerReport,
+      };
+    });
   }
 
   /** Список доставок задачи */
@@ -1406,6 +1519,7 @@ export class TasksService {
           date: dto.date,
           method: dto.method || '',
           type: dto.type || '',
+          purpose: dto.purpose || '',
           description: dto.description || '',
           track: dto.track || '',
           status: dto.status || 'Создана',
@@ -1443,6 +1557,7 @@ export class TasksService {
       include: {
         neons: true,
         lightings: true,
+        package: { include: { items: true } },
       },
     });
     if (!item) throw new NotFoundException('Order not found');
@@ -1459,14 +1574,111 @@ export class TasksService {
       neons = [],
       lightings = [],
       dealId, // опционально
+      wireType,
+      wireLength,
+      isAcrylic,
+      acrylic,
+      adapter,
+      adapterInfo,
+      adapterModel,
+      plug,
+      plugColor,
+      plugLength,
+      packageItems = [],
       ...rest
     } = dto;
+
+    const normalizedIsAcrylic =
+      typeof isAcrylic === 'boolean'
+        ? isAcrylic
+        : String(acrylic ?? '').trim() !== '';
+    const normalizedAcrylic = normalizedIsAcrylic ? (acrylic ?? '') : '';
+    const normalizedStand = dto.stand ?? false;
+
+    const normalizedAdapter = adapter ?? '';
+    const normalizedAdapterInfo =
+      normalizedAdapter === 'Нет' ? '' : (adapterInfo ?? '');
+    const normalizedAdapterModel =
+      normalizedAdapter === 'Нет'
+        ? ''
+        : adapterModel === 'Нет'
+          ? ''
+          : (adapterModel ?? '');
+
+    const normalizedPlug = plug ?? '';
+    const normalizedPlugColor =
+      normalizedPlug === 'Нет'
+        ? ''
+        : normalizedPlug === 'Стандарт'
+          ? (plugColor ?? 'Черный')
+          : (plugColor ?? '');
+    const normalizedPlugLength =
+      normalizedPlug === 'Нет'
+        ? 0
+        : normalizedPlug === 'Стандарт'
+          ? (plugLength ?? 1.8)
+          : (plugLength ?? 0);
+
+    const packageItemsData = packageItems
+      .filter((item) => {
+        const name = String(item?.name ?? '').trim();
+        if (name === '' || name === 'Нет') return false;
+        if (!normalizedIsAcrylic && item?.category === 'Акрил') return false;
+        if (
+          !normalizedStand &&
+          item?.category === 'Поликарбонат' &&
+          item?.name === 'Подставка'
+        )
+          return false;
+        return true;
+      })
+      .map((item) => {
+        const quantity = Number(item.quantity ?? 0) || 0;
+        const isAcrylic = item.category === 'Акрил';
+        const isStand =
+          item.category === 'Поликарбонат' && item.name === 'Подставка';
+        const minQuantity = isAcrylic || isStand ? 0.1 : 1;
+        const normalizedQuantity = Math.max(minQuantity, quantity);
+        return {
+          name: item.name ?? '',
+          category: item.category ?? 'Комплектующие для упаковки',
+          quantity:
+            isAcrylic || isStand
+              ? Math.round(normalizedQuantity * 100) / 100
+              : normalizedQuantity,
+        };
+      });
 
     const created = await this.prisma.taskOrder.create({
       data: {
         taskId,
         ...(dealId !== undefined ? { dealId: dealId as any } : {}), // если dealId опционален в схеме — можно передать null
         ...rest,
+        isAcrylic: normalizedIsAcrylic,
+        acrylic: normalizedAcrylic,
+        wireType: wireType ?? 'Акустический',
+        ...(wireLength !== undefined ? { wireLength: String(wireLength) } : {}),
+        ...(adapter !== undefined ? { adapter: normalizedAdapter } : {}),
+        ...(adapter !== undefined
+          ? { adapterInfo: normalizedAdapterInfo }
+          : {}),
+        ...(adapter !== undefined || adapterModel !== undefined
+          ? { adapterModel: normalizedAdapterModel }
+          : {}),
+        ...(plug !== undefined ? { plug: normalizedPlug } : {}),
+        ...(plug !== undefined ? { plugColor: normalizedPlugColor } : {}),
+        ...(plug !== undefined ? { plugLength: normalizedPlugLength } : {}),
+        package: {
+          create: {
+            items: packageItemsData.length
+              ? {
+                  createMany: {
+                    data: packageItemsData,
+                  },
+                }
+              : undefined,
+          },
+        },
         neons: neons.length
           ? {
               createMany: {
@@ -1490,7 +1702,11 @@ export class TasksService {
             }
           : undefined,
       },
-      include: { neons: true, lightings: true },
+      include: {
+        neons: true,
+        lightings: true,
+        package: { include: { items: true } },
+      },
     });
 
     return created;
@@ -1501,21 +1717,175 @@ export class TasksService {
     // console.log(dto);
     const ex = await this.prisma.taskOrder.findFirst({
       where: { id: orderId, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        plug: true,
+        adapter: true,
+        isAcrylic: true,
+        stand: true,
+      },
     });
     if (!ex) throw new NotFoundException('Order not found');
 
-    const { neons, lightings, dealId, ...rest } = dto;
+    const {
+      neons,
+      lightings,
+      dealId,
+      wireType,
+      wireLength,
+      isAcrylic,
+      acrylic,
+      adapter,
+      adapterInfo,
+      adapterModel,
+      plug,
+      plugColor,
+      plugLength,
+      packageItems,
+      ...rest
+    } = dto;
 
     return await this.prisma.$transaction(async (tx) => {
+      const shouldTouchAdapterRelated =
+        adapter !== undefined ||
+        adapterInfo !== undefined ||
+        adapterModel !== undefined;
+      const shouldTouchAcrylic =
+        isAcrylic !== undefined || acrylic !== undefined;
+      const effectiveIsAcrylic =
+        typeof isAcrylic === 'boolean'
+          ? isAcrylic
+          : acrylic !== undefined
+            ? true
+            : (ex.isAcrylic ?? false);
+      const effectiveStand =
+        typeof dto.stand === 'boolean' ? dto.stand : (ex.stand ?? false);
+      const acrylicData = shouldTouchAcrylic
+        ? effectiveIsAcrylic
+          ? (acrylic ?? '')
+          : ''
+        : undefined;
+      const effectiveAdapter = adapter ?? ex.adapter ?? '';
+      const adapterInfoData =
+        shouldTouchAdapterRelated && effectiveAdapter === 'Нет'
+          ? ''
+          : adapterInfo;
+      const adapterModelData = shouldTouchAdapterRelated
+        ? effectiveAdapter === 'Нет'
+          ? ''
+          : adapterModel !== undefined
+            ? adapterModel === 'Нет'
+              ? ''
+              : adapterModel
+            : undefined
+        : undefined;
+
+      const effectivePlug = plug ?? ex.plug ?? '';
+      const shouldTouchPlugRelated =
+        plug !== undefined ||
+        plugColor !== undefined ||
+        plugLength !== undefined;
+
+      const plugColorData = shouldTouchPlugRelated
+        ? effectivePlug === 'Нет'
+          ? ''
+          : plug !== undefined && effectivePlug === 'Стандарт'
+            ? (plugColor ?? 'Черный')
+            : plugColor
+        : undefined;
+
+      const plugLengthData = shouldTouchPlugRelated
+        ? effectivePlug === 'Нет'
+          ? 0
+          : plug !== undefined && effectivePlug === 'Стандарт'
+            ? (plugLength ?? 1.8)
+            : plugLength
+        : undefined;
+
+      const packageItemsData =
+        packageItems
+          ?.filter((item) => {
+            const name = String(item?.name ?? '').trim();
+            if (name === '' || name === 'Нет') return false;
+            if (!effectiveIsAcrylic && item?.category === 'Акрил') return false;
+            if (
+              !effectiveStand &&
+              item?.category === 'Поликарбонат' &&
+              item?.name === 'Подставка'
+            )
+              return false;
+            return true;
+          })
+          .map((item) => {
+            const quantity = Number(item.quantity ?? 0) || 0;
+            const isAcrylic = item.category === 'Акрил';
+            const isStand =
+              item.category === 'Поликарбонат' && item.name === 'Подставка';
+            const minQuantity = isAcrylic || isStand ? 0.1 : 1;
+            const normalizedQuantity = Math.max(minQuantity, quantity);
+            return {
+              name: item.name ?? '',
+              category: item.category ?? 'Комплектующие для упаковки',
+              quantity:
+                isAcrylic || isStand
+                  ? Math.round(normalizedQuantity * 100) / 100
+                  : normalizedQuantity,
+            };
+          }) ?? [];
+
       // 1) обновим плоские поля
       const updated = await tx.taskOrder.update({
         where: { id: orderId },
         data: {
           ...(dealId !== undefined ? { dealId: dealId as any } : {}),
           ...rest,
+          ...(shouldTouchAcrylic ? { isAcrylic: effectiveIsAcrylic } : {}),
+          ...(acrylicData !== undefined ? { acrylic: acrylicData } : {}),
+          ...(wireType !== undefined
+            ? { wireType: wireType ?? 'Акустический' }
+            : {}),
+          ...(wireLength !== undefined
+            ? { wireLength: String(wireLength) }
+            : {}),
+          ...(adapter !== undefined ? { adapter } : {}),
+          ...(adapterInfoData !== undefined
+            ? { adapterInfo: adapterInfoData }
+            : {}),
+          ...(adapterModelData !== undefined
+            ? { adapterModel: adapterModelData }
+            : {}),
+          ...(plug !== undefined ? { plug } : {}),
+          ...(plugColorData !== undefined ? { plugColor: plugColorData } : {}),
+          ...(plugLengthData !== undefined
+            ? { plugLength: plugLengthData }
+            : {}),
+          ...(packageItems !== undefined
+            ? {
+                package: {
+                  upsert: {
+                    create: {
+                      items: packageItemsData.length
+                        ? { createMany: { data: packageItemsData } }
+                        : undefined,
+                    },
+                    update: {
+                      items: {
+                        deleteMany: {},
+                        ...(packageItemsData.length
+                          ? { createMany: { data: packageItemsData } }
+                          : {}),
+                      },
+                    },
+                  },
+                },
+              }
+            : {}),
         },
-        include: { neons: true, lightings: true },
+        include: {
+          neons: true,
+          lightings: true,
+          package: { include: { items: true } },
+        },
       });
 
       // 2) если прислали массивы — заменим их содержимое
@@ -1550,7 +1920,11 @@ export class TasksService {
       // перечитать с вложениями
       const fresh = await tx.taskOrder.findUnique({
         where: { id: orderId },
-        include: { neons: true, lightings: true },
+        include: {
+          neons: true,
+          lightings: true,
+          package: { include: { items: true } },
+        },
       });
       return fresh;
     });

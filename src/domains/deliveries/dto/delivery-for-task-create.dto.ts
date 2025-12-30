@@ -23,7 +23,8 @@ const methods = [
   'Деловые линии',
 ];
 // Типы доставки
-const types = ['Нет', 'Платно', 'Бесплатно', 'Досыл'];
+const types = ['Нет', 'Платно', 'Бесплатно'];
+const purposes = ['Заказ', 'Досыл', 'Ремонт', 'Возврат'];
 
 // Статусы доставки
 const statuses = ['Создана', 'Доступна', 'Отправлена', 'Вручена', 'Возврат'];
@@ -94,8 +95,18 @@ export class DeliveryForTaskCreateDto {
   type?: string = types[0]; // Значение по умолчанию
 
   @ApiProperty({
+    description: 'Тип отправки',
+    example: 'Заказ',
+    default: 'Заказ',
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn(purposes, { message: 'Неверный тип отправки' })
+  purpose?: string = purposes[0]; // Значение по умолчанию
+
+  @ApiProperty({
     description: 'Стоимость доставки',
-    example: 1500.50,
+    example: 1500.5,
     default: 0,
   })
   @IsOptional()

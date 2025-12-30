@@ -111,9 +111,7 @@ export class DealsController {
 
     const toArray = (value?: string | string[]) => {
       if (value === undefined) return undefined;
-      const prepared = Array.isArray(value)
-        ? value
-        : value.split(',');
+      const prepared = Array.isArray(value) ? value : value.split(',');
       const normalized = prepared
         .map((item) => item?.trim())
         .filter((item): item is string => !!item);
@@ -214,7 +212,17 @@ export class DealsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: UserDto,
   ): Promise<DealDto> {
+    // await this.dealsService.getDealCost(id);
     return this.dealsService.findOne(user, id);
+  }
+
+  @Roles('ADMIN', 'G', 'KD')
+  @Get(':id/cost')
+  async getDealCost(
+    @Param('id', ParseIntPipe) id: number,
+    // @CurrentUser() user: UserDto,
+  ): Promise<any> {
+    return this.dealsService.getDealCost(id);
   }
 
   @Patch(':id')

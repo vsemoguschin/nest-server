@@ -31,14 +31,39 @@ async function createNewUser() {
         user: true,
       },
     });
-    console.log(reports.length);
-    const text1 = reports.map(
-      (r) => `${r.name}, дата: ${r.date}`,
-    ).slice(0, 50).join('\n');
-    const text2 = reports.map(
-      (r) => `${r.name}, дата: ${r.date}`,
-    ).slice(51).join('\n');
-    console.log(reports.filter(r=>r.cost>180));
+    const reports10 = await prisma.packerReport.findMany({
+      where: {
+        userId: 46,
+        NOT: [
+          {
+            name: {
+              contains: 'https://easy-crm.pro/boards/11',
+            },
+          },
+          {
+            name: {
+              contains: 'https://easy-crm.pro/boards/5',
+            },
+          },
+        ],
+        name: {
+          contains: 'https://easy-crm.pro/boards',
+        },
+      },
+      include: {
+        user: true,
+      },
+    });
+    console.log(reports10.map((r) => r.name + ' за ' + r.date.split('-').reverse().join('.')).join('\n'));
+    const text1 = reports
+      .map((r) => `${r.name}, дата: ${r.date}`)
+      .slice(0, 50)
+      .join('\n');
+    const text2 = reports
+      .map((r) => `${r.name}, дата: ${r.date}`)
+      .slice(51)
+      .join('\n');
+    console.log(reports.reduce((a, b) => a + b.cost, 0));
 
     // const adminIds = ['317401874'];
     // for (const id of adminIds) {

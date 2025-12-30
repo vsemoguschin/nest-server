@@ -63,4 +63,9 @@ export class CreatePackerReportDto {
   @IsString()
   @IsOptional()
   comment?: string;
+
+  @IsInt({ message: 'ID задачи должен быть целым числом' })
+  @Min(1, { message: 'ID задачи должен быть больше 0' })
+  @IsOptional()
+  taskId?: number;
 }

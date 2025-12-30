@@ -117,7 +117,7 @@ export class ProductionController {
   }
 
   @Get('masters')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER', 'LOGIST')
   async getMasters(@CurrentUser() user: UserDto) {
     return this.productionService.getMasters(user);
   }
@@ -129,7 +129,7 @@ export class ProductionController {
   }
 
   @Post('master-report')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER', 'LOGIST')
   async create(
     @Body() createMasterReportDto: CreateMasterReportDto,
     @CurrentUser() user: UserDto,
@@ -406,7 +406,7 @@ export class ProductionController {
   }
 
   @Get('master/:id/reports')
-  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'MASTER', 'PACKER', 'LOGIST')
   async findAll(
     @Query('from') from: string,
     @Query('to') to: string,

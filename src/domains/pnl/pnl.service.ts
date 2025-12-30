@@ -441,11 +441,6 @@ export class PnlService {
 
       // Расходы на рекламу - оптимизированный запрос
       this.getAdExpensesByPeriods(periods, 19),
-
-      // Зарплаты (используем уже полученные списки пользователей)
-      // this.getSalariesForUsers(periods, mops, getManagerDatasCached),
-      // this.getSalariesForUsers(periods, rops, getManagerDatasCached),
-      // this.getSalariesForUsers(periods, movs, getManagerDatasCached),
     ]);
 
     const rops = await this.prisma.user.findMany({
@@ -545,27 +540,33 @@ export class PnlService {
     });
   }
 
-  // Приватная функция: расчет зарплат для списка пользователей
-  private async getSalariesForUsers(
-    periods: string[],
-    users: { id: number }[],
-    getManagerDatasCached: (period: string, userId: number) => Promise<any>,
-  ): Promise<{ period: string; value: number }[]> {
-    return await Promise.all(
-      periods.map(async (period) => {
-        const salaries = await Promise.all(
-          users.map(async (u) => {
-            const result = await getManagerDatasCached(period, u.id);
-            return result;
-          }),
-        );
-
-        const value = +salaries
-          .reduce((sum, data) => sum + data.totalSalary, 0)
-          .toFixed(2);
-
-        return { value, period };
-      }),
-    );
+  //v2
+  async getDatasV2(period: string) {
+    //Выручка от реализации товара
+    const deliveries = await this.prisma.delivery.findMany({
+      where: {
+        OR: [
+          {
+            date: { startsWith: period },
+          },
+          {
+            deliveredDate: { startsWith: period },
+          },
+        ],
+        deal: {
+          status: { not: 'Возврат' },
+          reservation: false,
+          deletedAt: null,
+        },
+      },
+      include: {
+        deal: {
+          include: { dops: true },
+        },
+      },
+    });
+    const sendDeliveries = deliveries.filter((d) => d.deliveredDate === '');
+    const deliveredDeliveries = deliveries.filter((d) => d.deliveredDate !== '');
+    console.log(sendDeliveries.length, deliveredDeliveries.length);
   }
 }

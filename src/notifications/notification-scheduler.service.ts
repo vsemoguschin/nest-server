@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService } from 'src/services/telegram.service';
 import { BluesalesImportService } from '../integrations/bluesales/bluesales-import.service';
 import { TbankSyncService } from '../services/tbank-sync.service';
+import { PnlService } from 'src/domains/pnl/pnl.service';
 
 @Injectable()
 export class NotificationSchedulerService {
@@ -13,12 +14,14 @@ export class NotificationSchedulerService {
   private isCustomerImportRunning = false; // Защита от повторного выполнения импорта клиентов
   private isPositionNormalizationRunning = false; // Защита от повторного выполнения нормализации позиций
   private isVkAdsExpenseSyncRunning = false; // Защита от повторного выполнения синхронизации расходов VK Ads
+  private isPnlSnapshotRunning = false; // Защита от повторного выполнения сборки PNL снапшотов
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegramService: TelegramService, // Инжектим существующий сервис
     private readonly bluesalesImport: BluesalesImportService,
     private readonly tbankSync: TbankSyncService,
+    private readonly pnlService: PnlService,
   ) {}
 
   private async notifyAdmins(text: string) {
@@ -33,6 +36,126 @@ export class NotificationSchedulerService {
           `Failed to notify ${id}: ${e instanceof Error ? e.message : e}`,
         );
       }
+    }
+  }
+
+  private async withAdvisoryLock<T>(
+    key1: number,
+    key2: number,
+    fn: () => Promise<T>,
+  ): Promise<T | null> {
+    const lockId = (BigInt(key1) << 32n) + BigInt(key2);
+    const locked = await this.prisma.$queryRaw<
+      Array<{ locked: boolean }>
+    >`SELECT pg_try_advisory_lock(${lockId}) as locked`;
+
+    if (!locked?.[0]?.locked) return null;
+
+    try {
+      return await fn();
+    } finally {
+      await this.prisma.$queryRaw`SELECT pg_advisory_unlock(${lockId})`;
+    }
+  }
+
+  private ymInMoscow(d: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Moscow',
+      year: 'numeric',
+      month: '2-digit',
+    }).format(d);
+  }
+
+  private addMonthsYm(ym: string, months: number): string {
+    const [y, m] = ym.split('-').map((v) => parseInt(v, 10));
+    const dt = new Date(Date.UTC(y, m - 1, 1));
+    dt.setUTCMonth(dt.getUTCMonth() + months);
+    const y2 = dt.getUTCFullYear();
+    const m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    return `${y2}-${m2}`;
+  }
+
+  private async upsertPnlSnapshot(
+    type: 'neon' | 'book',
+    anchorPeriod: string,
+    payload: unknown,
+    version = 1,
+  ) {
+    const payloadJson = JSON.stringify(payload);
+    await this.prisma.$executeRaw`
+      INSERT INTO "PnlSnapshot" ("type","anchorPeriod","payload","version","computedAt","createdAt","updatedAt")
+      VALUES (${type}, ${anchorPeriod}, ${payloadJson}::jsonb, ${version}, now(), now(), now())
+      ON CONFLICT ("type","anchorPeriod")
+      DO UPDATE SET
+        "payload" = EXCLUDED."payload",
+        "version" = EXCLUDED."version",
+        "computedAt" = EXCLUDED."computedAt",
+        "updatedAt" = now()
+    `;
+  }
+
+  @Cron('0 0 22 * * *', { timeZone: 'Europe/Moscow' })
+  async collectPnlSnapshotsDaily() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip collectPnlSnapshotsDaily`);
+      return;
+    }
+
+    if (this.isPnlSnapshotRunning) {
+      this.logger.warn('[PNL Snapshot] Job is already running, skipping...');
+      return;
+    }
+
+    this.isPnlSnapshotRunning = true;
+    const startedAt = Date.now();
+
+    try {
+      const currentPeriod = this.ymInMoscow(new Date());
+      const previousPeriod = this.addMonthsYm(currentPeriod, -1);
+
+      const lockResult = await this.withAdvisoryLock(2025, 2200, async () => {
+        const jobs: Array<{ type: 'neon' | 'book'; period: string }> = [
+          { type: 'neon', period: currentPeriod },
+          { type: 'book', period: currentPeriod },
+          { type: 'neon', period: previousPeriod },
+          { type: 'book', period: previousPeriod },
+        ];
+
+        this.logger.log(
+          `[PNL Snapshot] Start: periods=${currentPeriod},${previousPeriod}`,
+        );
+
+        for (const job of jobs) {
+          const oneStartedAt = Date.now();
+          try {
+            const payload =
+              job.type === 'neon'
+                ? await this.pnlService.getNeonPLDatas(job.period)
+                : await this.pnlService.getBookPLDatas(job.period);
+
+            await this.upsertPnlSnapshot(job.type, job.period, payload, 1);
+
+            this.logger.log(
+              `[PNL Snapshot] Saved ${job.type} ${job.period} in ${Date.now() - oneStartedAt}ms`,
+            );
+          } catch (e: unknown) {
+            this.logger.error(
+              `[PNL Snapshot] Failed ${job.type} ${job.period}: ${e instanceof Error ? e.message : e}`,
+            );
+          }
+        }
+      });
+
+      if (lockResult === null) {
+        this.logger.warn(
+          '[PNL Snapshot] Another instance holds the lock, skipping...',
+        );
+      }
+    } finally {
+      this.isPnlSnapshotRunning = false;
+      this.logger.log(
+        `[PNL Snapshot] Done in ${Date.now() - startedAt}ms`,
+      );
     }
   }
 

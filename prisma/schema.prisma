@@ -485,13 +485,16 @@ model DopsType {
 model Delivery {
   id             Int     @id @default(autoincrement()) 
   date           String  @default("")
-  method         String  @default("")
-  type           String  @default("")
+  method         String  @default("") // типа сдек/самовывоз и тп
+  type           String  @default("") // платно/бесплатно
+  purpose        String  @default("") // заказ, досыл, ремонт, возврат(за наш счет нам)
   description    String  @default("")
   track          String  @default("")
   status         String  @default("")
   price          Float   @default(0)
   deliveredDate  String  @default("") // Дата доставки
+
+  deletedAt      DateTime?
 
   dealId         Int
   deal           Deal    @relation(fields: [dealId], references: [id])
@@ -536,9 +539,6 @@ model File {
   reviewId  Int        // Связь с отзывом
   review    Review  @relation(fields: [reviewId], references: [id])
 }
-
-
-
 
 model Supplie {
   id              Int      @id @default(autoincrement())
@@ -591,6 +591,7 @@ model MasterRepairReport {
   metrs         Float  @default(0)  //замена неона 130
   els           Int    @default(0)  //замена элемента 70
   penaltyCost   Int    @default(0)
+  deletedAt    DateTime?
 
   type          String // Стандарт/Уличная/Смарт/РГБ
   cost          Int
@@ -620,6 +621,7 @@ model MasterReport {
   lightingLength    Float   @default(0)
   lightingElements  Int     @default(0)
   lightingCost      Int     @default(0)
+  deletedAt    DateTime?
 
   userId     Int
   user       User    @relation(fields: [userId], references: [id])
@@ -643,6 +645,7 @@ model PackerReport {
   dimmers      Int  //количество диммеров
   dops         Int      @default(0)
   dopsComment  String   @default("")
+  deletedAt    DateTime?
 
   isPenalty  Boolean  @default(false)
   comment    String   @default("")
@@ -653,6 +656,8 @@ model PackerReport {
 
   dealId       Int?
   deal         Deal?   @relation(fields: [dealId], references: [id])
+
+  taskId       Int?
 }
 
 model MasterShift {
@@ -687,12 +692,15 @@ model OtherReport {
   cost         Int
   penaltyCost  Int      @default(0)
   comment      String  @default("")
+  deletedAt    DateTime?
 
   userId       Int
   user         User    @relation(fields: [userId], references: [id])
 
   dealId       Int?
   deal         Deal?   @relation(fields: [dealId], references: [id])
+
+  taskId       Int?
 }
 
 model FrezerReport {
@@ -1077,17 +1085,32 @@ model TaskOrder {
   boardWidth     Int             @default(0)     // Ширина подложки
   boardHeight    Int             @default(0)     // Высота подложки
   holeType       String          @default("")    // Диаметр отверстий
+  holeInfo       String          @default("")    // Доп инфо по отверстиям
   stand          Boolean         @default(false) // Подставка
   laminate       String          @default("")    // Пленка
   print          Boolean         @default(false) // Печать
   printQuality   Boolean         @default(false) // Качество печати
+
   acrylic        String          @default("")    // Акрил
+  isAcrylic      Boolean         @default(false) // нужен ли акрил
+
   type           String          @default("")    // Тип (Помещение/Улица)
-  wireLength     String          @default("")    // Длина акустического провода
+
+  wireLength     String          @default("")    // Длина провода от вывески
+  wireInfo       String          @default("")    // Длина провода от вывески - текстом
+  wireType       String          @default("Акустический")    // Тип провода от вевески
+
   elements       Int             @default(0)     // Количество элементов
   gift           Boolean         @default(false) // Подарок
   adapter        String          @default("")    // Блок (например, Помещение, Уличный, Нет)
-  plug           String          @default("")    // Вилка
+  adapterInfo    String          @default("")    // Доп информация
+  adapterModel   String          @default("")    // Модель блока
+  
+  plug           String          @default("")    // Вилка (стандарт черная, стандарт белая, нет, )
+  plugColor      String          @default("")    // цвет
+  plugLength     Decimal         @default(0)    // Длинна
+
+
   switch         Boolean         @default(true)    // Выключатель
   fitting        String          @default("")    // Крепления
   dimmer         Boolean         @default(false) // Диммер
@@ -1107,14 +1130,35 @@ model TaskOrder {
   taskId     Int
   task       KanbanTask   @relation(fields: [taskId], references: [id])
 
+  package    Package?
+}
+
+model Package {
+  id        Int           @id @default(autoincrement())
+  items     PackageItem[]
+
+  orderId  Int        @unique
+  order    TaskOrder  @relation(fields: [orderId], references: [id])
+}
+
+model PackageItem {
+  id          Int        @id @default(autoincrement())
+  name        String     @default("")
+  category    String     @default("") // неон, блок, держатели
+  quantity    Decimal    @default(0) // количество
+  desc        String     @default("") // дополнительное описание
+  cost        Decimal    @default(0) // стоимость
+
+  packageId   Int
+  package     Package  @relation(fields: [packageId], references: [id])
 }
 
 // НЕОН
 model Neon {
   id        Int         @id @default(autoincrement()) 
   width     String      @default("")
-  length    Decimal     @default(0)// Длина неона
-  color     String      @default("")// Цвет неона
+  length    Decimal     @default(0) // Длина неона
+  color     String      @default("") // Цвет неона
 
   // Связь с заказом (TaskOrder)
   orderTaskId   Int
@@ -1339,4 +1383,19 @@ model VkAdsDailyStat {
 
   @@index([project, entity, date])
   @@unique([project, entity, entityId, date], map: "vkads_unique_entity_per_day")
+}
+
+/// Снапшот PNL-данных (агрегированные тяжелые расчеты), хранится по периодам
+model PnlSnapshot {
+  id           Int      @id @default(autoincrement())
+  type         String   // 'neon' | 'book'
+  anchorPeriod String   // YYYY-MM (период, который запрашивает UI)
+  payload      Json     // результат расчета (например, ответ PnlService)
+  version      Int      @default(1)
+  computedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([type, anchorPeriod], map: "pnl_snapshot_unique_type_period")
+  @@index([type, computedAt])
 }

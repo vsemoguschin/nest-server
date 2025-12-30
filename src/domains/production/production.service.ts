@@ -46,15 +46,18 @@ export class ProductionService {
           { value: 'frezer', label: 'Фрезеровка' },
           { value: 'logist', label: 'Логист' },
           { value: 'supplie', label: 'Закупки' },
+          { value: 'storage', label: 'Склад' },
           // { value: 'salaries', label: 'Зарплаты' },
         ],
       };
     }
-    if (user.id === 153 || user.id === 129) {
+    if (user.id === 129) {
       return {
         tabs: [
           { value: 'masters', label: 'Сборщики' },
           { value: 'package', label: 'Упаковщики' },
+          { value: 'supplie', label: 'Закупки' },
+          { value: 'logist', label: 'Логист' },
         ],
       };
     }
@@ -293,12 +296,15 @@ export class ProductionService {
         0,
       ),
 
-      els: masterReports.reduce((a, b) => a + b.els, 0)+masterReports.reduce((a, b) => a + (b.lightingElements || 0), 0),
-      metrs: masterReports.reduce((a, b) => a + b.metrs, 0)+masterReports.reduce((a, b) => a + (b.lightingLength || 0), 0),
-      mastersSalary: masterReports.reduce(
-        (a, b) => a + (b.cost - b.penaltyCost),
-        0,
-      ) + masterReports.reduce((a, b) => a + (b.lightingCost || 0), 0),
+      els:
+        masterReports.reduce((a, b) => a + b.els, 0) +
+        masterReports.reduce((a, b) => a + (b.lightingElements || 0), 0),
+      metrs:
+        masterReports.reduce((a, b) => a + b.metrs, 0) +
+        masterReports.reduce((a, b) => a + (b.lightingLength || 0), 0),
+      mastersSalary:
+        masterReports.reduce((a, b) => a + (b.cost - b.penaltyCost), 0) +
+        masterReports.reduce((a, b) => a + (b.lightingCost || 0), 0),
       mastersReports: masterReports.length,
       packersReports: packersReports.length,
       packages: packersReports.reduce((a, b) => a + b.items, 0),
@@ -730,7 +736,7 @@ export class ProductionService {
 
   async getMasters(user: UserDto) {
     const userSearch =
-      user.role.shortName === 'MASTER' || user.id === 153 || user.id === 129 ? user.id : { gt: 0 };
+      user.role.shortName === 'MASTER' || user.id === 129 ? user.id : { gt: 0 };
 
     const users = await this.prisma.user.findMany({
       where: {
@@ -738,7 +744,7 @@ export class ProductionService {
         OR: [
           {
             role:
-              user.id === 153 || user.id === 129
+              user.id === 129
                 ? { shortName: 'PACKER' }
                 : { shortName: 'MASTER' },
           },
@@ -822,6 +828,18 @@ export class ProductionService {
   async createMasterReport(dto: CreateMasterReportDto) {
     const name = dto.name;
     let dealId = 0;
+
+    if (dto.orderId != null && dto.orderId > 0) {
+      const existingReport = await this.prisma.masterReport.findFirst({
+        where: { orderId: dto.orderId, deletedAt: null },
+        select: { id: true },
+      });
+      if (existingReport) {
+        throw new BadRequestException(
+          'Отчет для данного заказа уже существует',
+        );
+      }
+    }
 
     if (dto.name.includes('easyneonwork.kaiten.ru/')) {
       const linkSplit = dto.name.split('/');
@@ -919,7 +937,7 @@ export class ProductionService {
     });
 
     const masterOtherReports =
-      (userId === 153 || userId === 129)
+      userId === 129
         ? []
         : await this.prisma.otherReport.findMany({
             where: {
@@ -1412,7 +1430,9 @@ export class ProductionService {
             (specialElsSumByDate[report.date] || 0) + report.els;
         } else {
           regularElsSumByDate[report.date] =
-            (regularElsSumByDate[report.date] || 0) + report.els + (report.lightingElements || 0);
+            (regularElsSumByDate[report.date] || 0) +
+            report.els +
+            (report.lightingElements || 0);
         }
       });
     });
@@ -1440,7 +1460,9 @@ export class ProductionService {
             (elsByDate[report.date].special || 0) + report.els;
         } else {
           elsByDate[report.date].regular =
-            (elsByDate[report.date].regular || 0) + report.els + (report.lightingElements || 0);
+            (elsByDate[report.date].regular || 0) +
+            report.els +
+            (report.lightingElements || 0);
         }
       });
 
@@ -1482,9 +1504,10 @@ export class ProductionService {
   }
 
   async getPackers(user: UserDto) {
-    const userSearch = ['PACKER', 'LOGIST'].includes(user.role.shortName) || user.id === 129
-      ? user.id
-      : { gt: 0 };
+    const userSearch =
+      ['PACKER', 'LOGIST'].includes(user.role.shortName) || user.id === 129
+        ? user.id
+        : { gt: 0 };
     console.log(userSearch);
 
     const users = await this.prisma.user.findMany({
@@ -1515,6 +1538,18 @@ export class ProductionService {
   async createPackerReport(dto: CreatePackerReportDto) {
     const name = dto.name;
     let dealId = 0;
+
+    if (dto.taskId != null && dto.taskId > 0) {
+      const existingReport = await this.prisma.packerReport.findFirst({
+        where: { taskId: dto.taskId, deletedAt: null },
+        select: { id: true },
+      });
+      if (existingReport) {
+        throw new BadRequestException(
+          'Отчет упаковки для данной карточки уже существует',
+        );
+      }
+    }
 
     if (dto.name.includes('easyneonwork.kaiten.ru/')) {
       const linkSplit = dto.name.split('/');
@@ -1869,7 +1904,11 @@ export class ProductionService {
     });
   }
 
-  async updateOtherReport(id: number, dto: UpdateOtherReportDto, user: UserDto) {
+  async updateOtherReport(
+    id: number,
+    dto: UpdateOtherReportDto,
+    user: UserDto,
+  ) {
     const report = await this.prisma.otherReport.findUnique({ where: { id } });
     if (!report) {
       throw new NotFoundException(`Other Report with ID ${id} not found`);

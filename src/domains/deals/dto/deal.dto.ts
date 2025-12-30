@@ -169,6 +169,7 @@ export class DealDto {
     id: number;
     dealId: number;
     type: string;
+    purpose: string;
     date: string;
     method: string;
     track: string;
