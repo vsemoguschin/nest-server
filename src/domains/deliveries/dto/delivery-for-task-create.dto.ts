@@ -13,6 +13,7 @@ import { ApiProperty } from '@nestjs/swagger';
 // Методы доставки
 const methods = [
   'СДЕК',
+  'СДЕК курьер',
   'ПОЧТА РОССИИ',
   'Яндекс',
   'Балтийский курьер',

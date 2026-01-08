@@ -1093,6 +1093,7 @@ model TaskOrder {
 
   acrylic        String          @default("")    // Акрил
   isAcrylic      Boolean         @default(false) // нужен ли акрил
+  screen         Boolean         @default(false)
 
   type           String          @default("")    // Тип (Помещение/Улица)
 

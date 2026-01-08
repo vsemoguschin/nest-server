@@ -536,7 +536,8 @@ export class CommercialDatasService {
           dopSales,
           dealSales,
           paymentsFact,
-          toSalary,
+          toSalary:
+            period >= '2026-01' ? +(toSalary * 0.95).toFixed(2) : +toSalary.toFixed(2),
         };
       }),
     );
@@ -1080,7 +1081,7 @@ export class CommercialDatasService {
         ? await this.getROPSalesDatas(m.groupId, period)
         : [];
     const ropSalary = ropdatas.reduce((a, b) => a + b.toSalary, 0);
-    totalSalary += ropSalary;
+    totalSalary += +ropSalary.toFixed(2);
     return {
       fullName: m.fullName,
       role: m.role.fullName,
@@ -1097,7 +1098,8 @@ export class CommercialDatasService {
       fact,
       factAmount,
       factPercentage,
-      factBonus,
+      factBonus:
+        period >= '2026-01' ? +(factBonus * 0.95).toFixed(2) : factBonus,
       temp,
 
       // Показатели
@@ -1130,8 +1132,8 @@ export class CommercialDatasService {
       ropSalary,
       dodatas,
       ropdatas,
-      dopPays,
-      dealPays,
+      dopPays: period >= '2026-01' ? +(dopPays * 0.95).toFixed(2) : dopPays,
+      dealPays: period >= '2026-01' ? +(dealPays * 0.95).toFixed(2) : dealPays,
       topBonus,
       totalSalary,
       rem: 0,

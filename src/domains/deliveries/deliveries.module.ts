@@ -5,6 +5,7 @@ import { CdekService } from 'src/services/cdek.service';
 
 @Module({
   controllers: [DeliveriesController],
-  providers: [DeliveriesService, CdekService]
+  providers: [DeliveriesService, CdekService],
+  exports: [DeliveriesService],
 })
 export class DeliveriesModule {}

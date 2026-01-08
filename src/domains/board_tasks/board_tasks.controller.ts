@@ -222,6 +222,12 @@ export class TasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
   ) {
     const task = await this.tasksService.ensureTask(taskId);
+    await this.audit.log({
+      userId: user.id,
+      taskId: task.id,
+      action: 'TASK_DELETED',
+      description: `Задача удалена`,
+    });
     return this.tasksService.deleteTask(user.id, task);
   }
 
@@ -415,6 +421,14 @@ export class TasksController {
       task,
       dto.archived,
     );
+    await this.audit.log({
+      userId: user.id,
+      taskId: task.id,
+      action: 'TASK_ARCHIVED',
+      description: dto.archived
+        ? 'Задача перемещена в архив'
+        : `Задача перемещена из архива`,
+    });
     return updated;
   }
 

@@ -2018,7 +2018,7 @@ export class ProductionService {
             data: {
               shift_date,
               userId: logistId,
-              cost: 3700,
+              cost: 2900,
             },
             select: {
               id: true,

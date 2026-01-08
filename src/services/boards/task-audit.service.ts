@@ -14,6 +14,8 @@ type Action =
   | 'ADD_MEMBER'
   | 'DEL_MEMBER'
   | 'MOVE_TO_BOARD'
+  | 'TASK_ARCHIVED'
+  | 'TASK_DELETED'
   | 'TASK_CREATED';
 
 export type AuditLogParams = {

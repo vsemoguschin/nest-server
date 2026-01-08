@@ -352,6 +352,7 @@ export class TasksService {
             plugColor: (order as any).plugColor ?? '',
             plugLength: (order as any).plugLength ?? 0,
             switch: order.switch ?? true,
+            screen: (order as any).screen ?? false,
             fitting: order.fitting ?? '',
             dimmer: order.dimmer ?? false,
             giftPack: order.giftPack ?? false,
@@ -585,88 +586,72 @@ export class TasksService {
   }
 
   async getOne(userId: number, taskId: number) {
-    const taskIncludes = {
-      tags: { select: { id: true, name: true } },
-      members: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          role: { select: { fullName: true } },
-          tg: true,
-        },
-      },
-
-      attachments: true,
-      comments: {
-        where: { deletedAt: null },
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          text: true,
-          createdAt: true,
-          author: { select: { id: true, fullName: true, email: true } },
-        },
-      },
-      audits: {
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-        select: {
-          id: true,
-          action: true,
-          payload: true,
-          createdAt: true,
-          user: { select: { id: true, fullName: true, email: true } },
-        },
-      },
-      board: true,
-      column: true,
-      creator: true,
-      orders: {
-        select: {
-          deadline: true,
-          boardHeight: true,
-          boardWidth: true,
-          type: true,
-          holeType: true,
-          fitting: true,
-          laminate: true,
-          acrylic: true,
-          docs: true,
-          print: true,
-          dimmer: true,
-          neons: { select: { color: true, width: true } },
-          lightings: { select: { color: true } },
-        },
-      },
-
-      deal: {
-        select: {
-          id: true,
-          title: true,
-          saleDate: true,
-          deliveries: {
-            select: {
-              method: true,
-              type: true,
-              track: true,
-            },
-          },
-          payments: {
-            where: {
-              method: 'Наложка',
-            },
-          },
-        },
-      },
-    } as const;
-
     const task = await this.prisma.kanbanTask.findFirst({
       where: {
         id: taskId,
         deletedAt: null,
       },
-      include: taskIncludes,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        chatLink: true,
+        createdAt: true,
+        updatedAt: true,
+        deletedAt: true,
+        boardId: true,
+        columnId: true,
+        cover: true,
+        archived: true,
+        tags: { select: { id: true, name: true } },
+        board: { select: { id: true, title: true, description: true } },
+        column: { select: { id: true, title: true, position: true } },
+        creator: { select: { id: true, fullName: true, email: true } },
+        orders: {
+          select: {
+            deadline: true,
+            boardHeight: true,
+            boardWidth: true,
+            type: true,
+            holeType: true,
+            fitting: true,
+            laminate: true,
+            acrylic: true,
+            docs: true,
+            print: true,
+            dimmer: true,
+            neons: { select: { color: true, width: true } },
+            lightings: { select: { color: true } },
+          },
+        },
+        deal: {
+          select: {
+            id: true,
+            title: true,
+            saleDate: true,
+            price: true,
+            deliveries: {
+              select: {
+                method: true,
+                type: true,
+                track: true,
+              },
+            },
+            payments: {
+              select: {
+                method: true,
+                price: true,
+              },
+            },
+            dops: {
+              select: {
+                price: true,
+              },
+            },
+          },
+        },
+        _count: { select: { attachments: true } },
+      },
     });
 
     if (!task) throw new NotFoundException('Task not found');
@@ -703,29 +688,45 @@ export class TasksService {
       task.deal?.payments,
     );
 
+    let remainder: null | number = null;
+    if (task.deal) {
+      const dopsPrice = task.deal.dops.reduce((acc, dop) => acc + dop.price, 0);
+      const totalPrice = task.deal.price + dopsPrice;
+      remainder =
+        totalPrice -
+        task.deal.payments.reduce(
+          (acc, payment) => acc + Number(payment.price ?? 0),
+          0,
+        );
+    }
+
+    const deal = task.deal
+      ? {
+          id: task.deal.id,
+          title: task.deal.title,
+          saleDate: task.deal.saleDate,
+        }
+      : null;
+
     return {
       id: task.id,
       title: task.title,
       description: task.description,
       chatLink: task.chatLink,
-      position: task.position,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
       deletedAt: task.deletedAt,
-      creatorId: task.creatorId,
-      boardId: task.boardId,
       columnId: task.columnId,
       tags: task.tags,
-      members: task.members,
-      attachmentsLength: task.attachments.length,
+      attachmentsLength: task._count.attachments,
       cover: task.cover,
       archived: task.archived,
       warnings,
-      deal: task.deal,
-      dealId: task.dealId,
+      deal,
       tracks:
         task.deal?.deliveries.map((d) => d.track).filter((t) => t !== '') ?? [],
       avaliableDeals,
+      remainder,
 
       comments: [],
       audits: [],
@@ -1478,16 +1479,20 @@ export class TasksService {
   async deliveriesListForTask(taskId: number) {
     const { dealId } = await this.ensureTask(taskId);
     if (!dealId) return [];
-    const delivery = await this.prisma.delivery.findMany({
+    const deliveries = await this.prisma.delivery.findMany({
       where: { dealId },
       orderBy: { id: 'asc' },
       include: {
         deal: {
-          select: { id: true, title: true, saleDate: true },
+          select: {
+            id: true,
+            title: true,
+            saleDate: true,
+          },
         },
       },
     });
-    return delivery;
+    return deliveries;
   }
 
   /** Создать доставку для задачи */
@@ -1619,6 +1624,9 @@ export class TasksService {
           ? (plugLength ?? 1.8)
           : (plugLength ?? 0);
 
+    const normalizedWireType = wireType ?? 'Акустический';
+    const normalizedWireLength = normalizedWireType === 'Нет' ? 0 : wireLength;
+
     const packageItemsData = packageItems
       .filter((item) => {
         const name = String(item?.name ?? '').trim();
@@ -1656,8 +1664,10 @@ export class TasksService {
         ...rest,
         isAcrylic: normalizedIsAcrylic,
         acrylic: normalizedAcrylic,
-        wireType: wireType ?? 'Акустический',
-        ...(wireLength !== undefined ? { wireLength: String(wireLength) } : {}),
+        wireType: normalizedWireType,
+        ...(normalizedWireLength !== undefined
+          ? { wireLength: String(normalizedWireLength) }
+          : {}),
         ...(adapter !== undefined ? { adapter: normalizedAdapter } : {}),
         ...(adapter !== undefined
           ? { adapterInfo: normalizedAdapterInfo }
@@ -1802,6 +1812,9 @@ export class TasksService {
             : plugLength
         : undefined;
 
+      const wireLengthData =
+        wireType === 'Нет' && wireLength === undefined ? 0 : wireLength;
+
       const packageItemsData =
         packageItems
           ?.filter((item) => {
@@ -1844,8 +1857,8 @@ export class TasksService {
           ...(wireType !== undefined
             ? { wireType: wireType ?? 'Акустический' }
             : {}),
-          ...(wireLength !== undefined
-            ? { wireLength: String(wireLength) }
+          ...(wireLengthData !== undefined
+            ? { wireLength: String(wireLengthData) }
             : {}),
           ...(adapter !== undefined ? { adapter } : {}),
           ...(adapterInfoData !== undefined

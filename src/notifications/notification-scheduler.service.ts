@@ -5,6 +5,7 @@ import { TelegramService } from 'src/services/telegram.service';
 import { BluesalesImportService } from '../integrations/bluesales/bluesales-import.service';
 import { TbankSyncService } from '../services/tbank-sync.service';
 import { PnlService } from 'src/domains/pnl/pnl.service';
+import { DeliveriesService } from 'src/domains/deliveries/deliveries.service';
 
 @Injectable()
 export class NotificationSchedulerService {
@@ -15,6 +16,7 @@ export class NotificationSchedulerService {
   private isPositionNormalizationRunning = false; // Защита от повторного выполнения нормализации позиций
   private isVkAdsExpenseSyncRunning = false; // Защита от повторного выполнения синхронизации расходов VK Ads
   private isPnlSnapshotRunning = false; // Защита от повторного выполнения сборки PNL снапшотов
+  private isCheckRegistersRunning = false; // Защита от повторного выполнения checkRegisters
 
   constructor(
     private readonly prisma: PrismaService,
@@ -22,6 +24,7 @@ export class NotificationSchedulerService {
     private readonly bluesalesImport: BluesalesImportService,
     private readonly tbankSync: TbankSyncService,
     private readonly pnlService: PnlService,
+    private readonly deliveriesService: DeliveriesService,
   ) {}
 
   private async notifyAdmins(text: string) {
@@ -153,9 +156,7 @@ export class NotificationSchedulerService {
       }
     } finally {
       this.isPnlSnapshotRunning = false;
-      this.logger.log(
-        `[PNL Snapshot] Done in ${Date.now() - startedAt}ms`,
-      );
+      this.logger.log(`[PNL Snapshot] Done in ${Date.now() - startedAt}ms`);
     }
   }
 
@@ -1010,146 +1011,6 @@ export class NotificationSchedulerService {
     }
   }
 
-  // Автоматическая архивация задач старше 5 дней на заданных досках
-  // Архивирует задачи, у которых все записи аудита и comments старше 5 дней
-  // Сейчас — только для boardId=3
-  @Cron('0 10 3 * * *', { timeZone: 'Europe/Moscow' })
-  async autoArchiveOldTasks() {
-    if (this.env === 'development') {
-      this.logger.debug(`[dev] skip autoArchiveOldTasks`);
-      return;
-    }
-    const startTime = new Date();
-    try {
-      const BOARD_IDS = [3];
-      const IGNORE_COLUMNS_IDS = [18, 19, 20, 21, 22, 23, 24, 104, 42];
-      const DAYS = 5;
-      const fiveDaysAgo = new Date();
-      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - DAYS);
-
-      this.logger.log(
-        `[autoArchiveOldTasks] Starting at ${startTime.toISOString()}, checking tasks older than ${fiveDaysAgo.toISOString()}`,
-      );
-      this.logger.log(
-        `[autoArchiveOldTasks] Ignoring columns: ${IGNORE_COLUMNS_IDS.join(', ')}`,
-      );
-
-      // Получаем все активные задачи с их аудитом и comments
-      const tasks = await this.prisma.kanbanTask.findMany({
-        where: {
-          deletedAt: null,
-          archived: false,
-          boardId: { in: BOARD_IDS },
-          columnId: { notIn: IGNORE_COLUMNS_IDS }, // Исключаем задачи из указанных колонок
-        },
-        select: {
-          id: true,
-          title: true,
-          boardId: true,
-          columnId: true,
-          audits: {
-            select: {
-              id: true,
-              createdAt: true,
-              action: true,
-            },
-            orderBy: {
-              createdAt: 'desc',
-            },
-          },
-          comments: {
-            where: {
-              deletedAt: null, // Исключаем удаленные комментарии
-            },
-            select: {
-              id: true,
-              updatedAt: true,
-            },
-          },
-        },
-      });
-
-      this.logger.log(
-        `[autoArchiveOldTasks] Found ${tasks.length} active tasks to check`,
-      );
-
-      const tasksToArchive: number[] = [];
-      const tasksWithoutAudit: number[] = [];
-      const tasksWithRecentActivity: number[] = [];
-      const tasksWithRecentComments: number[] = [];
-
-      // Проверяем каждую задачу
-      for (const task of tasks) {
-        // Если у задачи нет записей аудита, пропускаем
-        if (task.audits.length === 0) {
-          tasksWithoutAudit.push(task.id);
-          continue;
-        }
-
-        // Проверяем, все ли записи аудита старше 5 дней
-        const allAuditsOld = task.audits.every(
-          (audit) => audit.createdAt < fiveDaysAgo,
-        );
-
-        // Проверяем, все ли comments старше 5 дней (если есть)
-        const allCommentsOld =
-          task.comments.length === 0 ||
-          task.comments.every((comment) => comment.updatedAt < fiveDaysAgo);
-
-        // Архивируем только если все условия выполнены
-        if (allAuditsOld && allCommentsOld) {
-          tasksToArchive.push(task.id);
-        } else {
-          if (!allAuditsOld) {
-            tasksWithRecentActivity.push(task.id);
-          }
-          if (!allCommentsOld) {
-            tasksWithRecentComments.push(task.id);
-          }
-        }
-      }
-
-      this.logger.log(
-        `[autoArchiveOldTasks] Tasks without audit: ${tasksWithoutAudit.length}, with recent activity: ${tasksWithRecentActivity.length}, with recent comments: ${tasksWithRecentComments.length}, to archive: ${tasksToArchive.length}`,
-      );
-
-      if (tasksToArchive.length === 0) {
-        this.logger.log('[autoArchiveOldTasks] No tasks to archive');
-        await this.notifyAdmins(
-          `🗂️ Автоархив задач: нет задач для архивации\nПроверено: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}`,
-        );
-        return;
-      }
-
-      // Архивируем задачи через raw SQL без изменения updatedAt
-      const archivedCount = await this.prisma.$executeRaw`
-        UPDATE "KanbanTask"
-        SET archived = true
-        WHERE id = ANY(${tasksToArchive}::int[])
-      `;
-
-      const endTime = new Date();
-      const duration = endTime.getTime() - startTime.getTime();
-
-      this.logger.log(
-        `[autoArchiveOldTasks] Archived ${archivedCount} tasks in ${duration}ms`,
-      );
-
-      await this.notifyAdmins(
-        `🗂️ Автоархив задач завершён.\nАрхивировано: ${archivedCount}\nДоски: ${BOARD_IDS.join(', ')}\nПроверено задач: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}\nВремя выполнения: ${(duration / 1000).toFixed(1)}с`,
-      );
-    } catch (e: unknown) {
-      const endTime = new Date();
-      const duration = endTime.getTime() - startTime.getTime();
-      this.logger.error(
-        `[autoArchiveOldTasks] failed after ${duration}ms: ${e instanceof Error ? e.message : String(e)}`,
-      );
-      await this.notifyAdmins(
-        `🔥 Автоархив задач упал: ${e instanceof Error ? e.message : String(e)}`,
-      );
-    }
-  }
-
   // Автоматическая синхронизация операций Т-Банка каждый час с 8 утра до полуночи
   @Cron('0 0 * * * *', { timeZone: 'Europe/Moscow' })
   async syncTbankOperations() {
@@ -1453,6 +1314,323 @@ export class NotificationSchedulerService {
       await this.notifyAdmins(
         `🔥 Автоархив задач (доска 17) упал: ${e instanceof Error ? e.message : String(e)}`,
       );
+    }
+  }
+
+  // Автоматическая архивация задач старше 5 дней на заданных досках
+  // Архивирует задачи, у которых все записи аудита и comments старше 5 дней
+  // Сейчас — только для boardId=3
+  @Cron('0 10 3 * * *', { timeZone: 'Europe/Moscow' })
+  async autoArchiveOldTasks() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip autoArchiveOldTasks`);
+      return;
+    }
+    const startTime = new Date();
+    try {
+      const BOARD_IDS = [3];
+      const IGNORE_COLUMNS_IDS = [18, 19, 20, 21, 22, 23, 24, 104, 42];
+      const DAYS = 5;
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - DAYS);
+
+      this.logger.log(
+        `[autoArchiveOldTasks] Starting at ${startTime.toISOString()}, checking tasks older than ${fiveDaysAgo.toISOString()}`,
+      );
+      this.logger.log(
+        `[autoArchiveOldTasks] Ignoring columns: ${IGNORE_COLUMNS_IDS.join(', ')}`,
+      );
+
+      // Получаем все активные задачи с их аудитом и comments
+      const tasks = await this.prisma.kanbanTask.findMany({
+        where: {
+          deletedAt: null,
+          archived: false,
+          boardId: { in: BOARD_IDS },
+          columnId: { notIn: IGNORE_COLUMNS_IDS }, // Исключаем задачи из указанных колонок
+        },
+        select: {
+          id: true,
+          title: true,
+          boardId: true,
+          columnId: true,
+          audits: {
+            select: {
+              id: true,
+              createdAt: true,
+              action: true,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
+          comments: {
+            where: {
+              deletedAt: null, // Исключаем удаленные комментарии
+            },
+            select: {
+              id: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(
+        `[autoArchiveOldTasks] Found ${tasks.length} active tasks to check`,
+      );
+
+      const tasksToArchive: number[] = [];
+      const tasksWithoutAudit: number[] = [];
+      const tasksWithRecentActivity: number[] = [];
+      const tasksWithRecentComments: number[] = [];
+
+      // Проверяем каждую задачу
+      for (const task of tasks) {
+        // Если у задачи нет записей аудита, пропускаем
+        if (task.audits.length === 0) {
+          tasksWithoutAudit.push(task.id);
+          continue;
+        }
+
+        // Проверяем, все ли записи аудита старше 5 дней
+        const allAuditsOld = task.audits.every(
+          (audit) => audit.createdAt < fiveDaysAgo,
+        );
+
+        // Проверяем, все ли comments старше 5 дней (если есть)
+        const allCommentsOld =
+          task.comments.length === 0 ||
+          task.comments.every((comment) => comment.updatedAt < fiveDaysAgo);
+
+        // Архивируем только если все условия выполнены
+        if (allAuditsOld && allCommentsOld) {
+          tasksToArchive.push(task.id);
+        } else {
+          if (!allAuditsOld) {
+            tasksWithRecentActivity.push(task.id);
+          }
+          if (!allCommentsOld) {
+            tasksWithRecentComments.push(task.id);
+          }
+        }
+      }
+
+      this.logger.log(
+        `[autoArchiveOldTasks] Tasks without audit: ${tasksWithoutAudit.length}, with recent activity: ${tasksWithRecentActivity.length}, with recent comments: ${tasksWithRecentComments.length}, to archive: ${tasksToArchive.length}`,
+      );
+
+      if (tasksToArchive.length === 0) {
+        this.logger.log('[autoArchiveOldTasks] No tasks to archive');
+        await this.notifyAdmins(
+          `🗂️ Автоархив задач: нет задач для архивации\nПроверено: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}`,
+        );
+        return;
+      }
+
+      // Архивируем задачи через raw SQL без изменения updatedAt
+      const archivedCount = await this.prisma.$executeRaw`
+        UPDATE "KanbanTask"
+        SET archived = true
+        WHERE id = ANY(${tasksToArchive}::int[])
+      `;
+
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+
+      this.logger.log(
+        `[autoArchiveOldTasks] Archived ${archivedCount} tasks in ${duration}ms`,
+      );
+
+      await this.notifyAdmins(
+        `🗂️ Автоархив задач завершён.\nАрхивировано: ${archivedCount}\nДоски: ${BOARD_IDS.join(', ')}\nПроверено задач: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}\nВремя выполнения: ${(duration / 1000).toFixed(1)}с`,
+      );
+    } catch (e: unknown) {
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      this.logger.error(
+        `[autoArchiveOldTasks] failed after ${duration}ms: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      await this.notifyAdmins(
+        `🔥 Автоархив задач упал: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  // Автоматическая архивация задач старше 40 дней на досках 10 и 5
+  // Архивирует задачи, у которых все записи аудита и comments старше 40 дней
+  @Cron('0 30 3 * * *', { timeZone: 'Europe/Moscow' })
+  async autoArchiveProdTasks() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip autoArchiveProdTasks`);
+      return;
+    }
+    const startTime = new Date();
+    try {
+      const BOARD_IDS = [10, 5];
+      const IGNORE_COLUMNS_IDS: number[] = [];
+      const DAYS = 40;
+      const fortyDaysAgo = new Date();
+      fortyDaysAgo.setDate(fortyDaysAgo.getDate() - DAYS);
+
+      this.logger.log(
+        `[autoArchiveProdTasks] Starting at ${startTime.toISOString()}, checking tasks older than ${fortyDaysAgo.toISOString()}`,
+      );
+      this.logger.log(
+        `[autoArchiveProdTasks] Ignoring columns: ${IGNORE_COLUMNS_IDS.length > 0 ? IGNORE_COLUMNS_IDS.join(', ') : 'none'}`,
+      );
+
+      const tasks = await this.prisma.kanbanTask.findMany({
+        where: {
+          deletedAt: null,
+          archived: false,
+          boardId: { in: BOARD_IDS },
+          ...(IGNORE_COLUMNS_IDS.length > 0 && {
+            columnId: { notIn: IGNORE_COLUMNS_IDS },
+          }),
+        },
+        select: {
+          id: true,
+          title: true,
+          boardId: true,
+          columnId: true,
+          audits: {
+            select: {
+              id: true,
+              createdAt: true,
+              action: true,
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          },
+          comments: {
+            where: {
+              deletedAt: null,
+            },
+            select: {
+              id: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(
+        `[autoArchiveProdTasks] Found ${tasks.length} active tasks to check`,
+      );
+
+      const tasksToArchive: number[] = [];
+      const tasksWithoutAudit: number[] = [];
+      const tasksWithRecentActivity: number[] = [];
+      const tasksWithRecentComments: number[] = [];
+
+      for (const task of tasks) {
+        if (task.audits.length === 0) {
+          tasksWithoutAudit.push(task.id);
+          continue;
+        }
+
+        const allAuditsOld = task.audits.every(
+          (audit) => audit.createdAt < fortyDaysAgo,
+        );
+
+        const allCommentsOld =
+          task.comments.length === 0 ||
+          task.comments.every((comment) => comment.updatedAt < fortyDaysAgo);
+
+        if (allAuditsOld && allCommentsOld) {
+          tasksToArchive.push(task.id);
+        } else {
+          if (!allAuditsOld) {
+            tasksWithRecentActivity.push(task.id);
+          }
+          if (!allCommentsOld) {
+            tasksWithRecentComments.push(task.id);
+          }
+        }
+      }
+
+      this.logger.log(
+        `[autoArchiveProdTasks] Tasks without audit: ${tasksWithoutAudit.length}, with recent activity: ${tasksWithRecentActivity.length}, with recent comments: ${tasksWithRecentComments.length}, to archive: ${tasksToArchive.length}`,
+      );
+
+      if (tasksToArchive.length === 0) {
+        this.logger.log('[autoArchiveProdTasks] No tasks to archive');
+        await this.notifyAdmins(
+          `🗂️ Автоархив задач (доски 10, 5): нет задач для архивации\nПроверено: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}${IGNORE_COLUMNS_IDS.length > 0 ? `\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}` : ''}`,
+        );
+        return;
+      }
+
+      const archivedCount = await this.prisma.$executeRaw`
+        UPDATE "KanbanTask"
+        SET archived = true
+        WHERE id = ANY(${tasksToArchive}::int[])
+      `;
+
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+
+      this.logger.log(
+        `[autoArchiveProdTasks] Archived ${archivedCount} tasks in ${duration}ms`,
+      );
+
+      await this.notifyAdmins(
+        `🗂️ Автоархив задач (доски 10, 5) завершён.\nАрхивировано: ${archivedCount}\nДоски: ${BOARD_IDS.join(', ')}\nПроверено задач: ${tasks.length}\nБез аудита: ${tasksWithoutAudit.length}\nС недавней активностью: ${tasksWithRecentActivity.length}\nС недавними комментариями: ${tasksWithRecentComments.length}${IGNORE_COLUMNS_IDS.length > 0 ? `\nИсключены колонки: ${IGNORE_COLUMNS_IDS.join(', ')}` : ''}\nВремя выполнения: ${(duration / 1000).toFixed(1)}с`,
+      );
+    } catch (e: unknown) {
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      this.logger.error(
+        `[autoArchiveProdTasks] failed after ${duration}ms: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      await this.notifyAdmins(
+        `🔥 Автоархив задач (доски 10, 5) упал: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  // Ночная проверка реестров СДЭК
+  @Cron('0 0 2 * * *', { timeZone: 'Europe/Moscow' })
+  async checkCdekRegistersNightly() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip checkCdekRegistersNightly`);
+      return;
+    }
+    if (this.isCheckRegistersRunning) {
+      this.logger.warn('[CDEK Registers] Job is already running, skipping...');
+      return;
+    }
+
+    this.isCheckRegistersRunning = true;
+    const startTime = new Date();
+    try {
+      const period = this.ymInMoscow(new Date());
+      this.logger.log(
+        `[CDEK Registers] Starting at ${startTime.toISOString()}, period=${period}`,
+      );
+
+      const result = await this.deliveriesService.checkRegisters(period);
+
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      this.logger.log(
+        `[CDEK Registers] Completed in ${duration}ms: ${result?.message ?? 'ok'}`,
+      );
+      if (result?.message) {
+        await this.notifyAdmins(`✅ ${result.message}`);
+      }
+    } catch (e: unknown) {
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      const message = e instanceof Error ? e.message : String(e);
+      this.logger.error(
+        `[CDEK Registers] failed after ${duration}ms: ${message}`,
+      );
+      await this.notifyAdmins(`🔥 Проверка реестров СДЭК упала: ${message}`);
+    } finally {
+      this.isCheckRegistersRunning = false;
     }
   }
 

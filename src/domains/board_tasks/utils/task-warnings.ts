@@ -42,6 +42,7 @@ export type DeliveryLikeForWarnings =
 export type PaymentLikeForWarnings =
   | {
       method?: string | null;
+      price?: number | null;
     }
   | null
   | undefined;
@@ -144,7 +145,13 @@ export function collectTaskWarnings(
 
   // Проверка платежей с методом "Наложка"
   if (payments && payments.length > 0) {
-    warnings.add('НАЛОЖЕННЫЙ ПЛАТЁЖ');
+    const hasNalojka = payments.some((payment) => {
+      const method = String(payment?.method ?? '').trim().toLowerCase();
+      return method.includes('наложка');
+    });
+    if (hasNalojka) {
+      warnings.add('НАЛОЖЕННЫЙ ПЛАТЁЖ');
+    }
   }
 
   return Array.from(warnings);

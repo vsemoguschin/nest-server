@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DeliveryCreateDto } from './dto/delivery-create.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserDto } from '../users/dto/user.dto';
@@ -228,6 +228,12 @@ export class DeliveriesService {
 
     if (!delivery) {
       throw new NotFoundException(`Доставка с ID ${id} не найдена`);
+    }
+
+    if (delivery.deliveredDate || delivery.date) {
+      throw new BadRequestException(
+        'Невозможно удалить доставку, которая уже отправлена или уже принята',
+      );
     }
 
     // Формируем комментарий для аудита
