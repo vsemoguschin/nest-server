@@ -706,11 +706,17 @@ export class TasksController {
     'LOGIST',
     'RP',
     'GUEST',
+    'MASTER',
+    'PACKER',
   )
   updateOrder(
     @Param('orderId', ParseIntPipe) orderId: number,
     @Body() dto: UpdateTaskOrderDto,
+    @CurrentUser() user: UserDto,
   ) {
+    if (['MASTER', 'PACKER'].includes(user.role.shortName)) {
+      dto = { adapterModel: dto.adapterModel };
+    }
     return this.tasksService.updateOrder(orderId, dto);
   }
 
