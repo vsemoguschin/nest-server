@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import axios from 'axios';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
 import { DashboardsService } from '../dashboards/dashboards.service';
@@ -75,6 +76,14 @@ export interface OriginalOperationType {
   operationId: string;
   operationDate: string;
   accountAmount: number;
+  payPurpose?: string;
+  counterPartyAccount?: string | null;
+  account?: {
+    id: number;
+    name: string;
+    accountNumber?: string;
+    isReal?: boolean;
+  };
   operationPositions: OperationPositionType[];
   typeOfOperation: string;
   category: string;
@@ -786,32 +795,7 @@ export class PlanfactService {
     return accounts;
   }
 
-  async getOriginalOperations({
-    from,
-    to,
-    page,
-    limit,
-    accountId,
-    distributionFilter,
-    counterPartyId,
-    expenseCategoryId,
-    typeOfOperation,
-    searchText,
-  }: {
-    from: string;
-    to: string;
-    page: number;
-    limit: number;
-    accountId?: number;
-    distributionFilter?: string;
-    counterPartyId?: number[];
-    expenseCategoryId?: number[];
-    typeOfOperation?: string;
-    searchText?: string;
-  }) {
-    const skip = (page - 1) * limit;
-
-    // Получаем список реальных аккаунтов для фильтрации перемещений
+  private async getRealAccountNumbers() {
     const realAccounts = await this.prisma.planFactAccount.findMany({
       where: {
         isReal: true,
@@ -820,14 +804,32 @@ export class PlanfactService {
         accountNumber: true,
       },
     });
-    const realAccountNumbers = realAccounts.map((acc) => acc.accountNumber);
+    return realAccounts.map((acc) => acc.accountNumber);
+  }
 
-    // Собираем все условия в массив
+  private buildOriginalOperationsWhere(
+    {
+      from,
+      to,
+      accountId,
+      counterPartyId,
+      expenseCategoryId,
+      typeOfOperation,
+      searchText,
+    }: {
+      from: string;
+      to: string;
+      accountId?: number;
+      counterPartyId?: number[];
+      expenseCategoryId?: number[];
+      typeOfOperation?: string;
+      searchText?: string;
+    },
+    realAccountNumbers: string[],
+  ) {
     const conditions: Record<string, unknown>[] = [];
 
-    // Если передан searchText, игнорируем все фильтры
     if (searchText) {
-      // Добавляем только условие поиска по searchText
       conditions.push({
         OR: [
           {
@@ -851,7 +853,6 @@ export class PlanfactService {
         ],
       });
     } else {
-      // Если searchText не передан, применяем все фильтры
       conditions.push({
         operationDate: {
           gte: from,
@@ -889,7 +890,6 @@ export class PlanfactService {
 
       if (typeOfOperation) {
         if (typeOfOperation === 'Transfer') {
-          // Для Transfer операций фильтруем по counterPartyAccount в реальных аккаунтах
           if (realAccountNumbers.length > 0) {
             conditions.push({
               counterPartyAccount: {
@@ -897,17 +897,14 @@ export class PlanfactService {
               },
             });
           } else {
-            // Если нет реальных аккаунтов, возвращаем пустой результат
             conditions.push({
-              id: -1, // Невозможное условие
+              id: -1,
             });
           }
         } else {
           conditions.push({
             typeOfOperation,
           });
-          // Исключаем transfer операции для Credit и Debit
-          // Операция считается перемещением, если counterPartyAccount в списке реальных аккаунтов
           if (realAccountNumbers.length > 0) {
             conditions.push({
               NOT: {
@@ -920,7 +917,6 @@ export class PlanfactService {
         }
       }
 
-      // Формируем условия для фильтрации по позициям операций
       const positionConditions: Record<string, unknown>[] = [];
 
       if (counterPartyId && counterPartyId.length > 0) {
@@ -932,11 +928,9 @@ export class PlanfactService {
       }
 
       if (expenseCategoryId && expenseCategoryId.length > 0) {
-        // Если expenseCategoryId содержит 0, ищем позиции с null
         if (expenseCategoryId.includes(0)) {
           const categoryIds = expenseCategoryId.filter((id) => id !== 0);
           if (categoryIds.length > 0) {
-            // Если есть другие ID кроме 0, используем OR для null или других ID
             positionConditions.push({
               OR: [
                 { expenseCategoryId: null },
@@ -944,13 +938,11 @@ export class PlanfactService {
               ],
             });
           } else {
-            // Если только 0, ищем только null
             positionConditions.push({
               expenseCategoryId: null,
             });
           }
         } else {
-          // Обычная логика - фильтр по ID
           positionConditions.push({
             expenseCategoryId: {
               in: expenseCategoryId,
@@ -959,7 +951,6 @@ export class PlanfactService {
         }
       }
 
-      // Если есть условия по позициям, добавляем их к условиям
       if (positionConditions.length > 0) {
         const positionFilter =
           positionConditions.length === 1
@@ -973,9 +964,209 @@ export class PlanfactService {
       }
     }
 
-    // Формируем финальный where объект
-    const where: Record<string, unknown> =
-      conditions.length === 1 ? conditions[0] : { AND: conditions };
+    return conditions.length === 1 ? conditions[0] : { AND: conditions };
+  }
+
+  private addTransferFlags(
+    operations: Array<
+      OriginalOperationType & {
+        counterPartyAccount?: string | null;
+        payPurpose?: string | null;
+      }
+    >,
+    realAccountNumbers: string[],
+  ) {
+    return operations.map((operation) => {
+      const counterPartyAccount = operation.counterPartyAccount || undefined;
+      const payPurpose = operation.payPurpose || '';
+      const isTransferOperation =
+        (counterPartyAccount &&
+          realAccountNumbers.includes(counterPartyAccount)) ||
+        payPurpose.includes('Возврат д/с с депозита "Овернайт"') ||
+        payPurpose.includes('Внутренний перевод на депозит "Овернайт"');
+      return {
+        ...operation,
+        isTransferOperation: !!isTransferOperation,
+      };
+    });
+  }
+
+  private applyDistributionFilter<T extends OriginalOperationType>(
+    operations: Array<
+      T & {
+        operationPositions: Array<{ expenseCategoryId: number | null }>;
+        category?: string | null;
+      }
+    >,
+    distributionFilter?: string,
+  ) {
+    let filteredOperations = operations;
+
+    if (distributionFilter === 'hasCat') {
+      filteredOperations = operations.filter(
+        (operation) =>
+          operation.operationPositions.length > 0 &&
+          operation.operationPositions.every(
+            (position) => position.expenseCategoryId !== null,
+          ),
+      );
+    } else if (distributionFilter === 'hasntCat') {
+      filteredOperations = operations.filter((operation) =>
+        operation.operationPositions.some(
+          (position) => position.expenseCategoryId === null,
+        ),
+      );
+    }
+
+    if (distributionFilter === 'hasCat' || distributionFilter === 'hasntCat') {
+      filteredOperations = filteredOperations.filter(
+        (operation) =>
+          operation.category !== 'selfTransferInner' &&
+          operation.category !== 'selfTransferOuter',
+      );
+    }
+
+    return filteredOperations;
+  }
+
+  private formatDateForExport(dateString: string) {
+    const date = new Date(dateString);
+    const timezoneOffset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() + timezoneOffset * 60000);
+    const day = localDate.getDate().toString().padStart(2, '0');
+    const month = (localDate.getMonth() + 1).toString().padStart(2, '0');
+    const year = localDate.getFullYear();
+    const hours = localDate.getHours().toString().padStart(2, '0');
+    const minutes = localDate.getMinutes().toString().padStart(2, '0');
+
+    return {
+      date: `${day}.${month}.${year}`,
+      time: `${hours}:${minutes}`,
+    };
+  }
+
+  private replaceLegalEntities(input: string): string {
+    const replacements: [RegExp, string][] = [
+      [
+        /ОБЩЕСТВО\s+С\s+ОГРАНИЧЕННОЙ\s+ОТВЕТСТВЕННОСТЬЮ|Общество\s+с\s+ограниченной\s+ответственностью/gi,
+        'ООО',
+      ],
+      [
+        /ИНДИВИДУАЛЬНЫЙ\s+ПРЕДПРИНИМАТЕЛЬ|Индивидуальный\s+предприниматель/gi,
+        'ИП',
+      ],
+      [/АКЦИОНЕРНОЕ\s+ОБЩЕСТВО|Акционерное\s+общество/gi, 'АО'],
+      [
+        /ЗАКРЫТОЕ\s+АКЦИОНЕРНОЕ\s+ОБЩЕСТВО|Закрытое\s+акционерное\s+общество/gi,
+        'ЗАО',
+      ],
+      [
+        /ОТКРЫТОЕ\s+АКЦИОНЕРНОЕ\s+ОБЩЕСТВО|Открытое\s+акционерное\s+общество/gi,
+        'ОАО',
+      ],
+    ];
+
+    let result = input;
+    for (const [pattern, replacement] of replacements) {
+      result = result.replace(pattern, replacement);
+    }
+
+    return result.trim().replace(/\s+/g, ' ');
+  }
+
+  private getCategoryDisplayName(
+    category: string,
+    operationType: string,
+  ): string {
+    if (!category) return operationType === 'Debit' ? 'Выплата' : 'Поступление';
+
+    const debitCategories: Record<string, string> = {
+      cardOperation: 'Оплата картой',
+      cashOut: 'Снятие наличных',
+      fee: 'Услуги банка',
+      penalty: 'Штрафы',
+      contragentPeople: 'Исходящие платежи',
+      selfIncomeOuter: 'Перевод себе в другой банк',
+      selfTransferOuter: 'Перевод между своими счетами в T‑Бизнесе',
+      salary: 'Выплаты',
+      contragentOutcome: 'Перевод контрагенту',
+      contragentRefund: 'Возврат контрагенту',
+      budget: 'Платежи в бюджет',
+      tax: 'Налоговые платежи',
+      creditPaymentOuter: 'Погашение кредита',
+      'sme-c2c': 'С карты на карту',
+      otherOut: 'Другое',
+      unspecifiedOut: 'Без категории',
+    };
+
+    const creditCategories: Record<string, string> = {
+      incomePeople: 'Входящие платежи',
+      selfTransferInner: 'Перевод между своими счетами в T‑Бизнесе',
+      selfOutcomeOuter: 'Перевод себе из другого банка',
+      contragentIncome: 'Пополнение от контрагента',
+      acquiring: 'Эквайринг',
+      acquiringPos: 'Торговый эквайринг',
+      acquiringInternet: 'Интернет-эквайринг',
+      incomeLoan: 'Получение кредита',
+      refundIn: 'Возврат средств',
+      cashIn: 'Взнос наличных',
+      cashInRevenue: 'Взнос выручки из кассы',
+      cashInOwn: 'Взнос собственных средств',
+      income: 'Проценты на остаток по счету',
+      depositPartWithdrawal: 'Частичное изъятие средств депозита',
+      depositFullWithdrawal: 'Закрытие депозитного счета ЮЛ',
+      creditPaymentInner: 'Погашение кредита',
+      otherIn: 'Другое',
+      unspecifiedIn: 'Без категории',
+    };
+
+    if (operationType === 'Debit') {
+      return debitCategories[category] || category;
+    }
+    if (operationType === 'Credit') {
+      return creditCategories[category] || category;
+    }
+
+    return category;
+  }
+
+  async getOriginalOperations({
+    from,
+    to,
+    page,
+    limit,
+    accountId,
+    distributionFilter,
+    counterPartyId,
+    expenseCategoryId,
+    typeOfOperation,
+    searchText,
+  }: {
+    from: string;
+    to: string;
+    page: number;
+    limit: number;
+    accountId?: number;
+    distributionFilter?: string;
+    counterPartyId?: number[];
+    expenseCategoryId?: number[];
+    typeOfOperation?: string;
+    searchText?: string;
+  }) {
+    const skip = (page - 1) * limit;
+    const realAccountNumbers = await this.getRealAccountNumbers();
+    const where = this.buildOriginalOperationsWhere(
+      {
+        from,
+        to,
+        accountId,
+        counterPartyId,
+        expenseCategoryId,
+        typeOfOperation,
+        searchText,
+      },
+      realAccountNumbers,
+    );
 
     // Получаем все операции без пагинации для фильтрации
     const allOperations = await (
@@ -1003,55 +1194,14 @@ export class PlanfactService {
       },
     });
 
-    // Добавляем поле isTransferOperation к операциям
-    const operationsWithTransferFlag = allOperations.map((operation) => {
-      const operationAny = operation as unknown as {
-        counterPartyAccount?: string | null;
-        payPurpose: string;
-      };
-      const isTransferOperation =
-        (operationAny.counterPartyAccount &&
-          realAccountNumbers.includes(operationAny.counterPartyAccount)) ||
-        operationAny.payPurpose.includes('Возврат д/с с депозита "Овернайт"') ||
-        operationAny.payPurpose.includes(
-          'Внутренний перевод на депозит "Овернайт"',
-        );
-      return {
-        ...operation,
-        isTransferOperation: !!isTransferOperation,
-      };
-    });
-
-    // Применяем фильтр по наличию статей
-    let filteredOperations = operationsWithTransferFlag;
-
-    if (distributionFilter === 'hasCat') {
-      // Операции у которых ВСЕ позиции имеют статьи
-      filteredOperations = operationsWithTransferFlag.filter(
-        (operation) =>
-          operation.operationPositions.length > 0 &&
-          operation.operationPositions.every(
-            (position) => position.expenseCategoryId !== null,
-          ),
-      );
-    } else if (distributionFilter === 'hasntCat') {
-      // Операции у которых ХОТЯ БЫ ОДНА позиция без статьи
-      filteredOperations = operationsWithTransferFlag.filter((operation) =>
-        operation.operationPositions.some(
-          (position) => position.expenseCategoryId === null,
-        ),
-      );
-    }
-    // Если distributionFilter === 'all' или не передан - показываем все операции
-
-    // Исключаем операции с категориями selfTransferInner и selfTransferOuter только для фильтров hasCat и hasntCat
-    if (distributionFilter === 'hasCat' || distributionFilter === 'hasntCat') {
-      filteredOperations = filteredOperations.filter(
-        (operation) =>
-          operation.category !== 'selfTransferInner' &&
-          operation.category !== 'selfTransferOuter',
-      );
-    }
+    const operationsWithTransferFlag = this.addTransferFlags(
+      allOperations,
+      realAccountNumbers,
+    );
+    const filteredOperations = this.applyDistributionFilter(
+      operationsWithTransferFlag,
+      distributionFilter,
+    );
 
     // Применяем пагинацию к отфильтрованным операциям
     const total = filteredOperations.length;
@@ -1068,6 +1218,126 @@ export class PlanfactService {
         hasPrev: page > 1,
       },
     };
+  }
+
+  async exportOriginalOperations({
+    from,
+    to,
+    accountId,
+    distributionFilter,
+    counterPartyId,
+    expenseCategoryId,
+    typeOfOperation,
+    searchText,
+  }: {
+    from: string;
+    to: string;
+    accountId?: number;
+    distributionFilter?: string;
+    counterPartyId?: number[];
+    expenseCategoryId?: number[];
+    typeOfOperation?: string;
+    searchText?: string;
+  }) {
+    const realAccountNumbers = await this.getRealAccountNumbers();
+    const where = this.buildOriginalOperationsWhere(
+      {
+        from,
+        to,
+        accountId,
+        counterPartyId,
+        expenseCategoryId,
+        typeOfOperation,
+        searchText,
+      },
+      realAccountNumbers,
+    );
+
+    const allOperations = await (
+      this.prisma as unknown as ExtendedPrismaClient
+    ).originalOperationFromTbank.findMany({
+      where,
+      orderBy: {
+        operationDate: 'desc',
+      },
+      include: {
+        account: {
+          select: {
+            id: true,
+            name: true,
+            accountNumber: true,
+            isReal: true,
+          },
+        },
+        operationPositions: {
+          include: {
+            counterParty: true,
+            expenseCategory: true,
+          },
+        },
+      },
+    });
+
+    const operationsWithTransferFlag = this.addTransferFlags(
+      allOperations,
+      realAccountNumbers,
+    );
+    const filteredOperations = this.applyDistributionFilter(
+      operationsWithTransferFlag,
+      distributionFilter,
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Операции');
+
+    worksheet.columns = [
+      { header: 'Дата', key: 'date', width: 20 },
+      { header: 'Тип', key: 'type', width: 32 },
+      { header: 'Категория', key: 'category', width: 20 },
+      { header: 'Счет', key: 'account', width: 24 },
+      { header: 'Контрагент', key: 'counterParty', width: 32 },
+      { header: 'Назначение', key: 'purpose', width: 60 },
+      { header: 'Сумма', key: 'amount', width: 14 },
+    ];
+
+    for (const operation of filteredOperations) {
+      const { date, time } = this.formatDateForExport(operation.operationDate);
+      const typeLabel = this.getCategoryDisplayName(
+        operation.category,
+        operation.typeOfOperation,
+      );
+      const accountName = operation.account?.name || '';
+      const operationPositions = operation.operationPositions || [];
+      const counterPartyTitles = operationPositions
+        .map((pos) => pos.counterParty?.title)
+        .filter((title): title is string => Boolean(title))
+        .map((title) => this.replaceLegalEntities(title));
+      const uniqueCounterPartyTitles = Array.from(
+        new Set(counterPartyTitles),
+      );
+      const categoryNames = operationPositions
+        .map((pos) => pos.expenseCategory?.name)
+        .filter((name): name is string => Boolean(name));
+      const uniqueCategoryNames = Array.from(new Set(categoryNames));
+      const payPurpose = operation.payPurpose || '';
+      const purposeValue =
+        uniqueCategoryNames.length > 0
+          ? `${uniqueCategoryNames.join(', ')}\n${payPurpose}`
+          : payPurpose;
+
+      worksheet.addRow({
+        date: `${date} ${time}`,
+        type: typeLabel,
+        category: operation.category || '',
+        account: accountName,
+        counterParty: uniqueCounterPartyTitles.join(', '),
+        purpose: purposeValue,
+        amount: operation.accountAmount,
+      });
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer as ArrayBuffer);
   }
 
   async getOriginalOperationsTotals({

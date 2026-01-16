@@ -70,6 +70,111 @@ export type SearchTaskItem = Prisma.KanbanTaskGetPayload<{
   select: typeof searchSelect;
 }>;
 
+type NeonPriceKey = 'smart' | 'rgb' | 'rgb_8mm' | 'standart' | 'standart_8mm';
+
+type NeonRates = Record<NeonPriceKey, { rate: number; controller: number }>;
+
+type NeonCostInput = {
+  color?: string | null;
+  width?: string | null;
+  length?: Prisma.Decimal | number | string | null;
+};
+
+type OrderCostSupplies = {
+  adapters: Array<{
+    name: string | null;
+    priceForItem: Prisma.Decimal | number | null;
+  }>;
+  fittingsByName: Map<string, number>;
+};
+
+type OrderCostPayload = {
+  taskId: number;
+  dealId: number | null;
+  boardId: number;
+  computedAt: Date;
+  calcVersion: number;
+  priceForBoard: number;
+  priceForScreen: number;
+  neonPrice: number;
+  lightingPrice: number;
+  wirePrice: number;
+  adapterPrice: number;
+  plugPrice: number;
+  packageCost: number;
+  dimmerPrice: number;
+  totalCost: number;
+  boardWidth: number;
+  boardHeight: number;
+  polikSquare: number;
+  policPerimetr: number;
+  pazLength: number;
+  lightingsLength: number;
+  wireLength: number;
+  print: boolean;
+  screen: boolean;
+  dimmer: boolean;
+  wireType: string;
+  adapterModel: string;
+  plug: string;
+};
+
+type TaskOrderWithCostRelations = Prisma.TaskOrderGetPayload<{
+  include: {
+    neons: true;
+    lightings: true;
+    package: { include: { items: true } };
+    task: { select: { boardId: true; dealId: true } };
+  };
+}>;
+
+const ORDER_COST_HOLDER_NAMES = new Set([
+  'Держатели стальные',
+  'Держатели золотые',
+  'Держатели черные',
+]);
+
+const ORDER_COST_VERSION = 1;
+
+const ORDER_COST_PRICES = {
+  perm: {
+    polik: 2222,
+    print: {
+      polik: 1636,
+      print: 1785,
+      rezka: 30,
+      package: 30,
+      paz: 30,
+    },
+  },
+  spb: {
+    polik: 2700,
+    print: {
+      polik: 2700,
+      print: 1600,
+      rezka: 42,
+      package: 0,
+      paz: 42,
+    },
+  },
+  neon: {
+    smart: { rate: 548, controller: 1094 },
+    rgb: { rate: 355, controller: 320 },
+    rgb_8mm: { rate: 486, controller: 320 },
+    standart: { rate: 190, controller: 0 },
+    standart_8mm: { rate: 220, controller: 0 },
+  },
+  lightings: {
+    rgb: { rate: 355, controller: 0 },
+    standart: { rate: 190, controller: 0 },
+  },
+  wire: {
+    ['Акустический']: 28,
+    ['Черный']: 31,
+    ['Белый']: 26,
+  },
+} as const;
+
 @Injectable()
 export class TasksService {
   constructor(private readonly prisma: PrismaService) {}
@@ -281,6 +386,8 @@ export class TasksService {
         select: { id: true, boardId: true, columnId: true, title: true },
       });
 
+      const createdOrderIds: number[] = [];
+
       // Дублируем все заказы и их дочерние записи
       for (const order of srcTask.orders ?? []) {
         const normalizedIsAcrylic =
@@ -322,7 +429,7 @@ export class TasksService {
             };
           });
 
-        await tx.taskOrder.create({
+        const createdOrder = await tx.taskOrder.create({
           data: {
             taskId: created.id,
             dealId: (order as any).dealId ?? null,
@@ -395,8 +502,12 @@ export class TasksService {
                   }
                 : undefined,
           },
+          select: { id: true },
         });
+        createdOrderIds.push(createdOrder.id);
       }
+
+      await this.upsertOrdersCost(createdOrderIds, tx);
 
       // Соберём файлы для переноса в новую карточку: все .cdr вложения + файл из cover (если есть)
       const attachmentFiles = (srcTask.attachments ?? [])
@@ -535,23 +646,27 @@ export class TasksService {
       targetColumn.id,
     );
 
-    const updated = await this.prisma.kanbanTask.update({
-      where: { id: taskId },
-      data: {
-        boardId: targetColumn.boardId,
-        columnId: targetColumn.id,
-        position,
-      },
-      select: {
-        id: true,
-        title: true,
-        boardId: true,
-        columnId: true,
-        position: true,
-      },
-    });
+    return await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.kanbanTask.update({
+        where: { id: taskId },
+        data: {
+          boardId: targetColumn.boardId,
+          columnId: targetColumn.id,
+          position,
+        },
+        select: {
+          id: true,
+          title: true,
+          boardId: true,
+          columnId: true,
+          position: true,
+        },
+      });
 
-    return updated;
+      await this.upsertTaskOrdersCost(updated.id, tx);
+
+      return updated;
+    });
   }
 
   async create(user: UserDto, dto: CreateTaskDto, boardId: number) {
@@ -1663,69 +1778,83 @@ export class TasksService {
         };
       });
 
-    const created = await this.prisma.taskOrder.create({
-      data: {
-        taskId,
-        ...(dealId !== undefined ? { dealId: dealId as any } : {}), // если dealId опционален в схеме — можно передать null
-        ...rest,
-        isAcrylic: normalizedIsAcrylic,
-        acrylic: normalizedAcrylic,
-        wireType: normalizedWireType,
-        ...(normalizedWireLength !== undefined
-          ? { wireLength: String(normalizedWireLength) }
-          : {}),
-        ...(adapter !== undefined ? { adapter: normalizedAdapter } : {}),
-        ...(adapter !== undefined
-          ? { adapterInfo: normalizedAdapterInfo }
-          : {}),
-        ...(adapter !== undefined || adapterModel !== undefined
-          ? { adapterModel: normalizedAdapterModel }
-          : {}),
-        ...(plug !== undefined ? { plug: normalizedPlug } : {}),
-        ...(plug !== undefined ? { plugColor: normalizedPlugColor } : {}),
-        ...(plug !== undefined ? { plugLength: normalizedPlugLength } : {}),
-        package: {
-          create: {
-            items: packageItemsData.length
-              ? {
-                  createMany: {
-                    data: packageItemsData,
-                  },
-                }
-              : undefined,
+    return await this.prisma.$transaction(async (tx) => {
+      const created = await tx.taskOrder.create({
+        data: {
+          taskId,
+          ...(dealId !== undefined ? { dealId: dealId as any } : {}), // если dealId опционален в схеме — можно передать null
+          ...rest,
+          isAcrylic: normalizedIsAcrylic,
+          acrylic: normalizedAcrylic,
+          wireType: normalizedWireType,
+          ...(normalizedWireLength !== undefined
+            ? { wireLength: String(normalizedWireLength) }
+            : {}),
+          ...(adapter !== undefined ? { adapter: normalizedAdapter } : {}),
+          ...(adapter !== undefined
+            ? { adapterInfo: normalizedAdapterInfo }
+            : {}),
+          ...(adapter !== undefined || adapterModel !== undefined
+            ? { adapterModel: normalizedAdapterModel }
+            : {}),
+          ...(plug !== undefined ? { plug: normalizedPlug } : {}),
+          ...(plug !== undefined ? { plugColor: normalizedPlugColor } : {}),
+          ...(plug !== undefined ? { plugLength: normalizedPlugLength } : {}),
+          package: {
+            create: {
+              items: packageItemsData.length
+                ? {
+                    createMany: {
+                      data: packageItemsData,
+                    },
+                  }
+                : undefined,
+            },
           },
+          neons: neons.length
+            ? {
+                createMany: {
+                  data: neons.map((n) => ({
+                    width: n.width ?? '',
+                    length: n.length ?? 0,
+                    color: n.color ?? '',
+                  })),
+                },
+              }
+            : undefined,
+          lightings: lightings.length
+            ? {
+                createMany: {
+                  data: lightings.map((l) => ({
+                    length: l.length ?? 0,
+                    color: l.color ?? '',
+                    elements: l.elements ?? 0,
+                  })),
+                },
+              }
+            : undefined,
         },
-        neons: neons.length
-          ? {
-              createMany: {
-                data: neons.map((n) => ({
-                  width: n.width ?? '',
-                  length: n.length ?? 0,
-                  color: n.color ?? '',
-                })),
-              },
-            }
-          : undefined,
-        lightings: lightings.length
-          ? {
-              createMany: {
-                data: lightings.map((l) => ({
-                  length: l.length ?? 0,
-                  color: l.color ?? '',
-                  elements: l.elements ?? 0,
-                })),
-              },
-            }
-          : undefined,
-      },
-      include: {
-        neons: true,
-        lightings: true,
-        package: { include: { items: true } },
-      },
-    });
+        include: {
+          neons: true,
+          lightings: true,
+          package: { include: { items: true } },
+          task: { select: { boardId: true, dealId: true } },
+        },
+      });
 
-    return created;
+      const supplies = await this.getOrderCostSupplies(tx);
+      const payload = this.buildOrderCostPayload(created, supplies);
+      await tx.orderCost.upsert({
+        where: { orderId: created.id },
+        update: payload,
+        create: {
+          orderId: created.id,
+          ...payload,
+        },
+      });
+
+      return created;
+    });
   }
 
   /** Обновить (полная замена массивов неонов/подсветок) */
@@ -1943,9 +2072,26 @@ export class TasksService {
           neons: true,
           lightings: true,
           package: { include: { items: true } },
+          task: { select: { boardId: true, dealId: true } },
         },
       });
-      return fresh;
+      if (!fresh) {
+        return null;
+      }
+
+      const supplies = await this.getOrderCostSupplies(tx);
+      const payload = this.buildOrderCostPayload(fresh, supplies);
+      await tx.orderCost.upsert({
+        where: { orderId },
+        update: payload,
+        create: {
+          orderId,
+          ...payload,
+        },
+      });
+
+      const { task: _task, ...freshPayload } = fresh;
+      return freshPayload;
     });
   }
 
@@ -1960,6 +2106,7 @@ export class TasksService {
     await this.prisma.$transaction(async (tx) => {
       await tx.neon.deleteMany({ where: { orderTaskId: orderId } });
       await tx.lighting.deleteMany({ where: { orderTaskId: orderId } });
+      await tx.orderCost.deleteMany({ where: { orderId } });
       await tx.taskOrder.update({
         where: { id: orderId },
         data: { deletedAt: new Date() },
@@ -1967,6 +2114,271 @@ export class TasksService {
     });
 
     return { success: true };
+  }
+
+  private calculateNeonCosts(neons: NeonCostInput[], neonRates: NeonRates) {
+    const items = neons.map((neon) => {
+      const color = neon?.color?.trim().toLowerCase();
+      const width = neon?.width?.trim().toLowerCase();
+      const is8mm = width === '8мм' || width === '8mm';
+
+      let type: NeonPriceKey = 'standart';
+      if (color === 'смарт' || color === 'smart') {
+        type = 'smart';
+      } else if (color === 'ргб' || color === 'rgb') {
+        type = is8mm ? 'rgb_8mm' : 'rgb';
+      } else if (is8mm) {
+        type = 'standart_8mm';
+      }
+
+      const lengthValue = neon?.length;
+      const lengthRaw =
+        lengthValue &&
+        typeof lengthValue === 'object' &&
+        'toNumber' in lengthValue
+          ? (lengthValue as Prisma.Decimal).toNumber()
+          : Number(lengthValue ?? 0);
+      const length = Number.isFinite(lengthRaw) ? lengthRaw : 0;
+
+      const { rate, controller } = neonRates[type];
+      const total = length * rate + controller;
+
+      return {
+        type,
+        length,
+        rate,
+        controller,
+        total,
+      };
+    });
+
+    const total = items.reduce((sum, item) => sum + item.total, 0);
+
+    return { items, total };
+  }
+
+  private resolveNumeric(value: unknown) {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    if (
+      value &&
+      typeof value === 'object' &&
+      'toNumber' in value &&
+      typeof (value as Prisma.Decimal).toNumber === 'function'
+    ) {
+      const numeric = (value as Prisma.Decimal).toNumber();
+      return Number.isFinite(numeric) ? numeric : 0;
+    }
+
+    const normalized = Number(value ?? 0);
+    return Number.isFinite(normalized) ? normalized : 0;
+  }
+
+  private async getOrderCostSupplies(
+    db: Prisma.TransactionClient | PrismaService,
+  ): Promise<OrderCostSupplies> {
+    const [adapters, fittings] = await Promise.all([
+      db.suppliePosition.findMany({
+        where: {
+          category: 'Блоки питания',
+        },
+        distinct: ['name'],
+        orderBy: [{ name: 'asc' }, { id: 'desc' }],
+      }),
+      db.suppliePosition.findMany({
+        where: {
+          name: {
+            in: Array.from(ORDER_COST_HOLDER_NAMES),
+          },
+        },
+        distinct: ['name'],
+        orderBy: [{ name: 'asc' }, { id: 'desc' }],
+      }),
+    ]);
+
+    const fittingsByName = new Map(
+      fittings.map((fitting) => [
+        fitting.name,
+        this.resolveNumeric(fitting.priceForItem),
+      ]),
+    );
+
+    return {
+      adapters,
+      fittingsByName,
+    };
+  }
+
+  private roundCost(value: number) {
+    return Math.round(value * 100) / 100;
+  }
+
+  private buildOrderCostPayload(
+    order: TaskOrderWithCostRelations,
+    supplies: OrderCostSupplies,
+  ): OrderCostPayload {
+    const boardHeight = this.resolveNumeric(order.boardHeight);
+    const boardWidth = this.resolveNumeric(order.boardWidth);
+    const polikSquare = (boardHeight * boardWidth) / 10000;
+    const policPerimetr = (2 * (boardHeight + boardWidth)) / 100;
+
+    const pazLength = (order.neons ?? []).reduce(
+      (sum, neon) => sum + this.resolveNumeric(neon.length),
+      0,
+    );
+    const lightingsLength = (order.lightings ?? []).reduce(
+      (sum, lighting) => sum + this.resolveNumeric(lighting.length),
+      0,
+    );
+
+    let priceForBoard = 0;
+    let priceForScreen = 0;
+    const screen = Boolean(order.screen);
+
+    if (order.task?.boardId === 10) {
+      priceForBoard = order.print
+        ? ORDER_COST_PRICES.perm.print.package +
+          ORDER_COST_PRICES.perm.print.paz * pazLength +
+          ORDER_COST_PRICES.perm.print.print * polikSquare +
+          ORDER_COST_PRICES.perm.print.rezka * policPerimetr +
+          ORDER_COST_PRICES.perm.print.polik * polikSquare
+        : ORDER_COST_PRICES.perm.polik * polikSquare;
+      priceForScreen = screen ? ORDER_COST_PRICES.perm.polik * polikSquare : 0;
+    } else {
+      priceForBoard = order.print
+        ? ORDER_COST_PRICES.spb.print.package +
+          ORDER_COST_PRICES.spb.print.paz * pazLength +
+          ORDER_COST_PRICES.spb.print.print * polikSquare +
+          ORDER_COST_PRICES.spb.print.rezka * policPerimetr +
+          ORDER_COST_PRICES.spb.print.polik * polikSquare
+        : ORDER_COST_PRICES.spb.polik * polikSquare +
+          ORDER_COST_PRICES.spb.print.rezka * policPerimetr;
+      priceForScreen = screen
+        ? ORDER_COST_PRICES.spb.polik * polikSquare +
+          ORDER_COST_PRICES.spb.print.rezka * policPerimetr
+        : 0;
+    }
+
+    const { total: neonPrice } = this.calculateNeonCosts(
+      order.neons ?? [],
+      ORDER_COST_PRICES.neon,
+    );
+
+    const lightingPrice =
+      lightingsLength * ORDER_COST_PRICES.lightings.standart.rate;
+
+    const wireRate =
+      ORDER_COST_PRICES.wire[
+        order.wireType as keyof typeof ORDER_COST_PRICES.wire
+      ] ?? 0;
+    const wireLength = this.resolveNumeric(order.wireLength);
+    const wirePrice = wireRate * wireLength;
+
+    const adapterModel = order.adapterModel ?? '';
+    const adapter = supplies.adapters.find(
+      (item) => item.name === adapterModel,
+    );
+    const adapterPrice = this.resolveNumeric(adapter?.priceForItem);
+    const plugPrice = order.plug === 'Стандарт' ? 76 : 0;
+
+    const packageItems = order.package?.items ?? [];
+    const packageCost = packageItems.reduce((sum, item) => {
+      if (!ORDER_COST_HOLDER_NAMES.has(item.name)) return sum;
+      const price = supplies.fittingsByName.get(item.name);
+      if (price == null) return sum;
+      return sum + this.resolveNumeric(item.quantity) * price;
+    }, 0);
+
+    const dimmerPrice = order.dimmer ? 590 : 0;
+
+    const totalCost =
+      priceForBoard +
+      neonPrice +
+      lightingPrice +
+      wirePrice +
+      adapterPrice +
+      plugPrice +
+      packageCost +
+      dimmerPrice +
+      priceForScreen;
+
+    return {
+      taskId: order.taskId,
+      dealId: order.dealId ?? order.task?.dealId ?? null,
+      boardId: order.task?.boardId ?? 0,
+      computedAt: new Date(),
+      calcVersion: ORDER_COST_VERSION,
+      priceForBoard: this.roundCost(priceForBoard),
+      priceForScreen: this.roundCost(priceForScreen),
+      neonPrice: this.roundCost(neonPrice),
+      lightingPrice: this.roundCost(lightingPrice),
+      wirePrice: this.roundCost(wirePrice),
+      adapterPrice: this.roundCost(adapterPrice),
+      plugPrice: this.roundCost(plugPrice),
+      packageCost: this.roundCost(packageCost),
+      dimmerPrice: this.roundCost(dimmerPrice),
+      totalCost: this.roundCost(totalCost),
+      boardWidth,
+      boardHeight,
+      polikSquare,
+      policPerimetr,
+      pazLength,
+      lightingsLength,
+      wireLength,
+      print: Boolean(order.print),
+      screen,
+      dimmer: Boolean(order.dimmer),
+      wireType: order.wireType ?? '',
+      adapterModel,
+      plug: order.plug ?? '',
+    };
+  }
+
+  private async upsertOrdersCost(
+    orderIds: number[],
+    db: Prisma.TransactionClient,
+  ) {
+    if (!orderIds.length) return;
+
+    const orders = await db.taskOrder.findMany({
+      where: { id: { in: orderIds }, deletedAt: null },
+      include: {
+        neons: true,
+        lightings: true,
+        package: { include: { items: true } },
+        task: { select: { boardId: true, dealId: true } },
+      },
+    });
+    if (!orders.length) return;
+
+    const supplies = await this.getOrderCostSupplies(db);
+    for (const order of orders) {
+      const payload = this.buildOrderCostPayload(order, supplies);
+      await db.orderCost.upsert({
+        where: { orderId: order.id },
+        update: payload,
+        create: {
+          orderId: order.id,
+          ...payload,
+        },
+      });
+    }
+  }
+
+  private async upsertTaskOrdersCost(
+    taskId: number,
+    db: Prisma.TransactionClient,
+  ) {
+    const orders = await db.taskOrder.findMany({
+      where: { taskId, deletedAt: null },
+      select: { id: true },
+    });
+    await this.upsertOrdersCost(
+      orders.map((order) => order.id),
+      db,
+    );
   }
 
   /**

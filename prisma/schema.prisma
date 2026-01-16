@@ -1120,8 +1120,8 @@ model TaskOrder {
   giftPack       Boolean         @default(false) // Подарочная упаковка
   description    String          @default("")    // Описание
   deletedAt      DateTime?                       // Для мягкого удаления
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt @default(now())
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt @default(now())
   docs           Boolean         @default(false) // Документы
 
   neons          Neon[]
@@ -1134,6 +1134,50 @@ model TaskOrder {
   task       KanbanTask   @relation(fields: [taskId], references: [id])
 
   package    Package?
+  orderCost  OrderCost?
+}
+
+model OrderCost {
+  id              Int       @id @default(autoincrement())
+  orderId         Int       @unique
+  order           TaskOrder @relation(fields: [orderId], references: [id])
+  taskId          Int
+  dealId          Int?
+  boardId         Int
+  computedAt      DateTime  @default(now())
+  calcVersion     Int       @default(1)
+
+  priceForBoard   Decimal   @default(0)
+  priceForScreen  Decimal   @default(0)
+  neonPrice       Decimal   @default(0)
+  lightingPrice   Decimal   @default(0)
+  wirePrice       Decimal   @default(0)
+  adapterPrice    Decimal   @default(0)
+  plugPrice       Decimal   @default(0)
+  packageCost     Decimal   @default(0)
+  dimmerPrice     Decimal   @default(0)
+  totalCost       Decimal   @default(0)
+
+  boardWidth      Int       @default(0)
+  boardHeight     Int       @default(0)
+  polikSquare     Decimal   @default(0)
+  policPerimetr   Decimal   @default(0)
+  pazLength       Decimal   @default(0)
+  lightingsLength Decimal   @default(0)
+  wireLength      Decimal   @default(0)
+  print           Boolean   @default(false)
+  screen          Boolean   @default(false)
+  dimmer          Boolean   @default(false)
+  wireType        String    @default("")
+  adapterModel    String    @default("")
+  plug            String    @default("")
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([taskId])
+  @@index([dealId])
+  @@index([orderId])
 }
 
 model Package {

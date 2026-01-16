@@ -9,6 +9,8 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -21,6 +23,7 @@ import { UserDto } from '../users/dto/user.dto';
 import { DealDto } from './dto/deal.dto';
 import { UpdateDealDto } from './dto/deal-update.dto';
 import { UpdateDealersDto } from './dto/dealers-update.dto';
+import type { Response } from 'express';
 
 @UseGuards(RolesGuard)
 @ApiTags('deals')
@@ -188,6 +191,88 @@ export class DealsController {
       sortBy,
       sortOrder,
     );
+  }
+
+  @Get('export')
+  @Roles('ADMIN', 'G', 'KD')
+  async exportDeals(
+    @CurrentUser() user: UserDto,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Res({ passthrough: true }) res: Response,
+    @Query('groupId') groupId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
+    @Query('status') status?: string[] | string,
+    @Query('maketType') maketType?: string[] | string,
+    @Query('source') source?: string[] | string,
+    @Query('adTag') adTag?: string[] | string,
+    @Query('daysGone') daysGone?: string[] | string,
+    @Query('dealers') dealers?: string[] | string,
+    @Query('haveReviews') haveReviews?: string[] | string,
+    @Query('isRegular') isRegular?: string[] | string,
+    @Query('boxsize') boxsize?: string[] | string,
+  ) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+
+    const parsedGroupId =
+      groupId && groupId !== 'all' ? Number(groupId) : undefined;
+    if (parsedGroupId !== undefined && !Number.isFinite(parsedGroupId)) {
+      throw new BadRequestException('Параметр groupId должен быть числом.');
+    }
+
+    const toArray = (value?: string | string[]) => {
+      if (value === undefined) return undefined;
+      const prepared = Array.isArray(value) ? value : value.split(',');
+      const normalized = prepared
+        .map((item) => item?.trim())
+        .filter((item): item is string => !!item);
+      return normalized.length ? normalized : undefined;
+    };
+
+    const numberArray = (value?: string | string[]) =>
+      toArray(value)
+        ?.map((item) => Number(item))
+        .filter((item) => Number.isFinite(item));
+
+    const filters = {
+      status: toArray(status),
+      maketType: toArray(maketType),
+      source: toArray(source),
+      adTag: toArray(adTag),
+      daysGone: toArray(daysGone),
+      dealers: numberArray(dealers),
+      haveReviews: toArray(haveReviews),
+      isRegular: toArray(isRegular),
+      boxsize: toArray(boxsize),
+    };
+
+    const buffer = await this.dealsService.exportDeals(user, {
+      from,
+      to,
+      groupId: parsedGroupId,
+      sortBy,
+      sortOrder,
+      filters,
+    });
+
+    const filename = `deals_${from}_${to}.xlsx`;
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+
+    return new StreamableFile(buffer);
   }
 
   @Get(':id')

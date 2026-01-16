@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateDealDto } from './dto/deal-create.dto';
 import { UserDto } from '../users/dto/user.dto';
@@ -438,7 +439,12 @@ export class DealsService {
   private mapDealToListItem(
     deal: Record<string, any>,
     options: DealMapOptions = {},
+    costTotal?: number | null,
   ) {
+    const infoParts = [deal.source, deal.adTag, deal.clothingMethod]
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter((value) => value.length > 0);
+    const info = infoParts.join(' / ');
     const price = deal.price ?? 0;
     const dopsPrice = (deal.dops ?? []).reduce(
       (total: number, dop: Record<string, any>) => total + (dop.price ?? 0),
@@ -479,13 +485,14 @@ export class DealsService {
       discont: deal.discont,
       status,
       // paid: deal.paid,
-      // workSpaceId: deal.workSpaceId,
-      // groupId: deal.groupId,
+      workSpaceId: deal.workSpaceId,
+      groupId: deal.groupId,
       group: deal.group?.title,
       // chatLink: deal.client?.chatLink,
       saleDate: deal.saleDate,
       maketType: deal.maketType,
       // deletedAt: deal.deletedAt,
+      info,
       reservation: deal.reservation,
       isRegular: deal.client?.isRegular ? 'Постоянный клиент' : 'Новый клиент',
       courseType: deal.courseType,
@@ -495,6 +502,10 @@ export class DealsService {
       pageType: deal.pageType,
       hasDelivered,
     };
+
+    if (costTotal !== undefined) {
+      dto.costTotal = costTotal;
+    }
 
     if (options.includeLeadAging) {
       dto.daysGone = this.getDaysGoneCategory(deal);
@@ -546,6 +557,7 @@ export class DealsService {
   private buildDealsResponse(
     deals: any[],
     options: BuildDealsResponseOptions = {},
+    costsByDealId?: Map<number, number | null>,
   ) {
     const {
       totalsOverride,
@@ -556,7 +568,11 @@ export class DealsService {
       ...mapOptions
     } = options;
     const mappedDeals = deals.map((deal) =>
-      this.mapDealToListItem(deal, mapOptions),
+      this.mapDealToListItem(
+        deal,
+        mapOptions,
+        costsByDealId ? costsByDealId.get(deal.id) ?? null : undefined,
+      ),
     );
 
     const totals = totalsOverride ?? this.calculateTotals(mappedDeals);
@@ -625,6 +641,132 @@ export class DealsService {
     const total = items.reduce((sum, item) => sum + item.total, 0);
 
     return { items, total };
+  }
+
+  private async getCostsByDeals(dealIds: number[]) {
+    const normalizedDealIds = Array.from(
+      new Set(dealIds.filter((id) => Number.isFinite(id))),
+    );
+    if (!normalizedDealIds.length) {
+      return new Map<number, number | null>();
+    }
+
+    const tasks = await this.prisma.kanbanTask.findMany({
+      where: {
+        dealId: { in: normalizedDealIds },
+        boardId: { in: [10, 5] },
+      },
+      select: { id: true, dealId: true },
+    });
+    const taskIds = tasks.map((task) => task.id);
+    const dealIdByTaskId = new Map(
+      tasks.map((task) => [task.id, task.dealId]),
+    );
+
+    const orderCostRows = taskIds.length
+      ? await this.prisma.orderCost.findMany({
+          where: {
+            taskId: { in: taskIds },
+          },
+          select: {
+            orderId: true,
+            taskId: true,
+            totalCost: true,
+          },
+        })
+      : [];
+    const orderIdToDealId = new Map<number, number | null>();
+    orderCostRows.forEach((row) => {
+      const dealId = dealIdByTaskId.get(row.taskId);
+      if (dealId == null) return;
+      orderIdToDealId.set(row.orderId, dealId);
+    });
+    const orderIds = orderCostRows.map((row) => row.orderId);
+
+    const [masterReports, packerReports, deliveries] = await Promise.all([
+      orderIds.length
+        ? this.prisma.masterReport.groupBy({
+            by: ['orderId'],
+            where: {
+              orderId: { in: orderIds },
+            },
+            _sum: {
+              cost: true,
+            },
+          })
+        : Promise.resolve(
+            [] as Array<{ orderId: number; _sum: { cost: number | null } }>,
+          ),
+      taskIds.length
+        ? this.prisma.packerReport.groupBy({
+            by: ['taskId'],
+            where: {
+              taskId: {
+                in: taskIds,
+              },
+            },
+            _sum: {
+              cost: true,
+            },
+          })
+        : Promise.resolve(
+            [] as Array<{ taskId: number; _sum: { cost: number | null } }>,
+          ),
+      this.prisma.delivery.groupBy({
+        by: ['dealId'],
+        where: {
+          dealId: { in: normalizedDealIds },
+          type: 'Бесплатно',
+        },
+        _sum: {
+          price: true,
+        },
+      }),
+    ]);
+
+    const costsByDealId = new Map<number, number>();
+    const normalizeCost = (value: unknown) => {
+      const numeric = Number(value ?? 0);
+      return Number.isFinite(numeric) ? numeric : 0;
+    };
+    const roundCost = (value: number) => Math.round(value * 100) / 100;
+    orderCostRows.forEach((row) => {
+      const dealId = dealIdByTaskId.get(row.taskId);
+      if (dealId == null) return;
+      const total = normalizeCost(row.totalCost);
+      costsByDealId.set(dealId, (costsByDealId.get(dealId) ?? 0) + total);
+    });
+
+    masterReports.forEach((row) => {
+      if (row.orderId == null) return;
+      const dealId = orderIdToDealId.get(row.orderId);
+      if (dealId == null) return;
+      const total = normalizeCost(row._sum.cost);
+      costsByDealId.set(dealId, (costsByDealId.get(dealId) ?? 0) + total);
+    });
+
+    packerReports.forEach((row) => {
+      if (row.taskId == null) return;
+      const dealId = dealIdByTaskId.get(row.taskId);
+      if (dealId == null) return;
+      const total = normalizeCost(row._sum.cost);
+      costsByDealId.set(dealId, (costsByDealId.get(dealId) ?? 0) + total);
+    });
+
+    deliveries.forEach((row) => {
+      const dealId = row.dealId;
+      if (dealId == null) return;
+      const total = normalizeCost(row._sum.price);
+      costsByDealId.set(dealId, (costsByDealId.get(dealId) ?? 0) + total);
+    });
+
+    const final = new Map<number, number | null>();
+    normalizedDealIds.forEach((dealId) => {
+      const value = costsByDealId.get(dealId);
+      final.set(dealId, value == null ? null : roundCost(value));
+    });
+
+    return final;
   }
 
   async create(createDealDto: CreateDealDto, user: UserDto) {
@@ -787,26 +929,198 @@ export class DealsService {
       ? (totals?.dealsAmount ?? filteredDeals.length)
       : filteredDeals.length;
 
-    return this.buildDealsResponse(filteredDeals, {
-      includeLeadAging: true,
-      includeReviewSummary: true,
-      totalsOverride: includeTotals ? totals : undefined,
-      sortKey: normalizedSortKey,
-      sortOrder: normalizedSortOrder,
-      pagination: shouldDisablePagination
-        ? {
-            skip,
-            limit: currentLimit,
-          }
-        : undefined,
-      meta: {
-        page: currentPage,
-        limit: currentLimit,
-        totalCount,
-        sortBy: normalizedSortKey,
+    const canViewCost =
+      user?.role?.shortName &&
+      ['ADMIN', 'G', 'KD'].includes(user.role.shortName);
+    const costsByDealId = canViewCost
+      ? await this.getCostsByDeals(filteredDeals.map((deal) => deal.id))
+      : undefined;
+
+    return this.buildDealsResponse(
+      filteredDeals,
+      {
+        includeLeadAging: true,
+        includeReviewSummary: true,
+        totalsOverride: includeTotals ? totals : undefined,
+        sortKey: normalizedSortKey,
         sortOrder: normalizedSortOrder,
+        pagination: shouldDisablePagination
+          ? {
+              skip,
+              limit: currentLimit,
+            }
+          : undefined,
+        meta: {
+          page: currentPage,
+          limit: currentLimit,
+          totalCount,
+          sortBy: normalizedSortKey,
+          sortOrder: normalizedSortOrder,
+        },
       },
+      costsByDealId,
+    );
+  }
+
+  async exportDeals(
+    user: UserDto,
+    {
+      from,
+      to,
+      groupId,
+      sortBy,
+      sortOrder,
+      filters,
+    }: {
+      from: string;
+      to: string;
+      groupId?: number;
+      sortBy?: string;
+      sortOrder?: string;
+      filters?: DealListFilters;
+    },
+  ) {
+    const groupsSearch = this.groupsAccessService.buildGroupsScope(user);
+    const normalizedSortKey = this.normalizeSortKey(sortBy);
+    const normalizedSortOrder = this.normalizeSortOrder(sortOrder);
+    const requiresManual = this.requiresManualSorting(normalizedSortKey);
+    const baseOrderKey = requiresManual ? 'saleDate' : normalizedSortKey;
+    const orderBy = this.getOrderByForSortKey(baseOrderKey, normalizedSortOrder);
+
+    const whereBase: Prisma.DealWhereInput = {
+      saleDate: {
+        gte: from,
+        lte: to,
+      },
+      groupId: groupId ? groupId : { gt: 0 },
+      group: groupsSearch,
+    };
+
+    const { where, postFilters } = this.applyDealListFilters(
+      whereBase,
+      filters,
+    );
+
+    const deals = await this.prisma.deal.findMany({
+      where,
+      include: this.getDealInclude(),
+      orderBy,
     });
+
+    const filteredDeals = postFilters.length
+      ? deals.filter((deal) => postFilters.every((predicate) => predicate(deal)))
+      : deals;
+
+    const canViewCost =
+      user?.role?.shortName &&
+      ['ADMIN', 'G', 'KD'].includes(user.role.shortName);
+    const costsByDealId = canViewCost
+      ? await this.getCostsByDeals(filteredDeals.map((deal) => deal.id))
+      : undefined;
+
+    const mappedDeals = filteredDeals.map((deal) =>
+      this.mapDealToListItem(
+        deal,
+        {
+          includeLeadAging: true,
+          includeReviewSummary: true,
+        },
+        costsByDealId ? costsByDealId.get(deal.id) ?? null : undefined,
+      ),
+    );
+
+    const sortedDeals = this.sortDealsList(
+      mappedDeals,
+      normalizedSortKey,
+      normalizedSortOrder,
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Сделки');
+
+    const columns = [
+      { key: 'title', header: 'Название', width: 40 },
+      { key: 'saleDate', header: 'Дата продажи', width: 18 },
+      { key: 'totalPrice', header: 'Общее', width: 14 },
+      { key: 'costTotal', header: 'Себестоимость', width: 16 },
+      { key: 'price', header: 'Заказы', width: 14 },
+      { key: 'dopsPrice', header: 'Допы', width: 14 },
+      { key: 'recievedPayments', header: 'Оплачено', width: 14 },
+      { key: 'remainder', header: 'Остаток', width: 14 },
+      { key: 'source', header: 'Источник', width: 18 },
+      { key: 'adTag', header: 'Тег', width: 18 },
+      { key: 'firstPayment', header: 'Платеж', width: 18 },
+      { key: 'city', header: 'Город', width: 18 },
+      { key: 'clothingMethod', header: 'Закрытие', width: 18 },
+      { key: 'clientType', header: 'Клиент', width: 18 },
+      { key: 'sphere', header: 'Сфера', width: 18 },
+      { key: 'discont', header: 'Скидка', width: 18 },
+      { key: 'status', header: 'Статус', width: 18 },
+      { key: 'maketType', header: 'Тип макета', width: 18 },
+      { key: 'courseType', header: 'Тип курса', width: 18 },
+      { key: 'daysGone', header: 'Прошло дней', width: 14 },
+      { key: 'haveReviews', header: 'Отзывы', width: 12 },
+      { key: 'isRegular', header: 'тип клиента', width: 18 },
+      { key: 'group', header: 'Группа', width: 20 },
+      { key: 'discontAmount', header: 'Размер скидки', width: 16 },
+      { key: 'boxsize', header: 'Размер фотокниги', width: 18 },
+      { key: 'pages', header: 'Развороты', width: 12 },
+      { key: 'pageType', header: 'Страницы', width: 12 },
+    ];
+
+    worksheet.columns = columns;
+
+    const normalizeCellValue = (key: string, value: unknown) => {
+      if (value === null || value === undefined) {
+        return '';
+      }
+
+      if (key === 'dealers') {
+        if (Array.isArray(value)) {
+          const ids = value
+            .map((dealer) => {
+              if (typeof dealer === 'number') {
+                return dealer;
+              }
+              if (
+                dealer &&
+                typeof dealer === 'object' &&
+                'userId' in dealer
+              ) {
+                const numeric = Number((dealer as { userId?: unknown }).userId);
+                return Number.isFinite(numeric) ? numeric : null;
+              }
+              return null;
+            })
+            .filter((item): item is number => item !== null);
+          return ids.join(', ');
+        }
+        return typeof value === 'string' || typeof value === 'number'
+          ? value
+          : '';
+      }
+
+      if (Array.isArray(value)) {
+        return value.join(', ');
+      }
+
+      return value;
+    };
+
+    for (const deal of sortedDeals) {
+      const row: Record<string, unknown> = {};
+      columns.forEach((column) => {
+        const key = column.key as string;
+        row[key] = normalizeCellValue(
+          key,
+          (deal as Record<string, unknown>)[key],
+        );
+      });
+      worksheet.addRow(row);
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer as ArrayBuffer);
   }
 
   async searchByName(
@@ -876,66 +1190,38 @@ export class DealsService {
       this.fetchTotals(where),
     ]);
 
-    return this.buildDealsResponse(deals, {
-      totalsOverride: totals,
-      sortKey: normalizedSortKey,
-      sortOrder: normalizedSortOrder,
-      pagination: requiresManual
-        ? {
-            skip,
-            limit: currentLimit,
-          }
-        : undefined,
-      meta: {
-        page: currentPage,
-        limit: currentLimit,
-        totalCount: totals.dealsAmount,
-        sortBy: normalizedSortKey,
+    const canViewCost =
+      user?.role?.shortName &&
+      ['ADMIN', 'G', 'KD'].includes(user.role.shortName);
+    const costsByDealId = canViewCost
+      ? await this.getCostsByDeals(deals.map((deal) => deal.id))
+      : undefined;
+
+    return this.buildDealsResponse(
+      deals,
+      {
+        totalsOverride: totals,
+        sortKey: normalizedSortKey,
         sortOrder: normalizedSortOrder,
+        pagination: requiresManual
+          ? {
+              skip,
+              limit: currentLimit,
+            }
+          : undefined,
+        meta: {
+          page: currentPage,
+          limit: currentLimit,
+          totalCount: totals.dealsAmount,
+          sortBy: normalizedSortKey,
+          sortOrder: normalizedSortOrder,
+        },
       },
-    });
+      costsByDealId,
+    );
   }
 
   async getDealCost(id: number) {
-    const prices = {
-      perm: {
-        polik: 2222, // стоимость м2 подложки(полик 5мм) для подложек без печати
-        print: {
-          polik: 1636, // стоимость м2 подложки(полик 4мм) для печати
-          print: 1785, //м2
-          rezka: 30, //погонный метр по подложке
-          package: 30, //упаковка фиксировано
-          paz: 30, // погонный метр для паза
-        },
-      },
-      spb: {
-        polik: 2700, // стоимость м2 подложки для подложек без печати
-        print: {
-          polik: 2700, // стоимость м2 подложки для печати
-          print: 1600, //м2
-          rezka: 42, // погонный метр по подложке
-          package: 0, //упаковка фиксировано
-          paz: 42, // погонный метр для паза
-        },
-      },
-      // TODO
-      neon: {
-        smart: { rate: 548, controller: 1094 },
-        rgb: { rate: 355, controller: 320 },
-        rgb_8mm: { rate: 486, controller: 320 },
-        standart: { rate: 190, controller: 0 },
-        standart_8mm: { rate: 220, controller: 0 },
-      },
-      lightings: {
-        rgb: { rate: 355, controller: 0 },
-        standart: { rate: 190, controller: 0 },
-      },
-      wire: {
-        ['Акустический']: 28,
-        ['Черный']: 31,
-        ['Белый']: 26,
-      },
-    };
     const prodTasks = await this.prisma.kanbanTask.findMany({
       where: {
         dealId: id,
@@ -944,13 +1230,7 @@ export class DealsService {
       include: {
         orders: {
           include: {
-            neons: true,
-            lightings: true,
-            package: {
-              include: {
-                items: true,
-              },
-            },
+            orderCost: true,
           },
         },
       },
@@ -980,8 +1260,7 @@ export class DealsService {
         task.orders.map((o) => o.id),
       );
 
-      const [masterReports, packerReports, adapters, fittings] =
-        await Promise.all([
+      const [masterReports, packerReports] = await Promise.all([
           ordersIds.length
             ? this.prisma.masterReport.findMany({
                 where: {
@@ -1002,37 +1281,7 @@ export class DealsService {
                 },
               })
             : Promise.resolve([] as PackerReportWithUser[]),
-          this.prisma.suppliePosition.findMany({
-            where: {
-              category: 'Блоки питания',
-            },
-            distinct: ['name'],
-            orderBy: [{ name: 'asc' }, { id: 'desc' }],
-          }),
-          this.prisma.suppliePosition.findMany({
-            where: {
-              name: {
-                in: [
-                  'Держатели стальные',
-                  'Держатели золотые',
-                  'Держатели черные',
-                ],
-              },
-            },
-            distinct: ['name'],
-            orderBy: [{ name: 'asc' }, { id: 'desc' }],
-          }),
         ]);
-
-      const holderNames = new Set([
-        'Держатели стальные',
-        'Держатели золотые',
-        'Держатели черные',
-      ]);
-
-      const fittingsByName = new Map(
-        fittings.map((f) => [f.name, f.priceForItem]),
-      );
 
       const masterReportsByOrderId = new Map<number, MasterReportWithUser>();
       masterReports.forEach((report) => {
@@ -1052,107 +1301,60 @@ export class DealsService {
         packerReportsByTaskId.set(report.taskId, list);
       });
 
+      const resolveCostNumber = (value: unknown) => {
+        if (typeof value === 'number') {
+          return Number.isFinite(value) ? value : 0;
+        }
+        if (
+          value &&
+          typeof value === 'object' &&
+          'toNumber' in value &&
+          typeof (value as Prisma.Decimal).toNumber === 'function'
+        ) {
+          const numeric = (value as Prisma.Decimal).toNumber();
+          return Number.isFinite(numeric) ? numeric : 0;
+        }
+        const normalized = Number(value ?? 0);
+        return Number.isFinite(normalized) ? normalized : 0;
+      };
+
       productionTasks = prodTasks.map((task) => {
         const { orders: taskOrders, id: taskId, boardId: taskBoardId } = task;
         const orders = taskOrders.map((order) => {
-          const {
-            boardHeight,
-            boardWidth,
-            print,
-            neons,
-            lightings,
-            wireType,
-            wireLength,
-            screen,
-          } = order;
-          // площадь подложки
-          const polikSquare = (boardHeight * boardWidth) / 10000;
-          // периметр подложки
-          const policPerimetr = (2 * (boardHeight + boardWidth)) / 100;
-          // длина неона/паза
-          const paz = neons.reduce(
-            (sum, neon) => sum + neon.length.toNumber(),
-            0,
-          );
-          // длина подсветки
-          const lightingsLength = lightings.reduce(
-            (sum, lighting) => sum + lighting.length.toNumber(),
-            0,
-          );
-          //стоимость экрана
-          let priceForScreen = 0;
-
-          let priceForBoard = 0;
-          // если изготавливают в Перми
-          if (taskBoardId === 10) {
-            //если есть печать то считаем по ценам печати, нет - по ценам фрезеровки
-            priceForBoard = print
-              ? prices.perm.print.package +
-                prices.perm.print.paz * paz +
-                prices.perm.print.print * polikSquare +
-                prices.perm.print.rezka * policPerimetr +
-                prices.perm.print.polik * polikSquare
-              : prices.perm.polik * polikSquare;
-            priceForScreen = screen ? prices.perm.polik * polikSquare : 0;
-          } else {
-            priceForBoard = print
-              ? prices.spb.print.package +
-                prices.spb.print.paz * paz +
-                prices.spb.print.print * polikSquare +
-                prices.spb.print.rezka * policPerimetr +
-                prices.spb.print.polik * polikSquare
-              : prices.spb.polik * polikSquare +
-                prices.spb.print.rezka * policPerimetr;
-            priceForScreen = screen
-              ? prices.spb.polik * polikSquare +
-                prices.spb.print.rezka * policPerimetr
-              : 0;
-          }
-          const { total: neonPrice } = this.calculateNeonCosts(
-            neons,
-            prices.neon,
-          );
-
-          const lightingPrice =
-            lightingsLength * prices.lightings.standart.rate;
           const masterReport = masterReportsByOrderId.get(order.id);
-          // const masterPrice = masterReport?.cost ?? 0;
-          const wireRate =
-            prices.wire[wireType as keyof typeof prices.wire] ?? 0;
-          const wireLengthNum = Number(wireLength) || 0;
-          const wirePrice = wireRate * wireLengthNum;
-          const adapter = adapters.find((a) => a.name === order.adapterModel);
-          const adapterPrice = adapter?.priceForItem ?? 0;
-          const plugPrice = order.plug === 'Стандарт' ? 76 : 0;
-
-          const packageItems = order.package?.items ?? [];
-
-          const packageCost = packageItems.reduce((sum, item) => {
-            if (!holderNames.has(item.name)) return sum;
-
-            const price = fittingsByName.get(item.name);
-            if (price == null) return sum;
-
-            const qty =
-              typeof item.quantity?.toNumber === 'function'
-                ? item.quantity.toNumber()
-                : Number(item.quantity);
-
-            return sum + qty * price;
-          }, 0);
-          const dimmerPrice = order.dimmer ? 590 : 0;
-          const masterCost = Number(masterReport?.cost ?? 0);
-          const totalCost =
-            priceForBoard +
-            neonPrice +
-            lightingPrice +
-            masterCost +
-            wirePrice +
-            adapterPrice +
-            plugPrice +
-            packageCost +
-            dimmerPrice +
-            priceForScreen;
+          const costSnapshot = order.orderCost;
+          const boardHeight = resolveCostNumber(order.boardHeight);
+          const boardWidth = resolveCostNumber(order.boardWidth);
+          const polikSquare =
+            resolveCostNumber(costSnapshot?.polikSquare) ||
+            (boardHeight * boardWidth) / 10000;
+          const print =
+            typeof costSnapshot?.print === 'boolean'
+              ? costSnapshot.print
+              : Boolean(order.print);
+          const screen =
+            typeof costSnapshot?.screen === 'boolean'
+              ? costSnapshot.screen
+              : Boolean(order.screen);
+          const priceForBoard = resolveCostNumber(
+            costSnapshot?.priceForBoard,
+          );
+          const neonPrice = resolveCostNumber(costSnapshot?.neonPrice);
+          const lightingPrice = resolveCostNumber(costSnapshot?.lightingPrice);
+          const priceForScreen = resolveCostNumber(
+            costSnapshot?.priceForScreen,
+          );
+          const wirePrice = resolveCostNumber(costSnapshot?.wirePrice);
+          const adapterPrice = resolveCostNumber(costSnapshot?.adapterPrice);
+          const plugPrice = resolveCostNumber(costSnapshot?.plugPrice);
+          const packageCost = resolveCostNumber(costSnapshot?.packageCost);
+          const dimmerPrice = resolveCostNumber(costSnapshot?.dimmerPrice);
+          const masterCost = resolveCostNumber(masterReport?.cost);
+          const costTotal = resolveCostNumber(costSnapshot?.totalCost);
+          const totalCost = costTotal + masterCost;
+          const adapter =
+            (costSnapshot?.adapterModel || order.adapterModel || '').trim() ||
+            'Нет';
           return {
             title: order.title, // название заказа
             deadline: order.deadline, // срок  выполнения
@@ -1172,7 +1374,7 @@ export class DealsService {
               date: masterReport?.date ?? null, // дата сборки
             },
             wirePrice,
-            adapter: adapter?.name ?? 'Нет',
+            adapter,
             adapterPrice,
             plugPrice,
             packageCost,
@@ -1189,9 +1391,12 @@ export class DealsService {
           };
         });
         const totalCost =
-          orders.reduce((acc, order) => acc + order.totalCost, 0) +
+          orders.reduce(
+            (acc, order) => acc + resolveCostNumber(order.totalCost),
+            0,
+          ) +
           packerReportsForTask.reduce(
-            (acc, report) => acc + Number(report.cost ?? 0),
+            (acc, report) => acc + resolveCostNumber(report.cost),
             0,
           );
 

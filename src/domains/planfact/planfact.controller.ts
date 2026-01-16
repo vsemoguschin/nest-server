@@ -10,6 +10,8 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { Roles } from 'src/common/decorators/roles.decorator';
@@ -22,6 +24,54 @@ import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
+import type { Response } from 'express';
+
+const normalizeQueryValue = (
+  value?: string | string[],
+): string | undefined => {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) return value.join(',');
+  return value;
+};
+
+const parseOptionalAccountId = (value?: string): number | undefined => {
+  if (!value || value === 'all') return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new BadRequestException(
+      'Параметр accountId должен быть положительным целым числом или all',
+    );
+  }
+  return parsed;
+};
+
+const parseIdList = (
+  value: string | string[] | undefined,
+  options: { field: string; allowZero: boolean },
+): number[] | undefined => {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value) && value.includes('all')) return undefined;
+  const raw = normalizeQueryValue(value);
+  if (!raw || raw === 'all') return undefined;
+
+  const parts = raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return undefined;
+
+  const ids = parts.map((part) => Number(part));
+  const minAllowed = options.allowZero ? 0 : 1;
+  if (ids.some((id) => !Number.isInteger(id) || id < minAllowed)) {
+    throw new BadRequestException(
+      `Параметр ${options.field} должен содержать только ${
+        options.allowZero ? 'неотрицательные' : 'положительные'
+      } целые числа или all`,
+    );
+  }
+
+  return ids;
+};
 
 @UseGuards(RolesGuard)
 @ApiTags('planfact')
@@ -120,6 +170,79 @@ export class PlanfactController {
       typeOfOperation,
       searchText,
     });
+  }
+
+  @Get('original-operations-export')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async exportOriginalOperations(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Res({ passthrough: true }) res: Response,
+    @Query('accountId') accountId?: string,
+    @Query('distributionFilter') distributionFilter?: string,
+    @Query('counterPartyId') counterPartyId?: string | string[],
+    @Query('expenseCategoryId') expenseCategoryId?: string | string[],
+    @Query('typeOfOperation') typeOfOperation?: string,
+    @Query('searchText') searchText?: string,
+  ) {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (
+      distributionFilter &&
+      !['all', 'hasCat', 'hasntCat'].includes(distributionFilter)
+    ) {
+      throw new BadRequestException(
+        'Параметр distributionFilter должен быть одним из: all, hasCat, hasntCat',
+      );
+    }
+    if (
+      typeOfOperation &&
+      !['Debit', 'Credit', 'Transfer', 'all'].includes(typeOfOperation)
+    ) {
+      throw new BadRequestException(
+        'Параметр typeOfOperation должен быть одним из: Debit, Credit, Transfer, all',
+      );
+    }
+
+    const parsedAccountId = parseOptionalAccountId(accountId);
+    const parsedCounterPartyId = parseIdList(counterPartyId, {
+      field: 'counterPartyId',
+      allowZero: false,
+    });
+    const parsedExpenseCategoryId = parseIdList(expenseCategoryId, {
+      field: 'expenseCategoryId',
+      allowZero: true,
+    });
+    const normalizedTypeOfOperation =
+      typeOfOperation === 'all' ? undefined : typeOfOperation;
+
+    const buffer = await this.planfactService.exportOriginalOperations({
+      from,
+      to,
+      accountId: parsedAccountId,
+      distributionFilter,
+      counterPartyId: parsedCounterPartyId,
+      expenseCategoryId: parsedExpenseCategoryId,
+      typeOfOperation: normalizedTypeOfOperation,
+      searchText,
+    });
+
+    const filename = `operations_${from}_${to}.xlsx`;
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+
+    return new StreamableFile(buffer);
   }
 
   @Get('original-operations-totals')

@@ -58,7 +58,7 @@ export class CdekService {
         },
       });
 
-      console.log(response.data.entity.statuses);
+      // console.log(response.data.entity.statuses);
 
       return response.data.entity;
     } catch (error) {
