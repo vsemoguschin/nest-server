@@ -38,7 +38,7 @@ export class WebhooksService {
     try {
       const token = await this.cdekService.getAccessToken();
       const entity = await this.cdekService.getOrderInfo(cdek_number, token);
-      const { status, sendDate, deliveredDate } =
+      const { status, sendDate, deliveredDate, cdekStatus } =
         this.cdekService.parseOrderStatus(entity);
 
       const del = await this.prisma.delivery.updateMany({
@@ -48,10 +48,11 @@ export class WebhooksService {
           status,
           date: sendDate,
           deliveredDate,
+          cdekStatus,
         },
       });
-      // console.log( 
-      //   'Updated delivery:', 
+      // console.log(
+      //   'Updated delivery:',
       //   cdek_number,
       //   status,
       //   sendDate,

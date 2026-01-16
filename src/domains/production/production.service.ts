@@ -1589,7 +1589,7 @@ export class ProductionService {
       } catch (error) {
         console.error('Error fetching Kaiten card:', error);
       }
-    }
+    } 
 
     return this.prisma.packerReport.create({
       data: {

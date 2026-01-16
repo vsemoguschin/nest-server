@@ -216,6 +216,24 @@ export class DealsController {
     return this.dealsService.findOne(user, id);
   }
 
+  @Get(':id/cards')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'MOP',
+    'ROP',
+    'ROV',
+    'MOV',
+    // 'LOGIST',
+    'MARKETER',
+    'ASSISTANT',
+  )
+  async getDealCards(@Param('id', ParseIntPipe) id: number): Promise<any> {
+    return this.dealsService.getDealCards(id);
+  }
+
   @Roles('ADMIN', 'G', 'KD')
   @Get(':id/cost')
   async getDealCost(

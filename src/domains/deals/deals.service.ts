@@ -54,6 +54,16 @@ type DealSortKey =
 
 type SortOrder = 'asc' | 'desc';
 
+type NeonPriceKey = 'smart' | 'rgb' | 'rgb_8mm' | 'standart' | 'standart_8mm';
+
+type NeonRates = Record<NeonPriceKey, { rate: number; controller: number }>;
+
+type NeonCostInput = {
+  color?: string | null;
+  width?: string | null;
+  length?: Prisma.Decimal | number | string | null;
+};
+
 interface DealListFilters {
   status?: string[];
   maketType?: string[];
@@ -520,12 +530,12 @@ export class DealsService {
 
       const hasDelivered = Array.isArray(deal.deliveries)
         ? deal.deliveries.some((delivery: any) =>
-            ['Отправлена'].includes(delivery.status),
+            ['Отправлена', 'Вручена'].includes(delivery.status),
           )
         : deal.hasDelivered === true;
 
       if (hasDelivered) {
-        totals.deliveredPrice += deal.price ?? 0;
+        totals.deliveredPrice += deal.price + deal.dopsPrice;
         totals.deliveredAmount += 1;
       }
     });
@@ -574,6 +584,47 @@ export class DealsService {
     }
 
     return response;
+  }
+
+  private calculateNeonCosts(neons: NeonCostInput[], neonRates: NeonRates) {
+    const items = neons.map((neon) => {
+      const color = neon?.color?.trim().toLowerCase();
+      const width = neon?.width?.trim().toLowerCase();
+      const is8mm = width === '8мм' || width === '8mm';
+
+      let type: NeonPriceKey = 'standart';
+      if (color === 'смарт' || color === 'smart') {
+        type = 'smart';
+      } else if (color === 'ргб' || color === 'rgb') {
+        type = is8mm ? 'rgb_8mm' : 'rgb';
+      } else if (is8mm) {
+        type = 'standart_8mm';
+      }
+
+      const lengthValue = neon?.length;
+      const lengthRaw =
+        lengthValue &&
+        typeof lengthValue === 'object' &&
+        'toNumber' in lengthValue
+          ? (lengthValue as Prisma.Decimal).toNumber()
+          : Number(lengthValue ?? 0);
+      const length = Number.isFinite(lengthRaw) ? lengthRaw : 0;
+
+      const { rate, controller } = neonRates[type];
+      const total = length * rate + controller;
+
+      return {
+        type,
+        length,
+        rate,
+        controller,
+        total,
+      };
+    });
+
+    const total = items.reduce((sum, item) => sum + item.total, 0);
+
+    return { items, total };
   }
 
   async create(createDealDto: CreateDealDto, user: UserDto) {
@@ -846,12 +897,45 @@ export class DealsService {
   }
 
   async getDealCost(id: number) {
-    const deal = await this.prisma.deal.findUnique({
-      where: { id },
-      include: {
-        tasks: true,
+    const prices = {
+      perm: {
+        polik: 2222, // стоимость м2 подложки(полик 5мм) для подложек без печати
+        print: {
+          polik: 1636, // стоимость м2 подложки(полик 4мм) для печати
+          print: 1785, //м2
+          rezka: 30, //погонный метр по подложке
+          package: 30, //упаковка фиксировано
+          paz: 30, // погонный метр для паза
+        },
       },
-    });
+      spb: {
+        polik: 2700, // стоимость м2 подложки для подложек без печати
+        print: {
+          polik: 2700, // стоимость м2 подложки для печати
+          print: 1600, //м2
+          rezka: 42, // погонный метр по подложке
+          package: 0, //упаковка фиксировано
+          paz: 42, // погонный метр для паза
+        },
+      },
+      // TODO
+      neon: {
+        smart: { rate: 548, controller: 1094 },
+        rgb: { rate: 355, controller: 320 },
+        rgb_8mm: { rate: 486, controller: 320 },
+        standart: { rate: 190, controller: 0 },
+        standart_8mm: { rate: 220, controller: 0 },
+      },
+      lightings: {
+        rgb: { rate: 355, controller: 0 },
+        standart: { rate: 190, controller: 0 },
+      },
+      wire: {
+        ['Акустический']: 28,
+        ['Черный']: 31,
+        ['Белый']: 26,
+      },
+    };
     const prodTasks = await this.prisma.kanbanTask.findMany({
       where: {
         dealId: id,
@@ -862,88 +946,314 @@ export class DealsService {
           include: {
             neons: true,
             lightings: true,
+            package: {
+              include: {
+                items: true,
+              },
+            },
           },
         },
       },
     });
-    const ordersIds = prodTasks.flatMap((task) => task.orders.map((o) => o.id));
-    const masterReports = await this.prisma.masterReport.findMany({
+    const deliveries = await this.prisma.delivery.findMany({
       where: {
-        orderId: { in: ordersIds },
+        dealId: id,
+        type: 'Бесплатно',
       },
     });
-    const prices = {
-      ['polik5']: 2666,
-      ['printPerm']: {
-        ['polik4']: 1636,
-        ['package']: 30, //упаковка фиксировано
-        ['paz']: 30, // погонный метр
-        ['print']: 1785, //м2
-        ['rezka']: 30, //погонный метр
-      },
-      neon: 190,
-      lightings: 120,
-      wire: {
-        ['Акустический']: 28,
-        ['Черный']: 31,
-        ['Белый']: 26,
-      },
-    };
-    const orders = prodTasks
-      .flatMap((t) =>
-        t.orders.map((order) => ({ ...order, boardId: t.boardId })),
-      )
-      .map((order) => {
-        const {
-          boardHeight,
-          boardWidth,
-          print,
-          neons,
-          lightings,
-          wireType,
-          wireLength,
-        } = order;
-        const polikSquare = (boardHeight * boardWidth) / 10000;
-        const policPerimetr = 2 * (boardHeight + boardWidth);
-        const paz = neons.reduce(
-          (sum, neon) => sum + neon.length.toNumber(),
-          0,
-        );
-        const lightingsLength = lightings.reduce(
-          (sum, lighting) => sum + lighting.length.toNumber(),
-          0,
-        );
+    const deliveriesTotal = deliveries.reduce(
+      (sum, delivery) => sum + Number(delivery.price ?? 0),
+      0,
+    );
 
-        if (order.boardId === 10) {
-          //если есть печать то считаем по ценам печати, нет - по ценам фрезеровки
-          const priceForPrint = print
-            ? prices['printPerm']['package'] +
-              prices['printPerm']['paz'] * paz +
-              prices['printPerm']['print'] * polikSquare +
-              prices['printPerm']['rezka'] * policPerimetr +
-              prices['printPerm']['polik4'] * polikSquare
-            : prices['polik5'] * polikSquare;
+    let productionTasks: any[] = [];
+    if (prodTasks.length) {
+      type MasterReportWithUser = Prisma.MasterReportGetPayload<{
+        include: { user: true };
+      }>;
+      type PackerReportWithUser = Prisma.PackerReportGetPayload<{
+        include: { user: true };
+      }>;
 
-          const neonPrice = paz * prices.neon;
-          const lightingPrice = lightingsLength * prices.lightings;
-          const masterReport = masterReports.find(
-            (r) => r.orderId === order.id,
+      const taskIds = prodTasks.map((task) => task.id);
+      const ordersIds = prodTasks.flatMap((task) =>
+        task.orders.map((o) => o.id),
+      );
+
+      const [masterReports, packerReports, adapters, fittings] =
+        await Promise.all([
+          ordersIds.length
+            ? this.prisma.masterReport.findMany({
+                where: {
+                  orderId: { in: ordersIds },
+                },
+                include: {
+                  user: true,
+                },
+              })
+            : Promise.resolve([] as MasterReportWithUser[]),
+          taskIds.length
+            ? this.prisma.packerReport.findMany({
+                where: {
+                  taskId: { in: taskIds },
+                },
+                include: {
+                  user: true,
+                },
+              })
+            : Promise.resolve([] as PackerReportWithUser[]),
+          this.prisma.suppliePosition.findMany({
+            where: {
+              category: 'Блоки питания',
+            },
+            distinct: ['name'],
+            orderBy: [{ name: 'asc' }, { id: 'desc' }],
+          }),
+          this.prisma.suppliePosition.findMany({
+            where: {
+              name: {
+                in: [
+                  'Держатели стальные',
+                  'Держатели золотые',
+                  'Держатели черные',
+                ],
+              },
+            },
+            distinct: ['name'],
+            orderBy: [{ name: 'asc' }, { id: 'desc' }],
+          }),
+        ]);
+
+      const holderNames = new Set([
+        'Держатели стальные',
+        'Держатели золотые',
+        'Держатели черные',
+      ]);
+
+      const fittingsByName = new Map(
+        fittings.map((f) => [f.name, f.priceForItem]),
+      );
+
+      const masterReportsByOrderId = new Map<number, MasterReportWithUser>();
+      masterReports.forEach((report) => {
+        if (report.orderId == null) {
+          return;
+        }
+        masterReportsByOrderId.set(report.orderId, report);
+      });
+
+      const packerReportsByTaskId = new Map<number, PackerReportWithUser[]>();
+      packerReports.forEach((report) => {
+        if (report.taskId == null) {
+          return;
+        }
+        const list = packerReportsByTaskId.get(report.taskId) ?? [];
+        list.push(report);
+        packerReportsByTaskId.set(report.taskId, list);
+      });
+
+      productionTasks = prodTasks.map((task) => {
+        const { orders: taskOrders, id: taskId, boardId: taskBoardId } = task;
+        const orders = taskOrders.map((order) => {
+          const {
+            boardHeight,
+            boardWidth,
+            print,
+            neons,
+            lightings,
+            wireType,
+            wireLength,
+            screen,
+          } = order;
+          // площадь подложки
+          const polikSquare = (boardHeight * boardWidth) / 10000;
+          // периметр подложки
+          const policPerimetr = (2 * (boardHeight + boardWidth)) / 100;
+          // длина неона/паза
+          const paz = neons.reduce(
+            (sum, neon) => sum + neon.length.toNumber(),
+            0,
           );
-          const masterPrice = masterReport?.cost ?? 0;
+          // длина подсветки
+          const lightingsLength = lightings.reduce(
+            (sum, lighting) => sum + lighting.length.toNumber(),
+            0,
+          );
+          //стоимость экрана
+          let priceForScreen = 0;
+
+          let priceForBoard = 0;
+          // если изготавливают в Перми
+          if (taskBoardId === 10) {
+            //если есть печать то считаем по ценам печати, нет - по ценам фрезеровки
+            priceForBoard = print
+              ? prices.perm.print.package +
+                prices.perm.print.paz * paz +
+                prices.perm.print.print * polikSquare +
+                prices.perm.print.rezka * policPerimetr +
+                prices.perm.print.polik * polikSquare
+              : prices.perm.polik * polikSquare;
+            priceForScreen = screen ? prices.perm.polik * polikSquare : 0;
+          } else {
+            priceForBoard = print
+              ? prices.spb.print.package +
+                prices.spb.print.paz * paz +
+                prices.spb.print.print * polikSquare +
+                prices.spb.print.rezka * policPerimetr +
+                prices.spb.print.polik * polikSquare
+              : prices.spb.polik * polikSquare +
+                prices.spb.print.rezka * policPerimetr;
+            priceForScreen = screen
+              ? prices.spb.polik * polikSquare +
+                prices.spb.print.rezka * policPerimetr
+              : 0;
+          }
+          const { total: neonPrice } = this.calculateNeonCosts(
+            neons,
+            prices.neon,
+          );
+
+          const lightingPrice =
+            lightingsLength * prices.lightings.standart.rate;
+          const masterReport = masterReportsByOrderId.get(order.id);
+          // const masterPrice = masterReport?.cost ?? 0;
           const wireRate =
             prices.wire[wireType as keyof typeof prices.wire] ?? 0;
           const wireLengthNum = Number(wireLength) || 0;
           const wirePrice = wireRate * wireLengthNum;
+          const adapter = adapters.find((a) => a.name === order.adapterModel);
+          const adapterPrice = adapter?.priceForItem ?? 0;
+          const plugPrice = order.plug === 'Стандарт' ? 76 : 0;
 
+          const packageItems = order.package?.items ?? [];
+
+          const packageCost = packageItems.reduce((sum, item) => {
+            if (!holderNames.has(item.name)) return sum;
+
+            const price = fittingsByName.get(item.name);
+            if (price == null) return sum;
+
+            const qty =
+              typeof item.quantity?.toNumber === 'function'
+                ? item.quantity.toNumber()
+                : Number(item.quantity);
+
+            return sum + qty * price;
+          }, 0);
+          const dimmerPrice = order.dimmer ? 590 : 0;
+          const masterCost = Number(masterReport?.cost ?? 0);
+          const totalCost =
+            priceForBoard +
+            neonPrice +
+            lightingPrice +
+            masterCost +
+            wirePrice +
+            adapterPrice +
+            plugPrice +
+            packageCost +
+            dimmerPrice +
+            priceForScreen;
           return {
-            title: order.title,
-            deadline: order.deadline,
-            polikSquare,
+            title: order.title, // название заказа
+            deadline: order.deadline, // срок  выполнения
+            polikSquare, // площадь полика
+            print, // есть ли печать
+            priceForBoard, // стоимость изготовления подложки
+            neonPrice, // стоимость неона
+            // neonCosts,
+            lightingPrice, // стоимость подсветки
+            screen,
+            priceForScreen,
+            // masterPrice,
+            masterReport: {
+              // Отчет сборщика
+              master: masterReport?.user.fullName ?? 'Не известно', // Сборщик
+              cost: masterCost, // ЗП сборщика
+              date: masterReport?.date ?? null, // дата сборки
+            },
+            wirePrice,
+            adapter: adapter?.name ?? 'Нет',
+            adapterPrice,
+            plugPrice,
+            packageCost,
+            dimmerPrice,
+            totalCost,
           };
-        }
-      });
+        });
+        const packerReportsForTask = packerReportsByTaskId.get(taskId) ?? [];
+        const packerReportsRes = packerReportsForTask.map((report) => {
+          return {
+            packer: report.user.fullName, // Упаковщик
+            cost: report.cost, // ЗП упаковщика
+            date: report.date, // Дата упаковки
+          };
+        });
+        const totalCost =
+          orders.reduce((acc, order) => acc + order.totalCost, 0) +
+          packerReportsForTask.reduce(
+            (acc, report) => acc + Number(report.cost ?? 0),
+            0,
+          );
 
-    console.log(deal);
+        return {
+          id: taskId,
+          boardId: taskBoardId,
+          orders,
+          packerReports: packerReportsRes,
+          totalCost,
+        };
+      });
+    }
+
+    return {
+      productionTasks,
+      deliveriesTotal,
+    };
+  }
+
+  async getDealCards(id: number) {
+    const ordersInclude = {
+      orders: {
+        include: {
+          neons: true,
+          lightings: true,
+          package: {
+            include: {
+              items: true,
+            },
+          },
+        },
+      },
+    } as const;
+
+    const [designTasks, productionTasks] = await Promise.all([
+      this.prisma.kanbanTask.findMany({
+        where: {
+          dealId: id,
+          boardId: { in: [3, 16] },
+        },
+        include: ordersInclude,
+      }),
+      this.prisma.kanbanTask.findMany({
+        where: {
+          dealId: id,
+          boardId: { in: [10, 5] },
+        },
+        include: ordersInclude,
+      }),
+    ]);
+
+    const mapTask = (task: (typeof designTasks)[number]) => ({
+      id: task.id,
+      boardId: task.boardId,
+      cover: task.cover,
+      orders: task.orders,
+    });
+
+    return {
+      designTasks: designTasks.map(mapTask),
+      productionTasks: productionTasks.map(mapTask),
+    };
   }
   async findOne(user: UserDto, id: number) {
     const groupsSearch = this.groupsAccessService.buildGroupsScope(user);

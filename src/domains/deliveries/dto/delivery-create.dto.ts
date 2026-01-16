@@ -66,6 +66,15 @@ export class DeliveryCreateDto {
   track?: string;
 
   @ApiProperty({
+    description: 'Статус СДЭК',
+    example: 'Вручен',
+    default: '',
+  })
+  @IsString()
+  @IsOptional()
+  cdekStatus?: string;
+
+  @ApiProperty({
     description: 'Статус доставки',
     example: 'Создана',
     default: 'Создана',

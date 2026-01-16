@@ -699,6 +699,7 @@ export class TasksService {
           0,
         );
     }
+    
 
     const deal = task.deal
       ? {
@@ -850,7 +851,11 @@ export class TasksService {
     if (q.length < 2) return [];
     const userBoards = user.boards.map((b) => b.id);
     const parsedId = Number(q);
-    const hasId = Number.isSafeInteger(parsedId) && /^[0-9]+$/.test(q);
+    const hasId =
+      Number.isSafeInteger(parsedId) &&
+      parsedId >= 1 &&
+      parsedId <= 2147483647 &&
+      /^[0-9]+$/.test(q);
     const or: Prisma.KanbanTaskWhereInput[] = [
       {
         chatLink: { contains: q, mode: 'insensitive' },
@@ -1527,6 +1532,7 @@ export class TasksService {
           purpose: dto.purpose || '',
           description: dto.description || '',
           track: dto.track || '',
+          cdekStatus: dto.cdekStatus || null,
           status: dto.status || 'Создана',
           price: dto.price ?? 0,
           deliveredDate: dto.deliveredDate || '',

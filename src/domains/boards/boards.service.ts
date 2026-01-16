@@ -67,6 +67,7 @@ export class BoardsService {
                         method: true,
                         type: true,
                         track: true,
+                        cdekStatus: true
                       },
                     },
                     payments: {
@@ -188,7 +189,7 @@ export class BoardsService {
                   return d.localeCompare(max) > 0 ? d : max;
                 }, ''),
                 warnings,
-                tracks: t.deal?.deliveries.map((d) => d.track) ?? [],
+                tracks: t.deal?.deliveries.map((d) => ({track: d.track, cdekStatus: d.cdekStatus})) ?? [],
               };
             })
             .sort((a, b) => {

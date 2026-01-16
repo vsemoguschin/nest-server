@@ -58,7 +58,7 @@ export class CdekService {
         },
       });
 
-      // console.log(response.data.entity.statuses);
+      console.log(response.data.entity.statuses);
 
       return response.data.entity;
     } catch (error) {
@@ -79,6 +79,7 @@ export class CdekService {
     sendDate: string;
     deliveredDate: string;
     isClientReturn: boolean;
+    cdekStatus: string;
   } {
     const statuses = entity?.statuses || [];
     const isClientReturn = entity?.is_client_return || false;
@@ -86,6 +87,7 @@ export class CdekService {
     let status = '';
     let sendDate = '';
     let deliveredDate = '';
+    const cdekStatus = entity.statuses.length ? entity.statuses[0].name : null;
 
     const hasDelivered = statuses.find((s) => s.code === 'DELIVERED');
     const hasShipped = statuses.find(
@@ -108,7 +110,7 @@ export class CdekService {
       status = 'Возврат';
     }
 
-    return { status, sendDate, deliveredDate, isClientReturn };
+    return { status, sendDate, deliveredDate, isClientReturn, cdekStatus };
   }
 
   async checkTrackInfo(cdek_number: string): Promise<{
@@ -116,10 +118,12 @@ export class CdekService {
     status: string;
     send_date: string;
     delivered_date: string;
+    cdekStatus: string;
   }> {
     const token = await this.getAccessToken();
     const entity = await this.getOrderInfo(cdek_number, token);
-    const { status, sendDate, deliveredDate } = this.parseOrderStatus(entity);
+    const { status, sendDate, deliveredDate, cdekStatus } =
+      this.parseOrderStatus(entity);
 
     const price = entity?.delivery_detail?.total_sum || 0;
     // console.log({ status, sendDate, deliveredDate, price });
@@ -128,6 +132,7 @@ export class CdekService {
       status,
       send_date: sendDate,
       delivered_date: deliveredDate,
+      cdekStatus,
     };
   }
 

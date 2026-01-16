@@ -20,6 +20,7 @@ export type OrderLikeForWarnings =
       fitting?: string | null;
       laminate?: string | null;
       acrylic?: string | null;
+      isAcrylic?: boolean | null;
       docs?: boolean | null;
       print?: boolean | null;
       dimmer?: boolean | null;
@@ -79,12 +80,9 @@ export function collectTaskWarnings(
       warnings.add('Цветная подложка');
     }
 
-    const acrylicRaw = order.acrylic;
-    if (typeof acrylicRaw === 'string') {
-      const acrylic = acrylicRaw.trim();
-      if (acrylic && !acrylic.toLowerCase().includes('нет')) {
-        warnings.add('Акрил ' + acrylic);
-      }
+    // const acrylicRaw = order.acrylic;
+    if (order.isAcrylic) {
+      warnings.add('Акрил');
     }
 
     if (order.docs) warnings.add('Документы');
@@ -146,7 +144,9 @@ export function collectTaskWarnings(
   // Проверка платежей с методом "Наложка"
   if (payments && payments.length > 0) {
     const hasNalojka = payments.some((payment) => {
-      const method = String(payment?.method ?? '').trim().toLowerCase();
+      const method = String(payment?.method ?? '')
+        .trim()
+        .toLowerCase();
       return method.includes('наложка');
     });
     if (hasNalojka) {

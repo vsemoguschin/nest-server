@@ -493,6 +493,8 @@ model Delivery {
   status         String  @default("")
   price          Float   @default(0)
   deliveredDate  String  @default("") // Дата доставки
+  cdekStatus     String?
+  // isConfirmed    Boolean @default(true)
 
   deletedAt      DateTime?
 
