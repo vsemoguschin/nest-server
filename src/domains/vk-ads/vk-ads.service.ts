@@ -1116,7 +1116,7 @@ export class VkAdsService {
           const m = metrics[idx];
           it.dealsPrice = m.dealsPrice;
           it.makets = m.makets;
-          // Compute spent_nds from v3 totals (spent * 1.2)
+          // Compute spent_nds from v3 totals (spent * 1.22)
           let spentNds = 0;
           try {
             const rawSpent =
@@ -1125,7 +1125,7 @@ export class VkAdsService {
                   (it as any)?.total?.base?.spend ??
                   0,
               ) || 0;
-            spentNds = Number((rawSpent * 1.2).toFixed(2));
+            spentNds = Number((rawSpent * 1.22).toFixed(2));
           } catch {}
           it.maketPrice = it.makets
             ? Number((spentNds / it.makets).toFixed(2))
@@ -1139,7 +1139,7 @@ export class VkAdsService {
           const dealsPrice_total = itemsArr.reduce((s: number, x: any) => s + Number((x as any).dealsPrice || 0), 0);
           const makets_total = itemsArr.reduce((s: number, x: any) => s + Number((x as any).makets || 0), 0);
           const rawSpentTotal = Number(((data as any)?.total?.base?.spent ?? (data as any)?.total?.base?.spend ?? 0) as number) || 0;
-          const spentNds_total = Number((rawSpentTotal * 1.2).toFixed(2));
+          const spentNds_total = Number((rawSpentTotal * 1.22).toFixed(2));
           const maketPrice_total = makets_total ? Number((spentNds_total / makets_total).toFixed(2)) : 0;
           const drr_total = dealsPrice_total ? Number(((spentNds_total / dealsPrice_total) * 100).toFixed(2)) : 0;
           (data as any).dealsPrice_total = dealsPrice_total;
@@ -1372,7 +1372,7 @@ export class VkAdsService {
               (sum, r) => sum + (maketsByRef[r] || 0),
               0,
             );
-            // spent_nds (spent * 1.2), maketPrice and drr
+            // spent_nds (spent * 1.22), maketPrice and drr
             try {
               const rawSpent =
                 Number(
@@ -1380,7 +1380,7 @@ export class VkAdsService {
                     (it as any)?.total?.base?.spend ??
                     0,
                 ) || 0;
-              it.spent_nds = Number((rawSpent * 1.2).toFixed(2));
+              it.spent_nds = Number((rawSpent * 1.22).toFixed(2));
             } catch {
               it.spent_nds = 0;
             }
@@ -1580,7 +1580,7 @@ export class VkAdsService {
             // spent_nds
             try {
               const rawSpent = Number((it as any)?.total?.base?.spent ?? (it as any)?.total?.base?.spend ?? 0) || 0;
-              it.spent_nds = Number((rawSpent * 1.2).toFixed(2));
+              it.spent_nds = Number((rawSpent * 1.22).toFixed(2));
             } catch { it.spent_nds = 0; }
             it.maketPrice = it.makets ? Number(((it.spent_nds || 0) / it.makets).toFixed(2)) : 0;
             const spentForDrr = Number(it.spent_nds || 0);
@@ -1654,7 +1654,7 @@ export class VkAdsService {
         try {
           const rawSpent =
             Number(it?.total?.base?.spent ?? it?.total?.base?.spend ?? 0) || 0;
-          it.spent_nds = Number((rawSpent * 1.2).toFixed(2));
+          it.spent_nds = Number((rawSpent * 1.22).toFixed(2));
         } catch {
           it.spent_nds = 0;
         }

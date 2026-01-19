@@ -195,14 +195,14 @@ export class TaskFilesService {
       this.logger.error(errorMessage);
 
       // Отправляем оповещение в Telegram админам
-      await this.notifyAdminsAboutUploadError({
-        path: absPath,
-        userId,
-        boardId,
-        commentId,
-        error: lastError,
-        attempts: maxAttempts,
-      });
+      // await this.notifyAdminsAboutUploadError({
+      //   path: absPath,
+      //   userId,
+      //   boardId,
+      //   commentId,
+      //   error: lastError,
+      //   attempts: maxAttempts,
+      // });
 
       throw lastError ?? new Error('Upload failed after retries');
     }

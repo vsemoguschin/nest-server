@@ -61,7 +61,7 @@ export class VkAdsStatsService {
         makets: Number(it?.makets || 0),
         spentNds: Number(
           (it?.spent_nds ??
-            (it?.total?.base?.spent || it?.total?.base?.spend || 0) * 1.2) ||
+            (it?.total?.base?.spent || it?.total?.base?.spend || 0) * 1.22) ||
             0,
         ),
         maketPrice: Number(it?.maketPrice || 0),
