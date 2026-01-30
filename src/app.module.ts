@@ -46,6 +46,7 @@ import { CommercialDatasModule } from './domains/commercial-datas/commercial-dat
 import { AutoCategoryRulesModule } from './domains/auto-category-rules/auto-category-rules.module';
 import { YandexDiskModule } from './integrations/yandex-disk/yandex-disk.module';
 import { PnlModule } from './domains/pnl/pnl.module';
+import { CdekModule } from './domains/cdek/cdek.module';
 
 @Module({
   imports: [
@@ -92,6 +93,7 @@ import { PnlModule } from './domains/pnl/pnl.module';
     CommercialDatasModule,
     AutoCategoryRulesModule,
     PnlModule,
+    CdekModule,
 
     // другие модули
   ],

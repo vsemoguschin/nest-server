@@ -42,6 +42,8 @@ async function bootstrap() {
       'Accept',
       'Origin',
       'X-Requested-With',
+      'Idempotency-Key',
+      'X-Request-Id',
     ],
     exposedHeaders: ['Content-Length', 'ETag'],
   });

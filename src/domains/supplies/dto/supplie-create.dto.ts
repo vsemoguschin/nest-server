@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
 import {
-  IsInt,
+  IsNumber,
   IsString,
   IsNotEmpty,
   IsOptional,
@@ -11,6 +11,7 @@ import {
   ValidateIf,
   ValidateNested,
   IsArray,
+  IsPositive,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -23,7 +24,7 @@ const deliveryMethods = [
   'Доставка от поставщика',
   'Курьерская доставка',
   'ПЭК',
-  'Деловые Линии'
+  'Деловые Линии',
 ];
 const categories = [
   'Поликарбонат',
@@ -44,8 +45,9 @@ export class SuppliePositionCreateDto {
   @IsNotEmpty({ message: 'Название позиции обязательно.' })
   name: string;
 
-  @IsInt({ message: 'Количество должно быть целым числом.' })
-  @Min(1, { message: 'Количество должно быть больше 0.' })
+  @Type(() => Number)
+  @IsNumber({}, { message: 'Количество должно быть числом.' })
+  @IsPositive({ message: 'Количество должно быть больше 0.' })
   quantity: number;
 
   @Min(1, { message: 'Цена за единицу должна быть больше или равна 1.' })
@@ -115,4 +117,4 @@ export class SupplieCreateDto {
   @Type(() => SuppliePositionCreateDto)
   @IsNotEmpty({ message: 'Массив позиций не может быть пустым.' })
   positions: SuppliePositionCreateDto[];
-} 
+}

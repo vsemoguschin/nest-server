@@ -17,6 +17,7 @@ export type OrderLikeForWarnings =
   | {
       type?: string | null;
       holeType?: string | null;
+      material?: string | null;
       fitting?: string | null;
       laminate?: string | null;
       acrylic?: string | null;
@@ -58,9 +59,11 @@ export function collectTaskWarnings(
 
   for (const order of orders ?? []) {
     if (!order) continue;
-
     const type = order.type?.trim();
     if (type) warnings.add(type);
+
+    const material = order.material?.trim();
+    if (material === 'ПВХ') warnings.add(material);
 
     const holeType = order.holeType?.trim();
     if (holeType) warnings.add('Отверстия ' + holeType);

@@ -737,6 +737,7 @@ export class TasksService {
             dimmer: true,
             neons: { select: { color: true, width: true } },
             lightings: { select: { color: true } },
+            material: true,
           },
         },
         deal: {

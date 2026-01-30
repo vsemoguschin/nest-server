@@ -120,6 +120,7 @@ export class BoardsService {
                 orders: {
                   select: {
                     deadline: true,
+                    material: true,
                     boardHeight: true,
                     boardWidth: true,
                     type: true,

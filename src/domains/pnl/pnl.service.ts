@@ -234,7 +234,7 @@ export class PnlService {
           },
         });
         const value = supplies.reduce(
-          (a, b) => a + b.priceForItem * b.quantity,
+          (a, b) => a + b.priceForItem * b.quantity.toNumber(),
           0,
         );
         return {

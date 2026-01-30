@@ -61,6 +61,14 @@ export class ProductionService {
         ],
       };
     }
+    if (['MASTER'].includes(user.role.shortName) || user.id === 230) {
+      return {
+        tabs: [
+          { value: 'package', label: 'Упаковщики' },
+          { value: 'masters', label: 'Сборщики' },
+        ],
+      };
+    }
     if (['LOGIST'].includes(user.role.shortName)) {
       return {
         tabs: [
@@ -1505,10 +1513,10 @@ export class ProductionService {
 
   async getPackers(user: UserDto) {
     const userSearch =
-      ['PACKER', 'LOGIST'].includes(user.role.shortName) || user.id === 129
+      ['PACKER', 'LOGIST', 'MASTER'].includes(user.role.shortName)
         ? user.id
         : { gt: 0 };
-    console.log(userSearch);
+    // console.log(userSearch);
 
     const users = await this.prisma.user.findMany({
       where: {
@@ -1589,7 +1597,7 @@ export class ProductionService {
       } catch (error) {
         console.error('Error fetching Kaiten card:', error);
       }
-    } 
+    }
 
     return this.prisma.packerReport.create({
       data: {

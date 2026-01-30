@@ -1,4 +1,4 @@
-// Запуск: cd nest && npx ts-node src/seeds/seed-fix-2026-jan-ads.ts (опц. BATCH_SIZE=500)
+// Запуск: cd crm/nest && npx ts-node src/seeds/seed-fix-2026-jan-ads.ts (опц. BATCH_SIZE=500)
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();

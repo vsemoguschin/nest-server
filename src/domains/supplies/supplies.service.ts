@@ -48,7 +48,17 @@ export class SuppliesService {
     });
 
     // Возвращаем созданную запись Supplie
-    return fullSupplie;
+    if (!fullSupplie) {
+      return fullSupplie;
+    }
+
+    return {
+      ...fullSupplie,
+      positions: fullSupplie.positions.map((position) => ({
+        ...position,
+        quantity: position.quantity.toNumber(),
+      })),
+    };
   }
 
   async getSupplies(from: string, to: string, user: UserDto) {
@@ -82,8 +92,16 @@ export class SuppliesService {
     );
 
     // console.log(uniquePositions);
+    const normalizedSupplies = supplies.map((supplie) => ({
+      ...supplie,
+      positions: supplie.positions.map((position) => ({
+        ...position,
+        quantity: position.quantity.toNumber(),
+      })),
+    }));
+
     return {
-      supplies,
+      supplies: normalizedSupplies,
       filters: {
         uniquePositions,
         uniqueCategories,
@@ -114,7 +132,7 @@ export class SuppliesService {
         ...existingSupplie,
         positions: existingSupplie.positions.map((position) => ({
           name: position.name,
-          quantity: position.quantity,
+          quantity: position.quantity.toNumber(),
           priceForItem: position.priceForItem,
           category: position.category,
         })),
@@ -191,8 +209,9 @@ export class SuppliesService {
         ...supplie,
         positions: fullSupplie!.positions.map((position) => ({
           name: position.name,
-          quantity: position.quantity,
+          quantity: position.quantity.toNumber(),
           priceForItem: position.priceForItem,
+          category: position.category,
         })) as SuppliePositionCreateDto[],
       };
     });
