@@ -921,7 +921,12 @@ export class ProductionService {
     });
   }
 
-  async getMasterReports(userId: number, from: string, to: string) {
+  async getMasterReports(
+    user: { id: number; role: { shortName: string } },
+    from: string,
+    to: string,
+  ) {
+    const userId = user.id;
     const masterReports = await this.prisma.masterReport.findMany({
       where: {
         userId,
@@ -945,7 +950,7 @@ export class ProductionService {
     });
 
     const masterOtherReports =
-      userId === 129
+      userId === 129 || user.role.shortName === 'PACKER'
         ? []
         : await this.prisma.otherReport.findMany({
             where: {
@@ -1512,10 +1517,11 @@ export class ProductionService {
   }
 
   async getPackers(user: UserDto) {
-    const userSearch =
-      ['PACKER', 'LOGIST', 'MASTER'].includes(user.role.shortName)
-        ? user.id
-        : { gt: 0 };
+    const userSearch = ['PACKER', 'LOGIST', 'MASTER'].includes(
+      user.role.shortName,
+    )
+      ? user.id
+      : { gt: 0 };
     // console.log(userSearch);
 
     const users = await this.prisma.user.findMany({
@@ -1608,7 +1614,12 @@ export class ProductionService {
     });
   }
 
-  async getPackerReports(userId: number, from: string, to: string) {
+  async getPackerReports(
+    user: { id: number; role: { shortName: string } },
+    from: string,
+    to: string,
+  ) {
+    const userId = user.id;
     const reports = await this.prisma.packerReport.findMany({
       where: {
         userId,
@@ -1619,16 +1630,20 @@ export class ProductionService {
       },
       orderBy: { date: 'desc' },
     });
-    const packersOtherReports = await this.prisma.otherReport.findMany({
-      where: {
-        userId,
-        date: {
-          gte: from,
-          lte: to,
-        },
-      },
-      orderBy: { date: 'desc' },
-    });
+
+    const packersOtherReports =
+      user.role.shortName === 'PACKER'
+        ? await this.prisma.otherReport.findMany({
+            where: {
+              userId,
+              date: {
+                gte: from,
+                lte: to,
+              },
+            },
+            orderBy: { date: 'desc' },
+          })
+        : [];
     return [
       ...reports.map((report) => ({
         ...report,

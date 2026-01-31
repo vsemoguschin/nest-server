@@ -278,7 +278,6 @@ export class ProductionController {
       throw new BadRequestException('Отчет не найден');
     }
 
-
     // Получаем пользователя отчета для проверки workSpaceId
     const reportUser = await this.prisma.user.findUnique({
       where: { id: existingReport.userId },
@@ -422,7 +421,21 @@ export class ProductionController {
         'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    return this.productionService.getMasterReports(+id, from, to);
+    const user = await this.prisma.user.findUnique({
+      where: { id: +id },
+      select: {
+        id: true,
+        role: {
+          select: {
+            shortName: true,
+          },
+        },
+      },
+    });
+    if (!user) {
+      throw new BadRequestException('Пользователь не найден.');
+    }
+    return this.productionService.getMasterReports(user, from, to);
   }
 
   @Get('frezer/:id/reports')
@@ -575,7 +588,21 @@ export class ProductionController {
         'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    return this.productionService.getPackerReports(+id, from, to);
+    const user = await this.prisma.user.findUnique({
+      where: { id: +id },
+      select: {
+        id: true,
+        role: {
+          select: {
+            shortName: true,
+          },
+        },
+      },
+    });
+    if (!user) {
+      throw new BadRequestException('Пользователь не найден.');
+    }
+    return this.productionService.getPackerReports(user, from, to);
   }
 
   @Patch('packer-report/:id')

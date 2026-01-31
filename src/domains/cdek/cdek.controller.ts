@@ -37,9 +37,44 @@ export class CdekController {
     return result.data;
   }
 
+  @Get('orders/:uuid/barcodes')
+  async downloadBarcodes(
+    @Param('uuid') uuid: string,
+    @Query('format') format: string,
+    @Res() res: Response,
+  ) {
+    const params = format ? { format } : undefined;
+    const result = await this.cdek.getBinary(`/orders/${uuid}/barcodes`, params);
+
+    if (result.status !== 200) {
+      const payload = Buffer.isBuffer(result.data)
+        ? result.data.toString('utf8')
+        : result.data;
+      res.status(result.status);
+      try {
+        return res.json(typeof payload === 'string' ? JSON.parse(payload) : payload);
+      } catch {
+        return res.send(payload);
+      }
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="cdek-barcode-${uuid}.pdf"`,
+    );
+    res.status(result.status);
+    return res.send(result.data);
+  }
+
   @Get('orders')
-  async getOrderByNumber(@Query('number') number: string, @Res({ passthrough: true }) res: Response) {
-    const result = await this.cdek.get('/orders', { number });
+  async getOrderByNumber(
+    @Query('number') number: string,
+    @Query('dealId') dealId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const query = dealId ? { dealId } : { number };
+    const result = await this.cdek.get('/orders', query);
     res.status(result.status);
     return result.data;
   }

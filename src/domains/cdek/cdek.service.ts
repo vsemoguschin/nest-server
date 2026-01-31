@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 
 @Injectable()
 export class CdekProxyService {
@@ -29,6 +29,14 @@ export class CdekProxyService {
     return this.request('post', path, body, undefined, headers);
   }
 
+  async getBinary(
+    path: string,
+    params?: Record<string, any>,
+    headers?: Record<string, string | undefined>,
+  ) {
+    return this.request('get', path, undefined, params, headers, 'arraybuffer');
+  }
+
   private buildHeaders(extra?: Record<string, string | undefined>) {
     const headers: Record<string, string> = {};
     const token = this.config.get<string>('CDEK_SERVICE_TOKEN');
@@ -54,6 +62,7 @@ export class CdekProxyService {
     body?: Record<string, unknown>,
     params?: Record<string, any>,
     headers?: Record<string, string | undefined>,
+    responseType?: AxiosRequestConfig['responseType'],
   ) {
     try {
       const response = await this.http.request({
@@ -62,6 +71,7 @@ export class CdekProxyService {
         data: body,
         params,
         headers: this.buildHeaders(headers),
+        responseType,
       });
 
       return { status: response.status, data: response.data };
