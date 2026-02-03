@@ -45,6 +45,17 @@ const parseOptionalAccountId = (value?: string): number | undefined => {
   return parsed;
 };
 
+const parseOptionalProjectId = (value?: string): number | undefined => {
+  if (!value || value === 'all') return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new BadRequestException(
+      'Параметр projectId должен быть положительным целым числом или all',
+    );
+  }
+  return parsed;
+};
+
 const parseIdList = (
   value: string | string[] | undefined,
   options: { field: string; allowZero: boolean },
@@ -93,7 +104,8 @@ export class PlanfactController {
     @Query('to') to: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 50,
-    @Query('accountId') accountId?: number,
+    @Query('accountId') accountId?: string,
+    @Query('projectId') projectId?: string,
     @Query('distributionFilter') distributionFilter?: string,
     @Query(
       'counterPartyId',
@@ -158,12 +170,16 @@ export class PlanfactController {
       );
     }
 
+    const parsedAccountId = parseOptionalAccountId(accountId);
+    const parsedProjectId = parseOptionalProjectId(projectId);
+
     return this.planfactService.getOriginalOperations({
       from,
       to,
       page,
       limit,
-      accountId,
+      accountId: parsedAccountId,
+      projectId: parsedProjectId,
       distributionFilter,
       counterPartyId,
       expenseCategoryId,
@@ -179,6 +195,7 @@ export class PlanfactController {
     @Query('to') to: string,
     @Res({ passthrough: true }) res: Response,
     @Query('accountId') accountId?: string,
+    @Query('projectId') projectId?: string,
     @Query('distributionFilter') distributionFilter?: string,
     @Query('counterPartyId') counterPartyId?: string | string[],
     @Query('expenseCategoryId') expenseCategoryId?: string | string[],
@@ -213,6 +230,7 @@ export class PlanfactController {
     }
 
     const parsedAccountId = parseOptionalAccountId(accountId);
+    const parsedProjectId = parseOptionalProjectId(projectId);
     const parsedCounterPartyId = parseIdList(counterPartyId, {
       field: 'counterPartyId',
       allowZero: false,
@@ -228,6 +246,7 @@ export class PlanfactController {
       from,
       to,
       accountId: parsedAccountId,
+      projectId: parsedProjectId,
       distributionFilter,
       counterPartyId: parsedCounterPartyId,
       expenseCategoryId: parsedExpenseCategoryId,
@@ -251,6 +270,7 @@ export class PlanfactController {
     @Query('from') from: string,
     @Query('to') to: string,
     @Query('accountId') accountId?: number,
+    @Query('projectId') projectId?: string,
     @Query(
       'counterPartyId',
       new ParseArrayPipe({ items: Number, optional: true, separator: ',' }),
@@ -298,10 +318,13 @@ export class PlanfactController {
       );
     }
 
+    const parsedProjectId = parseOptionalProjectId(projectId);
+
     return this.planfactService.getOriginalOperationsTotals({
       from,
       to,
       accountId,
+      projectId: parsedProjectId,
       // counterPartyId,
       // expenseCategoryId,
       // typeOfOperation,
@@ -341,12 +364,25 @@ export class PlanfactController {
       id?: number;
       counterPartyId?: number;
       expenseCategoryId?: number;
+      projectId?: number | null;
       amount: number;
     }>,
   ) {
     return this.planfactService.updateOriginalOperationPositions(
       operationId,
       positionsData,
+    );
+  }
+
+  @Patch('position/:positionId/project')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async updateProjectForPosition(
+    @Param('positionId') positionId: number,
+    @Body() body: { projectId: number | null },
+  ) {
+    return this.planfactService.updateProjectForPosition(
+      positionId,
+      body.projectId,
     );
   }
 
@@ -447,10 +483,26 @@ export class PlanfactController {
     );
   }
 
+  @Delete('expense-categories/:id')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async deleteExpenseCategory(@Param('id') id: string) {
+    const categoryId = parseInt(id, 10);
+    if (isNaN(categoryId)) {
+      throw new BadRequestException('ID категории должен быть числом');
+    }
+    return this.planfactService.deleteExpenseCategory(categoryId);
+  }
+
   @Get('expense-categories-mini')
   @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getExpenseCategoriesByType(@Query('type') type: string) {
     return this.planfactService.getExpenseCategoriesByType(type);
+  }
+
+  @Get('projects')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async getProjects() {
+    return this.planfactService.getProjects();
   }
 
   //получить список статей расходов

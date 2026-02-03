@@ -37,6 +37,17 @@ export class AttachmentsService {
   private readonly logger = new Logger(AttachmentsService.name);
   private readonly downloadRetryAttempts = 2;
   private readonly placeholderFilename = 'placeholder.png';
+  private readonly hrefCache = new Map<
+    string,
+    { href: string; expiresAt: number }
+  >();
+  private readonly hrefInFlight = new Map<string, Promise<string | null>>();
+  private readonly hrefCacheTtlMs = Number(
+    process.env.YD_HREF_CACHE_TTL_MS ?? 5 * 60 * 1000,
+  );
+  private readonly hrefCacheMaxSize = Number(
+    process.env.YD_HREF_CACHE_MAX_SIZE ?? 10_000,
+  );
   private readonly placeholderAbsolutePath = join(
     process.cwd(),
     'public',
@@ -143,53 +154,90 @@ export class AttachmentsService {
   private async getDownloadHref(path: string): Promise<string | null> {
     if (!path) throw new BadRequestException('path is required');
 
+    const cached = this.getCachedHref(path);
+    if (cached) return cached;
+
+    const inFlight = this.hrefInFlight.get(path);
+    if (inFlight) return await inFlight;
+
+    const fetchPromise = (async () => {
+      try {
+        const href = await this.yandexDisk.getDownloadLink(path);
+        if (!href) {
+          this.logger.warn(`No href from YDisk for path="${path}"`);
+          throw new NotFoundException('File href not found');
+        }
+        this.setCachedHref(path, href);
+        return href;
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error ?? 'unknown');
+
+        // Проверяем известные "мягкие" ошибки
+        const isSoftError =
+          error instanceof NotFoundException ||
+          error instanceof ServiceUnavailableException ||
+          error instanceof BadRequestException ||
+          error instanceof ForbiddenException ||
+          error instanceof InternalServerErrorException ||
+          errorMessage.includes('DiskNotFoundError') ||
+          errorMessage.includes('Resource not found') ||
+          errorMessage.includes('отсутствует');
+
+        if (isSoftError) {
+          this.logger.warn(
+            `Yandex Disk error for path="${path}": ${errorMessage}. Returning null for placeholder.`,
+          );
+          return null;
+        }
+
+        if (axios.isAxiosError(error)) {
+          const status = error.response?.status;
+          this.logger.warn(
+            `Axios error for path="${path}": status=${status ?? 'no-response'}, message=${errorMessage}. Returning null for placeholder.`,
+          );
+          return null;
+        }
+
+        this.logger.error(
+          `Unknown error in getDownloadHref for path="${path}": ${errorMessage}. Returning null for placeholder.`,
+          error instanceof Error ? error.stack : undefined,
+        );
+        return null;
+      }
+    })();
+
+    this.hrefInFlight.set(path, fetchPromise);
     try {
-      const href = await this.yandexDisk.getDownloadLink(path);
-      if (!href) {
-        this.logger.warn(`No href from YDisk for path="${path}"`);
-        throw new NotFoundException('File href not found');
-      }
-      return href;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error ?? 'unknown');
-
-      // === НОВЫЙ КОД: Логируем и возвращаем null для ЛЮБОЙ ошибки ===
-
-      // Проверяем известные "мягкие" ошибки
-      const isSoftError =
-        error instanceof NotFoundException ||
-        error instanceof ServiceUnavailableException ||
-        error instanceof BadRequestException ||
-        error instanceof ForbiddenException ||
-        error instanceof InternalServerErrorException || // <-- ДОБАВЛЕНО
-        errorMessage.includes('DiskNotFoundError') ||
-        errorMessage.includes('Resource not found') ||
-        errorMessage.includes('отсутствует'); // <-- ДОБАВЛЕНО для "Ответ от Яндекс.Диска отсутствует"
-
-      if (isSoftError) {
-        this.logger.warn(
-          `Yandex Disk error for path="${path}": ${errorMessage}. Returning null for placeholder.`,
-        );
-        return null;
-      }
-
-      // Axios ошибки тоже возвращаем null
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        this.logger.warn(
-          `Axios error for path="${path}": status=${status ?? 'no-response'}, message=${errorMessage}. Returning null for placeholder.`,
-        );
-        return null;
-      }
-
-      // Для любых других ошибок тоже возвращаем null (не падаем!)
-      this.logger.error(
-        `Unknown error in getDownloadHref for path="${path}": ${errorMessage}. Returning null for placeholder.`,
-        error instanceof Error ? error.stack : undefined,
-      );
-      return null; // <-- Изменено с throw на return null
+      return await fetchPromise;
+    } finally {
+      this.hrefInFlight.delete(path);
     }
+  }
+
+  private getCachedHref(path: string): string | null {
+    const cached = this.hrefCache.get(path);
+    if (!cached) return null;
+    if (cached.expiresAt <= Date.now()) {
+      this.hrefCache.delete(path);
+      return null;
+    }
+    return cached.href;
+  }
+
+  private setCachedHref(path: string, href: string) {
+    if (this.hrefCache.size >= this.hrefCacheMaxSize) {
+      const firstKey = this.hrefCache.keys().next().value as string | undefined;
+      if (firstKey) this.hrefCache.delete(firstKey);
+    }
+    this.hrefCache.set(path, {
+      href,
+      expiresAt: Date.now() + this.hrefCacheTtlMs,
+    });
+  }
+
+  private invalidateHrefCache(path: string) {
+    this.hrefCache.delete(path);
   }
 
   /** Открыть исходный поток файла по прямой ссылке */
@@ -422,7 +470,7 @@ export class AttachmentsService {
         stream,
         contentType: 'image/png',
         filename: this.placeholderFilename,
-        cacheSeconds: 60 * 60 * 24,
+        cacheSeconds: 10,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -458,6 +506,7 @@ export class AttachmentsService {
         this.logger.warn(
           `openSourceStream attempt ${attempt} failed for path=${path}: ${message}`,
         );
+        this.invalidateHrefCache(path);
         if (attempt >= this.downloadRetryAttempts) {
           break;
         }

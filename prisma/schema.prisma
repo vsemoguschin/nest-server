@@ -722,6 +722,17 @@ model FrezerReport {
 }
 
 //планфакт ----------
+model Project {
+  id         Int       @id @default(autoincrement())
+  name       String
+  code       String?   @unique
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  operationPositions OperationPosition[]
+}
+
 model ExpenseCategory {
   id                     Int                @id @default(autoincrement())
   name                   String
@@ -835,6 +846,15 @@ model OperationPosition {
 
   expenseCategoryId  Int?            // Связь с категорией
   expenseCategory    ExpenseCategory?  @relation(fields: [expenseCategoryId], references: [id])
+
+  projectId          Int?            // Связь с проектом
+  project            Project?        @relation(fields: [projectId], references: [id])
+
+  @@index([originalOperationId])
+  @@index([operationId])
+  @@index([counterPartyId])
+  @@index([expenseCategoryId])
+  @@index([projectId])
 }
 
 model OriginalOperationFromTbank {
@@ -865,6 +885,8 @@ model OriginalOperationFromTbank {
   
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+
+  @@index([accountId, operationDate])
 }
 
 model TbankSyncStatus {

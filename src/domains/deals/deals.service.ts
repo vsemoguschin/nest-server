@@ -1677,55 +1677,28 @@ export class DealsService {
     if (!dealExists) {
       throw new NotFoundException(`Сделка с ID ${id} не найдена`);
     }
-    const dealId = id;
+    if (dealExists.deletedAt) {
+      throw new BadRequestException('Сделка уже удалена');
+    }
+
     return this.prisma.$transaction(async (prisma) => {
-      // Удаляем все связанные DealUser
-      await prisma.dealUser.deleteMany({
-        where: { dealId },
-      });
-
-      // Удаляем все связанные Payment
-      await prisma.payment.deleteMany({
-        where: { dealId },
-      });
-
-      // Удаляем все связанные Dop
-      await prisma.dop.deleteMany({
-        where: { dealId },
-      });
-
-      await prisma.dealAudit.deleteMany({
-        where: {
-          dealId,
+      const deletedDeal = await prisma.deal.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(), // Помечаем как удаленную
         },
       });
 
-      // Удаляем саму сделку
-      const deletedDeal = await prisma.deal.delete({
-        where: { id: dealId },
+      await prisma.dealAudit.create({
+        data: {
+          dealId: id,
+          userId: user.id,
+          action: 'Удаление сделки',
+          comment: `Удалил сделку ${dealExists.title}(${id})`,
+        },
       });
 
-      // Формируем комментарий для аудита
-      // const auditComment = `Удалил сделку ${dealExists.title}(${dealId})`;
-
-      // Создаем запись в аудите
-      // await this.prisma.dealAudit.create({
-      //   data: {
-      //     dealId: dealExists.id,
-      //     userId: user.id,
-      //     action: 'Удаление сделки',
-      //     comment: auditComment,
-      //   },
-      // });
-
       return deletedDeal;
-    });
-
-    return this.prisma.deal.update({
-      where: { id },
-      data: {
-        deletedAt: new Date(), // Помечаем как удаленную
-      },
     });
   }
 

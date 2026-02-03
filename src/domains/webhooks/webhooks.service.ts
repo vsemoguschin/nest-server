@@ -41,6 +41,8 @@ export class WebhooksService {
       const { status, sendDate, deliveredDate, cdekStatus } =
         this.cdekService.parseOrderStatus(entity);
 
+      const price = entity?.delivery_detail?.total_sum || 0;
+
       const del = await this.prisma.delivery.updateMany({
         where: { track: cdek_number },
         data: {

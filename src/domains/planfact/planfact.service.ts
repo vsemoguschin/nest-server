@@ -62,6 +62,12 @@ export interface ExpenseCategoryTree {
   children: ExpenseCategoryTree[];
 }
 
+export interface ProjectType {
+  id: number;
+  name: string;
+  code?: string | null;
+}
+
 export interface OperationPositionType {
   id: number;
   counterPartyId: number | null;
@@ -69,6 +75,7 @@ export interface OperationPositionType {
   amount: number;
   counterParty?: CounterPartyType;
   expenseCategory?: ExpenseCategoryType;
+  project?: ProjectType | null;
 }
 
 export interface OriginalOperationType {
@@ -573,6 +580,50 @@ export class PlanfactService {
     });
   }
 
+  async deleteExpenseCategory(id: number) {
+    const category = await this.prisma.expenseCategory.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!category) {
+      throw new NotFoundException(`Категория с ID ${id} не найдена`);
+    }
+
+    const result = await this.prisma.$transaction(async (prisma) => {
+      const childrenUpdate = await prisma.expenseCategory.updateMany({
+        where: { parentId: id },
+        data: { parentId: null },
+      });
+
+      const positionsUpdate = await prisma.operationPosition.updateMany({
+        where: { expenseCategoryId: id },
+        data: { expenseCategoryId: null },
+      });
+
+      const incomeCounterPartiesUpdate = await prisma.counterParty.updateMany({
+        where: { incomeExpenseCategoryId: id },
+        data: { incomeExpenseCategoryId: null },
+      });
+
+      const outcomeCounterPartiesUpdate = await prisma.counterParty.updateMany({
+        where: { outcomeExpenseCategoryId: id },
+        data: { outcomeExpenseCategoryId: null },
+      });
+
+      await prisma.expenseCategory.delete({ where: { id } });
+
+      return {
+        childrenUpdated: childrenUpdate.count,
+        positionsUpdated: positionsUpdate.count,
+        counterPartiesUpdated:
+          incomeCounterPartiesUpdate.count + outcomeCounterPartiesUpdate.count,
+      };
+    });
+
+    return { success: true, ...result };
+  }
+
   async getExpenseCategoriesByType(type: string) {
 
     // Получаем все категории нужного типа без include (более эффективно)
@@ -812,6 +863,7 @@ export class PlanfactService {
       from,
       to,
       accountId,
+      projectId,
       counterPartyId,
       expenseCategoryId,
       typeOfOperation,
@@ -820,6 +872,7 @@ export class PlanfactService {
       from: string;
       to: string;
       accountId?: number;
+      projectId?: number;
       counterPartyId?: number[];
       expenseCategoryId?: number[];
       typeOfOperation?: string;
@@ -836,6 +889,18 @@ export class PlanfactService {
             counterPartyTitle: {
               contains: searchText,
               mode: 'insensitive',
+            },
+          },
+          {
+            operationPositions: {
+              some: {
+                counterParty: {
+                  title: {
+                    contains: searchText,
+                    mode: 'insensitive',
+                  },
+                },
+              },
             },
           },
           {
@@ -918,6 +983,12 @@ export class PlanfactService {
       }
 
       const positionConditions: Record<string, unknown>[] = [];
+
+      if (projectId) {
+        positionConditions.push({
+          projectId,
+        });
+      }
 
       if (counterPartyId && counterPartyId.length > 0) {
         positionConditions.push({
@@ -1136,6 +1207,7 @@ export class PlanfactService {
     page,
     limit,
     accountId,
+    projectId,
     distributionFilter,
     counterPartyId,
     expenseCategoryId,
@@ -1147,6 +1219,7 @@ export class PlanfactService {
     page: number;
     limit: number;
     accountId?: number;
+    projectId?: number;
     distributionFilter?: string;
     counterPartyId?: number[];
     expenseCategoryId?: number[];
@@ -1160,6 +1233,7 @@ export class PlanfactService {
         from,
         to,
         accountId,
+        projectId,
         counterPartyId,
         expenseCategoryId,
         typeOfOperation,
@@ -1189,6 +1263,7 @@ export class PlanfactService {
           include: {
             counterParty: true,
             expenseCategory: true,
+            project: true,
           },
         },
       },
@@ -1224,6 +1299,7 @@ export class PlanfactService {
     from,
     to,
     accountId,
+    projectId,
     distributionFilter,
     counterPartyId,
     expenseCategoryId,
@@ -1233,6 +1309,7 @@ export class PlanfactService {
     from: string;
     to: string;
     accountId?: number;
+    projectId?: number;
     distributionFilter?: string;
     counterPartyId?: number[];
     expenseCategoryId?: number[];
@@ -1245,6 +1322,7 @@ export class PlanfactService {
         from,
         to,
         accountId,
+        projectId,
         counterPartyId,
         expenseCategoryId,
         typeOfOperation,
@@ -1273,6 +1351,7 @@ export class PlanfactService {
           include: {
             counterParty: true,
             expenseCategory: true,
+            project: true,
           },
         },
       },
@@ -1295,6 +1374,7 @@ export class PlanfactService {
       { header: 'Тип', key: 'type', width: 32 },
       { header: 'Категория', key: 'category', width: 20 },
       { header: 'Статья', key: 'expenseCategory', width: 32 },
+      { header: 'Проект', key: 'project', width: 24 },
       { header: 'Счет', key: 'account', width: 24 },
       { header: 'Контрагент', key: 'counterParty', width: 32 },
       { header: 'Назначение', key: 'purpose', width: 60 },
@@ -1320,6 +1400,10 @@ export class PlanfactService {
         .map((pos) => pos.expenseCategory?.name)
         .filter((name): name is string => Boolean(name));
       const uniqueCategoryNames = Array.from(new Set(categoryNames));
+      const projectNames = operationPositions
+        .map((pos) => pos.project?.name)
+        .filter((name): name is string => Boolean(name));
+      const uniqueProjectNames = Array.from(new Set(projectNames));
       const payPurpose = operation.payPurpose || '';
       const purposeValue =
         uniqueCategoryNames.length > 0
@@ -1331,6 +1415,7 @@ export class PlanfactService {
         type: typeLabel,
         category: operation.category || '',
         expenseCategory: uniqueCategoryNames.join(', '),
+        project: uniqueProjectNames.join(', ') || 'Общая деятельность',
         account: accountName,
         counterParty: uniqueCounterPartyTitles.join(', '),
         purpose: purposeValue,
@@ -1346,6 +1431,7 @@ export class PlanfactService {
     from,
     to,
     accountId,
+    projectId,
     // counterPartyId,
     // expenseCategoryId,
     // typeOfOperation,
@@ -1353,6 +1439,7 @@ export class PlanfactService {
     from: string;
     to: string;
     accountId?: number;
+    projectId?: number;
     // counterPartyId?: number[];
     // expenseCategoryId?: number[];
     // typeOfOperation?: string;
@@ -1380,6 +1467,12 @@ export class PlanfactService {
 
     // Формируем условия для фильтрации по позициям операций
     const positionConditions: Record<string, unknown>[] = [];
+
+    if (projectId) {
+      positionConditions.push({
+        projectId,
+      });
+    }
 
     // if (counterPartyId && counterPartyId.length > 0) {
     //   positionConditions.push({
@@ -1484,6 +1577,16 @@ export class PlanfactService {
 
     // Проходим по всем операциям и их позициям
     for (const operation of allOperations) {
+      const relevantPositions = projectId
+        ? operation.operationPositions.filter(
+            (position) => position.projectId === projectId,
+          )
+        : operation.operationPositions;
+
+      if (relevantPositions.length === 0) {
+        continue;
+      }
+
       // Собираем тоталы transfer операций отдельно
       // Проверяем, если counterPartyAccount равен одному из реальных аккаунтов
       const isSelfTransferByAccount =
@@ -1493,13 +1596,21 @@ export class PlanfactService {
       let isTransferOperation = false;
 
       if (isSelfTransferByAccount) {
+        const transferAmount = relevantPositions.reduce(
+          (sum, position) => sum + position.amount,
+          0,
+        );
+        if (transferAmount === 0) {
+          continue;
+        }
+
         // Распределяем по typeOfOperation: Debit -> selfTransferOuter, Credit -> selfTransferInner
         if (operation.typeOfOperation === 'Debit') {
-          selfTransferOuterTotal += operation.accountAmount;
-          selfTransferTotals.debit += operation.accountAmount;
+          selfTransferOuterTotal += transferAmount;
+          selfTransferTotals.debit += transferAmount;
         } else if (operation.typeOfOperation === 'Credit') {
-          selfTransferInnerTotal += operation.accountAmount;
-          selfTransferTotals.credit += operation.accountAmount;
+          selfTransferInnerTotal += transferAmount;
+          selfTransferTotals.credit += transferAmount;
         }
         isTransferOperation = true;
       }
@@ -1518,7 +1629,7 @@ export class PlanfactService {
         continue;
       }
 
-      for (const position of operation.operationPositions) {
+      for (const position of relevantPositions) {
         // Подсчет по контрагентам с разделением на debit и credit
         if (position.counterPartyId && position.counterParty) {
           const existing = counterPartyTotalsMap.get(position.counterPartyId);
@@ -1706,6 +1817,7 @@ export class PlanfactService {
       id?: number;
       counterPartyId?: number;
       expenseCategoryId?: number;
+      projectId?: number | null;
       amount: number;
     }>,
   ) {
@@ -1731,6 +1843,29 @@ export class PlanfactService {
       );
     }
 
+    const projectIds = Array.from(
+      new Set(
+        positionsData
+          .map((pos) => pos.projectId)
+          .filter((id): id is number => typeof id === 'number'),
+      ),
+    );
+    if (projectIds.length > 0) {
+      const existingProjects = await this.prisma.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true },
+      });
+      const existingProjectIds = new Set(
+        existingProjects.map((project) => project.id),
+      );
+      const missing = projectIds.filter((id) => !existingProjectIds.has(id));
+      if (missing.length > 0) {
+        throw new NotFoundException(
+          `Проекты не найдены: ${missing.join(', ')}`,
+        );
+      }
+    }
+
     // Удаляем все существующие позиции
     await this.prisma.operationPosition.deleteMany({
       where: {
@@ -1747,10 +1882,12 @@ export class PlanfactService {
             originalOperationId: originalOperation.id,
             counterPartyId: positionData.counterPartyId,
             expenseCategoryId: positionData.expenseCategoryId,
+            projectId: positionData.projectId ?? null,
           },
           include: {
             counterParty: true,
             expenseCategory: true,
+            project: true,
           },
         }),
       ),
@@ -1792,6 +1929,38 @@ export class PlanfactService {
       success: true,
       operationPosition: updatedPosition,
     };
+  }
+
+  async updateProjectForPosition(positionId: number, projectId: number | null) {
+    const position = await this.prisma.operationPosition.findUnique({
+      where: { id: positionId },
+    });
+
+    if (!position) {
+      throw new NotFoundException(`Позиция с ID ${positionId} не найдена`);
+    }
+
+    if (projectId !== null) {
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new NotFoundException(`Проект с ID ${projectId} не найден`);
+      }
+    }
+
+    return this.prisma.operationPosition.update({
+      where: { id: positionId },
+      data: { projectId },
+      include: { project: true },
+    });
+  }
+
+  async getProjects() {
+    return this.prisma.project.findMany({
+      orderBy: { name: 'asc' },
+    });
   }
 
   async assignExpenseCategoriesToCounterParty(

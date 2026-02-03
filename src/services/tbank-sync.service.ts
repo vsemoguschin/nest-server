@@ -35,6 +35,35 @@ export class TbankSyncService {
     private readonly autoRules: AutoCategoryRulesService,
   ) {}
 
+  private async getProjectIds() {
+    const projects = await this.prisma.project.findMany({
+      where: {
+        code: { in: ['general', 'easyneon', 'easybook'] },
+      },
+      select: {
+        id: true,
+        code: true,
+      },
+    });
+
+    const byCode = new Map(
+      projects.map((project) => [project.code, project.id]),
+    );
+
+    const generalId = byCode.get('general');
+    if (!generalId) {
+      throw new Error(
+        'Проект с code="general" не найден. Запусти seed-projects.ts',
+      );
+    }
+
+    return {
+      generalId,
+      easyneonId: byCode.get('easyneon') ?? generalId,
+      easybookId: byCode.get('easybook') ?? generalId,
+    };
+  }
+
   // Функция для определения категории на основе условий
   private determineExpenseCategory(
     typeOfOperation: string,
@@ -257,6 +286,7 @@ export class TbankSyncService {
   async saveOriginalOperations(
     operations: OperationFromApi[],
     accountId: number,
+    projectId: number,
   ) {
     let savedCount = 0;
     let lastOperationDate = '';
@@ -544,6 +574,7 @@ export class TbankSyncService {
             originalOperationId: originalOperation.id,
             counterPartyId: counterParty.id,
             expenseCategoryId: expenseCategoryId,
+            projectId,
           },
         });
 
@@ -628,6 +659,9 @@ export class TbankSyncService {
 
       this.logger.log(`Синхронизация операций с ${fromDate} по ${toDate}`);
 
+      const { generalId, easyneonId, easybookId } =
+        await this.getProjectIds();
+
       // Получаем все аккаунты с доступом к API
       const accounts = await this.prisma.planFactAccount.findMany({
         where: {
@@ -659,9 +693,17 @@ export class TbankSyncService {
           );
 
           if (operations.length > 0) {
+            const projectId =
+              account.id === 1
+                ? easyneonId
+                : account.id === 3
+                  ? easybookId
+                  : generalId;
+
             const result = await this.saveOriginalOperations(
               operations,
               account.id,
+              projectId,
             );
             this.logger.log(
               `Сохранено ${result.savedCount} операций для аккаунта ${account.name}. Последняя операция: ${result.lastOperationDate}`,
