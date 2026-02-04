@@ -323,6 +323,8 @@ model Deal {
   masterRepairReports   MasterRepairReport[]
   packerReports         PackerReport[]
   otherReports          OtherReport[]
+
+  @@index([saleDate, groupId])
 }
 
 // История изменения статуса
@@ -474,6 +476,9 @@ model Dop {
 
   groupId           Int?
   group             Group?      @relation( fields: [groupId], references: [id])
+
+  @@index([saleDate, groupId])
+  @@index([dealId])
 }
 // Типы допов
 model DopsType {
@@ -511,6 +516,8 @@ model Delivery {
   user           User?   @relation(fields: [userId], references: [id])
 
   @@index([taskId])
+  @@index([date])
+  @@index([dealId])
 }
 
 // ОТЗЫВЫ
@@ -558,6 +565,8 @@ model Supplie {
   // Связь с операцией Т-Банка (один к одному, может отсутствовать)
   // operationId     Int?     @unique
   // operation       OriginalOperationFromTbank? @relation(fields: [operationId], references: [id])
+
+  @@index([shipmentDate])
 }
 
 model SuppliePosition {
@@ -569,6 +578,9 @@ model SuppliePosition {
 
   supplieId       Int
   supplie         Supplie  @relation(fields: [supplieId], references: [id])
+
+  @@index([category, supplieId])
+  @@index([supplieId])
 }
 
 model Suppliers {
@@ -997,6 +1009,7 @@ model KanbanTask {
 
   @@index([boardId, columnId, position])
   @@index([dealId])
+  @@index([dealId, boardId])
   @@index([deletedAt])
   // Если нужно ограничить дубликаты названий в пределах доски:
   // @@unique([boardId, title])
@@ -1157,6 +1170,9 @@ model TaskOrder {
 
   package    Package?
   orderCost  OrderCost?
+
+  @@index([taskId])
+  @@index([dealId])
 }
 
 model OrderCost {
@@ -1169,13 +1185,13 @@ model OrderCost {
   computedAt      DateTime  @default(now())
   calcVersion     Int       @default(1)
 
-  priceForBoard   Decimal   @default(0)
-  priceForScreen  Decimal   @default(0)
-  neonPrice       Decimal   @default(0)
-  lightingPrice   Decimal   @default(0)
-  wirePrice       Decimal   @default(0)
-  adapterPrice    Decimal   @default(0)
-  plugPrice       Decimal   @default(0)
+  priceForBoard   Decimal   @default(0) // Поликарбонат
+  priceForScreen  Decimal   @default(0) // экран
+  neonPrice       Decimal   @default(0) // неон
+  lightingPrice   Decimal   @default(0) // подсветка
+  wirePrice       Decimal   @default(0) // аккустика
+  adapterPrice    Decimal   @default(0) // блок питания
+  plugPrice       Decimal   @default(0) // 
   packageCost     Decimal   @default(0)
   dimmerPrice     Decimal   @default(0)
   totalCost       Decimal   @default(0)

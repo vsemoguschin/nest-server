@@ -8,7 +8,7 @@ import * as ExcelJS from 'exceljs';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
 import { DashboardsService } from '../dashboards/dashboards.service';
-import { CommercialDatasService } from '../commercial-datas/commercial-datas.service';
+// import { CommercialDatasService } from '../commercial-datas/commercial-datas.service';
 import { CreateOperationDto } from './dto/create-operation.dto';
 import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
