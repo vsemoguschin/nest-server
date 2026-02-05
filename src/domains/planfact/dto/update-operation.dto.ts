@@ -18,6 +18,10 @@ class OperationPositionDto {
   amount: number;
 
   @IsOptional()
+  @IsString()
+  period?: string;
+
+  @IsOptional()
   @IsInt()
   counterPartyId?: number | null;
 

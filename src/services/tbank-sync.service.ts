@@ -571,6 +571,7 @@ export class TbankSyncService {
         await this.prisma.operationPosition.create({
           data: {
             amount: op.accountAmount,
+            period: op.operationDate?.slice(0, 7),
             originalOperationId: originalOperation.id,
             counterPartyId: counterParty.id,
             expenseCategoryId: expenseCategoryId,

@@ -366,6 +366,7 @@ export class PlanfactController {
       expenseCategoryId?: number;
       projectId?: number | null;
       amount: number;
+      period?: string;
     }>,
   ) {
     return this.planfactService.updateOriginalOperationPositions(

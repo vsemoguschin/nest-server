@@ -434,10 +434,10 @@ export class PnlService {
       this.getIncomeDatas(periods, { in: [19] }),
 
       // Расходы на производство - оптимизированный запрос
-      this.getExpensesByCategory(periods, 143),
+      this.getExpensesByCategory(periods, 143, 2),
 
       // Расходы на дизайн - оптимизированный запрос
-      this.getExpensesByCategory(periods, 141),
+      this.getExpensesByCategory(periods, 141, 2),
 
       // Расходы на рекламу - оптимизированный запрос
       this.getAdExpensesByPeriods(periods, 19),
@@ -476,35 +476,32 @@ export class PnlService {
   private async getExpensesByCategory(
     periods: string[],
     categoryId: number,
+    projectId?: number,
   ): Promise<{ period: string; value: number }[]> {
     // Один запрос вместо 4-х
+    const where: {
+      expenseCategoryId: number;
+      period: { in: string[] };
+      projectId?: number;
+    } = {
+      expenseCategoryId: categoryId,
+      period: { in: periods },
+    };
+    if (typeof projectId === 'number') {
+      where.projectId = projectId;
+    }
     const allExpenses = await this.prisma.operationPosition.findMany({
-      where: {
-        expenseCategoryId: categoryId,
-        OR: periods.map((p) => ({
-          originalOperation: {
-            operationDate: {
-              startsWith: p,
-            },
-          },
-        })),
-      },
+      where,
       select: {
         amount: true,
-        originalOperation: {
-          select: {
-            operationDate: true,
-          },
-        },
+        period: true,
       },
     });
 
     // Группируем по периодам
     const grouped = periods.map((period) => {
       const value = allExpenses
-        .filter((exp) =>
-          exp.originalOperation?.operationDate.startsWith(period),
-        )
+        .filter((exp) => exp.period === period)
         .reduce((sum, exp) => sum + exp.amount, 0);
 
       return { period, value };
@@ -576,6 +573,9 @@ export class PnlService {
     const EASYNEON_GROUP_IDS = [2, 3, 18];
     const EASYBOOK_GROUP_IDS = [19];
     const PRODUCTION_BOARD_IDS = [10, 5];
+    const EASYNEON_PROJECT_ID = 1;
+    const EASYBOOK_PROJECT_ID = 2;
+    const GENERAL_PROJECT_ID = 3;
 
     const baseDealWhere = {
       saleDate: { startsWith: period },
@@ -668,6 +668,10 @@ export class PnlService {
       return {
         orders: sumPrices(deals) + sumPrices(dops),
         shipped: sumDeliveries(deliveries),
+        deliveries,
+        shippedDealIds: Array.from(
+          new Set(deliveries.map((delivery) => delivery.dealId)),
+        ),
       };
     };
 
@@ -699,6 +703,47 @@ export class PnlService {
           },
         })
       : [];
+
+    const shippedEasyneonTasks = easyneon.shippedDealIds.length
+      ? await this.prisma.kanbanTask.findMany({
+          where: {
+            dealId: { in: easyneon.shippedDealIds },
+            boardId: { in: PRODUCTION_BOARD_IDS },
+          },
+          select: {
+            id: true,
+            orders: {
+              select: { id: true },
+            },
+          },
+        })
+      : [];
+
+    const shippedTaskIds = shippedEasyneonTasks.map((task) => task.id);
+    const shippedOrderIds = shippedEasyneonTasks.flatMap((task) =>
+      task.orders.map((order) => order.id),
+    );
+
+    const [shippedMasterReports, shippedPackerReports] = await Promise.all([
+      shippedOrderIds.length
+        ? this.prisma.masterReport.findMany({
+            where: {
+              orderId: { in: shippedOrderIds },
+              deletedAt: null,
+            },
+            select: { cost: true, penaltyCost: true },
+          })
+        : Promise.resolve([] as Array<{ cost: number; penaltyCost: number }>),
+      shippedTaskIds.length
+        ? this.prisma.packerReport.findMany({
+            where: {
+              taskId: { in: shippedTaskIds },
+              deletedAt: null,
+            },
+            select: { cost: true, penaltyCost: true },
+          })
+        : Promise.resolve([] as Array<{ cost: number; penaltyCost: number }>),
+    ]);
 
     const orderCostTotals = {
       priceForBoard: 0,
@@ -773,14 +818,10 @@ export class PnlService {
     });
 
     const [
-      masterReports,
-      packerReports,
       logistShifts,
       frezerReports,
       masterRepairReports,
       otherReports,
-      easyneonDeliveries,
-      easybookDeliveries,
       easyneonAdExpenses,
       easybookAdExpenses,
       mopNeonSalesManagers,
@@ -791,7 +832,9 @@ export class PnlService {
       productionHeadExpenses,
       easyneonDesignExpenses,
       easyneonDesignLeadExpenses,
+      easybookDesignLeadExpenses,
       easyneonSalesDirectorSalary,
+      easybookSalesDirectorSalary,
       easyneonMarketingTarget,
       easyneonMarketingAvito,
       easyneonMarketingSmm,
@@ -802,21 +845,9 @@ export class PnlService {
       accountingExpenses,
       hrExpenses,
       dividendsExpenses,
+      rkoExpenses,
+      financeExpenses,
     ] = await Promise.all([
-      this.prisma.masterReport.findMany({
-        where: {
-          date: { startsWith: period },
-          deletedAt: null,
-        },
-        select: { cost: true, penaltyCost: true },
-      }),
-      this.prisma.packerReport.findMany({
-        where: {
-          date: { startsWith: period },
-          deletedAt: null,
-        },
-        select: { cost: true, penaltyCost: true },
-      }),
       this.prisma.logistShift.findMany({
         where: {
           shift_date: { startsWith: period },
@@ -843,28 +874,6 @@ export class PnlService {
         },
         select: { cost: true, penaltyCost: true },
       }),
-      this.prisma.delivery.findMany({
-        where: {
-          type: 'Бесплатно',
-          date: { startsWith: period },
-          deal: {
-            ...baseDeliveryDealWhere,
-            groupId: { in: EASYNEON_GROUP_IDS },
-          },
-        },
-        select: { price: true },
-      }),
-      this.prisma.delivery.findMany({
-        where: {
-          type: 'Бесплатно',
-          date: { startsWith: period },
-          deal: {
-            ...baseDeliveryDealWhere,
-            groupId: { in: EASYBOOK_GROUP_IDS },
-          },
-        },
-        select: { price: true },
-      }),
       this.prisma.adExpense.findMany({
         where: {
           date: { startsWith: period },
@@ -883,21 +892,25 @@ export class PnlService {
       this.commercialDatasService.getMOPBookPNLDatas(period),
       this.commercialDatasService.getMOVBookPNLDatas(period),
       this.getBookPLDatas(period),
-      this.getExpensesByCategory([period], 57),
-      this.getExpensesByCategory([period], 52),
-      this.getExpensesByCategory([period], 72),
-      this.getExpensesByCategory([period], 71),
-      this.getExpensesByCategory([period], 81),
-      this.getExpensesByCategory([period], 83),
-      this.getExpensesByCategory([period], 84),
-      this.getExpensesByCategory([period], 85),
+      this.getExpensesByCategory([period], 57, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 52, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 72, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 71, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 71, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 81, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 81, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 83, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 84, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 85, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 38),
       this.getExpensesByCategory([period], 42),
       this.getExpensesByCategory([period], 45),
       this.getExpensesByCategory([period], 36),
       this.getExpensesByCategory([period], 68),
       this.getExpensesByCategory([period], 43),
-      this.getExpensesByCategory([period], 138),
+      this.getExpensesByCategory([period], 138, GENERAL_PROJECT_ID),
+      this.getExpensesByCategory([period], 48),
+      this.getExpensesByCategory([period], 151),
     ]);
 
     const sumCostMinusPenalty = (
@@ -911,8 +924,8 @@ export class PnlService {
         0,
       );
 
-    const assemblersTotal = sumCostMinusPenalty(masterReports);
-    const packersTotal = sumCostMinusPenalty(packerReports);
+    const assemblersTotal = sumCostMinusPenalty(shippedMasterReports);
+    const packersTotal = sumCostMinusPenalty(shippedPackerReports);
     const logistTotal = logistShifts.reduce(
       (sum, shift) => sum + resolveNumber(shift.cost),
       0,
@@ -920,14 +933,12 @@ export class PnlService {
     const frezerTotal = sumCostMinusPenalty(frezerReports);
     const repairsTotal = sumCostMinusPenalty(masterRepairReports);
     const otherReportsTotal = sumCostMinusPenalty(otherReports);
-    const easyneonDeliveryTotal = easyneonDeliveries.reduce(
-      (sum, delivery) => sum + resolveNumber(delivery.price),
-      0,
-    );
-    const easybookDeliveryTotal = easybookDeliveries.reduce(
-      (sum, delivery) => sum + resolveNumber(delivery.price),
-      0,
-    );
+    const easyneonDeliveryTotal = easyneon.deliveries
+      .filter((delivery) => delivery.type === 'Бесплатно')
+      .reduce((sum, delivery) => sum + resolveNumber(delivery.price), 0);
+    const easybookDeliveryTotal = easybook.deliveries
+      .filter((delivery) => delivery.type === 'Бесплатно')
+      .reduce((sum, delivery) => sum + resolveNumber(delivery.price), 0);
     const promotionEasyneonTotal = sumPrices(easyneonAdExpenses);
     const promotionEasybookTotal = sumPrices(easybookAdExpenses);
     const salesManagersEasyneonTotal = resolveNumber(mopNeonSalesManagers);
@@ -954,8 +965,14 @@ export class PnlService {
     const easyneonDesignLeadTotal = resolveNumber(
       easyneonDesignLeadExpenses?.[0]?.value ?? 0,
     );
+    const easybookDesignLeadTotal = resolveNumber(
+      easybookDesignLeadExpenses?.[0]?.value ?? 0,
+    );
     const easyneonSalesDirectorSalaryTotal = resolveNumber(
       easyneonSalesDirectorSalary?.[0]?.value ?? 0,
+    );
+    const easybookSalesDirectorSalaryTotal = resolveNumber(
+      easybookSalesDirectorSalary?.[0]?.value ?? 0,
     );
     const easyneonMarketingTargetTotal = resolveNumber(
       easyneonMarketingTarget?.[0]?.value ?? 0,
@@ -976,6 +993,8 @@ export class PnlService {
     const accountingTotal = resolveNumber(accountingExpenses?.[0]?.value ?? 0);
     const hrTotal = resolveNumber(hrExpenses?.[0]?.value ?? 0);
     const dividendsTotal = resolveNumber(dividendsExpenses?.[0]?.value ?? 0);
+    const rkoTotal = resolveNumber(rkoExpenses?.[0]?.value ?? 0);
+    const financeTotal = resolveNumber(financeExpenses?.[0]?.value ?? 0);
 
     const staffTotal =
       productionHeadTotal +
@@ -1040,19 +1059,25 @@ export class PnlService {
       easyneonMarketingSmmTotal;
 
     const commercialEasybook =
+      easybookDesignLeadTotal +
       bookDesignTotal +
+      easybookSalesDirectorSalaryTotal +
       salesManagersEasybookTotal +
       accountManagersEasybookTotal +
       ropsEasybookTotal;
 
+    const commercialWithPromotionEasyneon =
+      commercialEasyneon + promotionEasyneonTotal;
+    const commercialWithPromotionEasybook =
+      commercialEasybook + promotionEasybookTotal;
+
     const marginalIncomeEasyneon =
-      grossProfitEasyneon - commercialEasyneon - vatEasyneon;
+      grossProfitEasyneon - commercialWithPromotionEasyneon - vatEasyneon;
     const marginalIncomeEasybook =
-      grossProfitEasybook - commercialEasybook - vatEasybook;
+      grossProfitEasybook - commercialWithPromotionEasybook - vatEasybook;
 
     const servicesSubscriptionsTotal =
       easyneonMarketingAdsTotal + easyneonMarketingSubsTotal;
-    const rkoTotal = totalRevenue * 0.0075;
     const operatingExpensesTotal =
       rentTotal +
       accountingTotal +
@@ -1136,13 +1161,16 @@ export class PnlService {
         'easybook-sales-rops': ropsEasybookTotal,
         'easyneon-design-head': easyneonDesignLeadTotal,
         'easyneon-design-team': easyneonDesignTotal,
+        'easybook-design-head': easybookDesignLeadTotal,
         'easyneon-sales-cd-salary': easyneonSalesDirectorSalaryTotal,
+        'easybook-sales-cd-salary': easybookSalesDirectorSalaryTotal,
         'easyneon-marketing-target': easyneonMarketingTargetTotal,
         'easyneon-marketing-avito': easyneonMarketingAvitoTotal,
         'easyneon-marketing-smm': easyneonMarketingSmmTotal,
         'operating-expenses-rent': rentTotal,
         'operating-expenses-accounting': accountingTotal,
         'operating-expenses-services': servicesSubscriptionsTotal,
+        'operating-expenses-finance': financeTotal,
         'operating-expenses-hr': hrTotal,
         'operating-expenses-rko': rkoTotal,
         'cogs-easybook-print': bookPrintTotal,

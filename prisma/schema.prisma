@@ -846,6 +846,7 @@ model AutoCategoryRule {
 model OperationPosition {
   id                 Int               @id @default(autoincrement())
   amount             Float
+  period             String?
 
   operationId        Int?            // Связь с операцией
   operation          Operation?  @relation(fields: [operationId], references: [id])

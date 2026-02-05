@@ -2016,7 +2016,16 @@ export class ProductionService {
     logistId: number,
     dto: CreateLogistShiftsDto,
   ): Promise<LogistShiftResponseDto[]> {
-    const { shiftDates } = dto;
+    const { shiftDates, period } = dto;
+
+    const invalidShiftDates = shiftDates.filter(
+      (shift_date) => !shift_date.startsWith(period),
+    );
+    if (invalidShiftDates.length > 0) {
+      throw new BadRequestException(
+        `Даты смен должны быть в периоде ${period}: ${invalidShiftDates.join(', ')}`,
+      );
+    }
 
     const logist = await this.prisma.user.findUnique({
       where: { id: logistId },
@@ -2030,7 +2039,7 @@ export class ProductionService {
         where: {
           userId: logistId,
           shift_date: {
-            startsWith: dto.period,
+            startsWith: period,
           },
         },
       });

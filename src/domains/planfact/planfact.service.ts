@@ -73,6 +73,7 @@ export interface OperationPositionType {
   counterPartyId: number | null;
   expenseCategoryId: number | null;
   amount: number;
+  period?: string | null;
   counterParty?: CounterPartyType;
   expenseCategory?: ExpenseCategoryType;
   project?: ProjectType | null;
@@ -164,9 +165,11 @@ export class PlanfactService {
 
       // Создаем позиции, присваивая operationId
       if (dto.operationPositions && dto.operationPositions.length > 0) {
+        const fallbackPeriod = dto.operationDate?.slice(0, 7);
         await prisma.operationPosition.createMany({
           data: dto.operationPositions.map((pos) => ({
             amount: pos.amount,
+            period: pos.period || fallbackPeriod,
             counterPartyId: pos.counterPartyId || null,
             expenseCategoryId: pos.expenseCategoryId || null,
             operationId: operation.id,
@@ -239,6 +242,8 @@ export class PlanfactService {
         include: { operationPositions: true },
       });
 
+      const fallbackPeriod = (dto.operationDate || operation.operationDate).slice(0, 7);
+
       // Если есть позиции, обновляем/создаем/удаляем их
       if (dto.operationPositions) {
         // Удаляем позиции, которых нет в новом списке
@@ -267,6 +272,7 @@ export class PlanfactService {
               where: { id: position.id, operationId: operation.id },
               data: {
                 amount: position.amount,
+                period: position.period || fallbackPeriod,
                 counterPartyId: position.counterPartyId || null,
                 expenseCategoryId: position.expenseCategoryId || null,
               },
@@ -276,6 +282,7 @@ export class PlanfactService {
             await prisma.operationPosition.create({
               data: {
                 amount: position.amount,
+                period: position.period || fallbackPeriod,
                 counterPartyId: position.counterPartyId || null,
                 expenseCategoryId: position.expenseCategoryId || null,
                 operationId: operation.id,
@@ -1819,6 +1826,7 @@ export class PlanfactService {
       expenseCategoryId?: number;
       projectId?: number | null;
       amount: number;
+      period?: string;
     }>,
   ) {
     // Находим оригинальную операцию
@@ -1874,11 +1882,13 @@ export class PlanfactService {
     });
 
     // Создаем новые позиции
+    const fallbackPeriod = originalOperation.operationDate?.slice(0, 7);
     const createdPositions = await Promise.all(
       positionsData.map((positionData) =>
         this.prisma.operationPosition.create({
           data: {
             amount: positionData.amount,
+            period: positionData.period || fallbackPeriod,
             originalOperationId: originalOperation.id,
             counterPartyId: positionData.counterPartyId,
             expenseCategoryId: positionData.expenseCategoryId,
@@ -2354,6 +2364,7 @@ export class PlanfactService {
         await this.prisma.operationPosition.create({
           data: {
             amount: op.accountAmount,
+            period: op.operationDate?.slice(0, 7),
             originalOperationId: originalOperation.id,
             counterPartyId: counterParty.id,
             expenseCategoryId: expenseCategoryId,

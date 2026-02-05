@@ -397,6 +397,7 @@ export class AutoCategoryRulesService {
           accountAmount: true,
           accountId: true,
           counterPartyAccount: true,
+          operationDate: true,
         },
       });
       if (!originals.length) break;
@@ -439,6 +440,7 @@ export class AutoCategoryRulesService {
             await this.prisma.operationPosition.create({
               data: {
                 amount: op.accountAmount,
+                period: op.operationDate?.slice(0, 7),
                 originalOperationId: id,
                 counterPartyId: counterPartyId ?? null,
                 expenseCategoryId: rule.expenseCategoryId,
@@ -468,6 +470,7 @@ export class AutoCategoryRulesService {
           accountAmount: true,
           accountId: true,
           counterPartyAccount: true,
+          operationDate: true,
         },
       },
     );
@@ -499,6 +502,7 @@ export class AutoCategoryRulesService {
           await this.prisma.operationPosition.create({
             data: {
               amount: op.accountAmount,
+              period: op.operationDate?.slice(0, 7),
               originalOperationId: op.id,
               counterPartyId: counterParty?.id ?? null,
               expenseCategoryId: rule.expenseCategoryId,
