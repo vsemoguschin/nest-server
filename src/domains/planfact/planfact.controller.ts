@@ -460,6 +460,32 @@ export class PlanfactController {
     );
   }
 
+  //присвоить проект контрагенту
+  @Patch('counter-parties/projects')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async assignProjectsToCounterParty(
+    @Body()
+    projectsData: {
+      counterPartyAccount: string;
+      incomeProjectId?: number;
+      outcomeProjectId?: number;
+    },
+  ) {
+    if (!projectsData.counterPartyAccount) {
+      throw new BadRequestException('Параметр counterPartyAccount обязателен');
+    }
+    if (!projectsData.incomeProjectId && !projectsData.outcomeProjectId) {
+      throw new BadRequestException(
+        'Необходимо указать хотя бы один проект (incomeProjectId или outcomeProjectId)',
+      );
+    }
+
+    return this.planfactService.assignProjectsToCounterPartyByAccount(
+      projectsData.counterPartyAccount,
+      projectsData,
+    );
+  }
+
   @Post('expense-categories')
   @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async createExpenseCategory(

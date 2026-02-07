@@ -743,6 +743,8 @@ model Project {
   updatedAt  DateTime  @updatedAt
 
   operationPositions OperationPosition[]
+  counterPartiesIncome CounterParty[]  @relation("CounterPartyIncomeProject")
+  counterPartiesOutcome CounterParty[] @relation("CounterPartyOutcomeProject")
 }
 
 model ExpenseCategory {
@@ -824,6 +826,14 @@ model CounterParty {
   incomeExpenseCategory     ExpenseCategory?  @relation("CounterPartyIncome", fields: [incomeExpenseCategoryId], references: [id])
   outcomeExpenseCategoryId  Int?            // Связь с категорией для исходящих операций
   outcomeExpenseCategory    ExpenseCategory?  @relation("CounterPartyOutcome", fields: [outcomeExpenseCategoryId], references: [id])
+
+  incomeProjectId   Int?
+  incomeProject     Project? @relation("CounterPartyIncomeProject", fields: [incomeProjectId], references: [id])
+  outcomeProjectId  Int?
+  outcomeProject    Project? @relation("CounterPartyOutcomeProject", fields: [outcomeProjectId], references: [id])
+
+  @@index([incomeProjectId])
+  @@index([outcomeProjectId])
 }
 
 model AutoCategoryRule {

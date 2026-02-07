@@ -1268,7 +1268,14 @@ export class PlanfactService {
         },
         operationPositions: {
           include: {
-            counterParty: true,
+            counterParty: {
+              include: {
+                incomeExpenseCategory: true,
+                outcomeExpenseCategory: true,
+                incomeProject: true,
+                outcomeProject: true,
+              },
+            },
             expenseCategory: true,
             project: true,
           },
@@ -2144,6 +2151,144 @@ export class PlanfactService {
     );
   }
 
+  async assignProjectsToCounterParty(
+    counterPartyId: number,
+    projectsData: {
+      incomeProjectId?: number;
+      outcomeProjectId?: number;
+    },
+  ) {
+    const counterParty = await this.prisma.counterParty.findUnique({
+      where: { id: counterPartyId },
+      include: {
+        incomeProject: true,
+        outcomeProject: true,
+      },
+    });
+
+    if (!counterParty) {
+      throw new NotFoundException(
+        `Контрагент с ID ${counterPartyId} не найден`,
+      );
+    }
+
+    if (projectsData.incomeProjectId) {
+      const incomeProject = await this.prisma.project.findUnique({
+        where: { id: projectsData.incomeProjectId },
+      });
+      if (!incomeProject) {
+        throw new NotFoundException(
+          `Проект с ID ${projectsData.incomeProjectId} не найден`,
+        );
+      }
+    }
+
+    if (projectsData.outcomeProjectId) {
+      const outcomeProject = await this.prisma.project.findUnique({
+        where: { id: projectsData.outcomeProjectId },
+      });
+      if (!outcomeProject) {
+        throw new NotFoundException(
+          `Проект с ID ${projectsData.outcomeProjectId} не найден`,
+        );
+      }
+    }
+
+    const updateData: {
+      incomeProjectId?: number;
+      outcomeProjectId?: number;
+    } = {};
+    if (projectsData.incomeProjectId !== undefined) {
+      updateData.incomeProjectId = projectsData.incomeProjectId;
+    }
+    if (projectsData.outcomeProjectId !== undefined) {
+      updateData.outcomeProjectId = projectsData.outcomeProjectId;
+    }
+
+    const updatedCounterParty = await this.prisma.counterParty.update({
+      where: { id: counterPartyId },
+      data: updateData,
+      include: {
+        incomeProject: true,
+        outcomeProject: true,
+      },
+    });
+
+    const positions = await this.prisma.operationPosition.findMany({
+      where: {
+        counterPartyId: counterPartyId,
+      },
+      include: {
+        originalOperation: true,
+        operation: true,
+      },
+    });
+
+    let updatedPositionsCount = 0;
+
+    for (const position of positions) {
+      const typeOfOperation =
+        position.originalOperation?.typeOfOperation ||
+        position.operation?.typeOfOperation;
+
+      let newProjectId: number | undefined;
+      if (
+        typeOfOperation === 'Credit' &&
+        projectsData.incomeProjectId !== undefined
+      ) {
+        newProjectId = projectsData.incomeProjectId;
+      } else if (
+        typeOfOperation === 'Debit' &&
+        projectsData.outcomeProjectId !== undefined
+      ) {
+        newProjectId = projectsData.outcomeProjectId;
+      }
+
+      if (newProjectId === undefined) {
+        continue;
+      }
+
+      await this.prisma.operationPosition.update({
+        where: { id: position.id },
+        data: { projectId: newProjectId },
+      });
+      updatedPositionsCount++;
+    }
+
+    return {
+      success: true,
+      counterParty: updatedCounterParty,
+      updatedPositionsCount,
+      message: `Обновлено ${updatedPositionsCount} позиций операций для контрагента "${counterParty.title}"`,
+    };
+  }
+
+  async assignProjectsToCounterPartyByAccount(
+    counterPartyAccount: string,
+    projectsData: {
+      incomeProjectId?: number;
+      outcomeProjectId?: number;
+    },
+  ) {
+    const counterParty = await this.prisma.counterParty.findFirst({
+      where: {
+        account: counterPartyAccount,
+      },
+      include: {
+        incomeProject: true,
+        outcomeProject: true,
+      },
+    });
+
+    if (!counterParty) {
+      throw new NotFoundException(
+        `Контрагент с номером счета "${counterPartyAccount}" не найден`,
+      );
+    }
+
+    return this.assignProjectsToCounterParty(counterParty.id, projectsData);
+  }
+
   // Методы для синхронизации операций Т-Банка с категориями
   async getOrCreateCounterPartyWithCategories(counterPartyData: {
     account: string;
@@ -2158,6 +2303,8 @@ export class PlanfactService {
       include: {
         incomeExpenseCategory: true,
         outcomeExpenseCategory: true,
+        incomeProject: true,
+        outcomeProject: true,
       },
     });
 
@@ -2179,6 +2326,8 @@ export class PlanfactService {
       include: {
         incomeExpenseCategory: true,
         outcomeExpenseCategory: true,
+        incomeProject: true,
+        outcomeProject: true,
       },
     });
 
@@ -2335,6 +2484,7 @@ export class PlanfactService {
 
         // Определяем категорию на основе типа операции и контрагента
         let expenseCategoryId: number | null = null;
+        let projectId: number | null = null;
 
         if (
           op.typeOfOperation === 'Credit' &&
@@ -2360,6 +2510,15 @@ export class PlanfactService {
           );
         }
 
+        if (op.typeOfOperation === 'Credit' && counterParty.incomeProject) {
+          projectId = counterParty.incomeProject.id;
+        } else if (
+          op.typeOfOperation === 'Debit' &&
+          counterParty.outcomeProject
+        ) {
+          projectId = counterParty.outcomeProject.id;
+        }
+
         // Создаем позицию (только если её еще нет)
         await this.prisma.operationPosition.create({
           data: {
@@ -2368,6 +2527,7 @@ export class PlanfactService {
             originalOperationId: originalOperation.id,
             counterPartyId: counterParty.id,
             expenseCategoryId: expenseCategoryId,
+            projectId: projectId,
           },
         });
 

@@ -112,6 +112,8 @@ export class TbankSyncService {
       include: {
         incomeExpenseCategory: true,
         outcomeExpenseCategory: true,
+        incomeProject: true,
+        outcomeProject: true,
       },
     });
 
@@ -146,6 +148,8 @@ export class TbankSyncService {
           include: {
             incomeExpenseCategory: true,
             outcomeExpenseCategory: true,
+            incomeProject: true,
+            outcomeProject: true,
           },
         });
 
@@ -186,6 +190,8 @@ export class TbankSyncService {
       include: {
         incomeExpenseCategory: true,
         outcomeExpenseCategory: true,
+        incomeProject: true,
+        outcomeProject: true,
       },
     });
 
@@ -567,6 +573,16 @@ export class TbankSyncService {
           }
         }
 
+        let positionProjectId = projectId;
+        if (op.typeOfOperation === 'Credit' && counterParty.incomeProject) {
+          positionProjectId = counterParty.incomeProject.id;
+        } else if (
+          op.typeOfOperation === 'Debit' &&
+          counterParty.outcomeProject
+        ) {
+          positionProjectId = counterParty.outcomeProject.id;
+        }
+
         // Создаем позицию (только если её еще нет)
         await this.prisma.operationPosition.create({
           data: {
@@ -575,7 +591,7 @@ export class TbankSyncService {
             originalOperationId: originalOperation.id,
             counterPartyId: counterParty.id,
             expenseCategoryId: expenseCategoryId,
-            projectId,
+            projectId: positionProjectId,
           },
         });
 
