@@ -44,6 +44,19 @@ export class ProductionController {
     private readonly prisma: PrismaService,
   ) {}
 
+  private async getOrderSurcharge(orderId?: number | null): Promise<number> {
+    if (!orderId || orderId <= 0) return 0;
+    const order = await this.prisma.taskOrder.findUnique({
+      where: { id: orderId },
+      select: { adapter: true, dimmer: true },
+    });
+    if (!order) return 0;
+    let surcharge = 0;
+    if (order.adapter && order.adapter !== 'Нет') surcharge += 60;
+    if (order.dimmer) surcharge += 60;
+    return surcharge;
+  }
+
   @Get('predata')
   @Roles(
     'ADMIN',
@@ -163,6 +176,7 @@ export class ProductionController {
       if (reportUser.workSpaceId === 8) {
         switch (type) {
           case 'Стандартная':
+          case 'ПВХ':
           case 'ВБ':
           case 'ОЗОН':
           case 'Подарок':
@@ -190,6 +204,7 @@ export class ProductionController {
       } else {
         switch (type) {
           case 'Стандартная':
+          case 'ПВХ':
           case 'ВБ':
           case 'ОЗОН':
           case 'Подарок':
@@ -211,7 +226,10 @@ export class ProductionController {
         }
       }
 
-      createMasterReportDto.cost = cost;
+      const orderSurcharge = await this.getOrderSurcharge(
+        createMasterReportDto.orderId,
+      );
+      createMasterReportDto.cost = cost + orderSurcharge;
     }
 
     // Пересчитываем стоимость подсветки на основе workSpaceId пользователя отчета
@@ -271,7 +289,7 @@ export class ProductionController {
     // Получаем существующий отчет для получения userId и других полей
     const existingReport = await this.prisma.masterReport.findUnique({
       where: { id: +id },
-      select: { userId: true, metrs: true, els: true, type: true },
+      select: { userId: true, metrs: true, els: true, type: true, orderId: true },
     });
 
     if (!existingReport) {
@@ -300,6 +318,7 @@ export class ProductionController {
       if (reportUser.workSpaceId === 8) {
         switch (type) {
           case 'Стандартная':
+          case 'ПВХ':
           case 'ВБ':
           case 'ОЗОН':
           case 'Подарок':
@@ -327,6 +346,7 @@ export class ProductionController {
       } else {
         switch (type) {
           case 'Стандартная':
+          case 'ПВХ':
           case 'ВБ':
           case 'ОЗОН':
           case 'Подарок':
@@ -348,7 +368,9 @@ export class ProductionController {
         }
       }
 
-      updateMasterReportDto.cost = cost;
+      const orderId = updateMasterReportDto.orderId ?? existingReport.orderId;
+      const orderSurcharge = await this.getOrderSurcharge(orderId);
+      updateMasterReportDto.cost = cost + orderSurcharge;
     }
 
     // Пересчитываем стоимость подсветки на основе workSpaceId пользователя отчета

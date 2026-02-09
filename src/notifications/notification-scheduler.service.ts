@@ -1694,6 +1694,7 @@ export class NotificationSchedulerService {
       const projectConfigs = [
         { project: 'neon', adSourceId: 1, workSpaceId: 3, groupId: 3 },
         { project: 'book', adSourceId: 19, workSpaceId: 3, groupId: 19 },
+        // { project: 'book-2', adSourceId: 19, workSpaceId: 3, groupId: 17 },
       ];
 
       const results: string[] = [];

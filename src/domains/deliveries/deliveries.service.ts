@@ -280,6 +280,8 @@ export class DeliveriesService {
         gte: from,
         lte: to,
       },
+      purpose: 'Заказ',
+      // status:{in: ['Отправлена', 'Вручена']},
       deal: {
         reservation: false,
         deletedAt: null,

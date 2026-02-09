@@ -250,11 +250,15 @@ export class CommercialDatasService {
       }
       dopsPercentage = bonusPercentage;
     }
-    if (groupId === 19) {
+    if (groupId === 19 || groupId === 17) {
       bonusPercentage = 0.07;
       dopsPercentage = 0.07;
     }
-    if (groupId === 19 && role === 'MOV' && period >= '2025-10') {
+    if (
+      (groupId === 19 || groupId === 17) &&
+      role === 'MOV' &&
+      period >= '2025-10'
+    ) {
       dopsPercentage = 0.05;
       bonusPercentage = 0.05;
     }
@@ -940,12 +944,14 @@ export class CommercialDatasService {
     const totalSales = dealSales + dopSales;
     /**Факт для ведения */
     const fact =
-      m.groupId === 19 && m.role.shortName === 'MOV'
+      (m.groupId === 19 || m.groupId === 17) && m.role.shortName === 'MOV'
         ? m.payments.reduce((a, b) => a + b.price, 0)
         : 0;
     const factAmount = m.payments.length;
     const factPercentage =
-      m.groupId === 19 && m.role.shortName === 'MOV' ? 0.01 : 0;
+      (m.groupId === 19 || m.groupId === 17) && m.role.shortName === 'MOV'
+        ? 0.01
+        : 0;
     const factBonus = +(fact * factPercentage).toFixed(2);
     const temp = this.calculateTemp(totalSales, period);
     /** стоимость заявки в проекте*/
@@ -1077,7 +1083,7 @@ export class CommercialDatasService {
     totalSalary += doSalary;
 
     const ropdatas =
-      m.groupId === 19 && m.role.shortName === 'ROP'
+      (m.groupId === 19 || m.groupId === 17) && m.role.shortName === 'ROP'
         ? await this.getROPSalesDatas(m.groupId, period)
         : [];
     const ropSalary = ropdatas.reduce((a, b) => a + b.toSalary, 0);
@@ -1354,7 +1360,9 @@ export class CommercialDatasService {
         });
       // Определение топов
       const topTotalSales = [...userData]
-        .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort((a, b) => b.totalSales - a.totalSales)
         .slice(0, 3)
         .map((u, i) => {
@@ -1371,7 +1379,9 @@ export class CommercialDatasService {
         });
 
       const topDopSales = [...userData]
-        .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort((a, b) => b.dopSales - a.dopSales)
         .slice(0, 3)
         .map((u, i) => {
@@ -1387,7 +1397,9 @@ export class CommercialDatasService {
           }
         });
       const topDimmerSales = [...userData]
-        .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort((a, b) => b.dimmerSales - a.dimmerSales)
         .slice(0, 3)
         .map((u, i) => {
@@ -1403,7 +1415,9 @@ export class CommercialDatasService {
           }
         });
       const topSalesWithoutDesigners = [...userData]
-        .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort(
           (a, b) => b.dealsSalesWithoutDesigners - a.dealsSalesWithoutDesigners,
         )
@@ -1421,7 +1435,9 @@ export class CommercialDatasService {
           }
         });
       const topConversionDayToDay = [...userData]
-        .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
         .slice(0, 3)
         .map((u, i) => {
@@ -1634,7 +1650,7 @@ export class CommercialDatasService {
     });
     // Определение топов
     const topTotalSales = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
       .sort((a, b) => b.totalSales - a.totalSales)
       .slice(0, 3)
       .map((u, i) => {
@@ -1651,7 +1667,7 @@ export class CommercialDatasService {
       });
 
     const topDopSales = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
       .sort((a, b) => b.dopSales - a.dopSales)
       .slice(0, 3)
       .map((u, i) => {
@@ -1667,7 +1683,7 @@ export class CommercialDatasService {
         }
       });
     const topDimmerSales = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
       .sort((a, b) => b.dimmerSales - a.dimmerSales)
       .slice(0, 3)
       .map((u, i) => {
@@ -1683,7 +1699,7 @@ export class CommercialDatasService {
         }
       });
     const topSalesWithoutDesigners = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
       .sort(
         (a, b) => b.dealsSalesWithoutDesigners - a.dealsSalesWithoutDesigners,
       )
@@ -1701,7 +1717,7 @@ export class CommercialDatasService {
         }
       });
     const topConversionDayToDay = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19)
+      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
       .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
       .slice(0, 3)
       .map((u, i) => {
@@ -2832,7 +2848,7 @@ export class CommercialDatasService {
       role: {
         shortName: 'MOV',
       },
-      groupId: 19,
+      groupId: { in: [19, 17] },
     };
     //для расчета зп от
     const movPayments = await this.prisma.payment.findMany({
@@ -2988,7 +3004,9 @@ export class CommercialDatasService {
       }
       // если есть допы менеджера
       const managerDops = dops.filter(
-        (d) => d.user.role.shortName === 'MOV' && d.user.groupId === 19,
+        (d) =>
+          d.user.role.shortName === 'MOV' &&
+          (d.user.groupId === 19 || d.user.groupId === 17),
       );
       if (managerDops.length) {
         const dealDopsPrice = dops.reduce((a, b) => a + b.price, 0);
@@ -3017,13 +3035,13 @@ export class CommercialDatasService {
       reservation: false,
       deletedAt: null,
       status: { not: 'Возврат' },
-      groupId: 19,
+      groupId: { in: [19, 17] },
     };
     const mopFilter = {
       role: {
         shortName: 'MOP',
       },
-      groupId: 19,
+      groupId: { in: [19, 17] },
     };
 
     //смены
@@ -3160,7 +3178,9 @@ export class CommercialDatasService {
       }
       // если есть допы менеджера
       const managerDops = dops.filter(
-        (d) => d.user.role.shortName === 'MOP' && d.user.groupId === 19,
+        (d) =>
+          d.user.role.shortName === 'MOP' &&
+          (d.user.groupId === 19 || d.user.groupId === 17),
       );
       if (managerDops.length) {
         const dealDopsPrice = dops.reduce((a, b) => a + b.price, 0);

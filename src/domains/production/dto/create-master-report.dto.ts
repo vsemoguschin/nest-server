@@ -37,6 +37,7 @@ export class CreateMasterReportDto {
       'Ремонт',
       'Уличная подсветка',
       'РГБ Контражур',
+      'ПВХ',
     ],
     { message: 'Недопустимый тип' },
   )

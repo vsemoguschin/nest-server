@@ -487,11 +487,11 @@ export class DashboardsService {
               bonusPercentage = 0.07;
             }
           }
-          if (m.groupId === 19) {
+          if (m.groupId === 19 || m.groupId === 17) {
             bonusPercentage = 0.07;
           }
           if (
-            m.groupId === 19 &&
+            (m.groupId === 19 || m.groupId === 17) &&
             m.role.shortName === 'MOV' &&
             per >= '2025-10'
           ) {
@@ -598,11 +598,11 @@ export class DashboardsService {
                   p.userId === dop.userId,
               )?.bonusPercentage || 0;
           }
-          if (dop.groupId === 19) {
+          if (dop.groupId === 19 || dop.groupId === 17) {
             bonusPercentage = 0.07;
           }
           if (
-            dop.groupId === 19 &&
+            (dop.groupId === 19 || dop.groupId === 17) &&
             dop.user.role.shortName === 'MOV' &&
             dop.saleDate.slice(0, 7) >= '2025-10'
           ) {
@@ -1055,11 +1055,11 @@ export class DashboardsService {
             totalSalary += workSpacePlanBonus;
             bonus += workSpacePlanBonus;
           }
-          if (m.groupId === 19) {
+          if (m.groupId === 19 || m.groupId === 17) {
             bonusPercentage = 0.07;
           }
           if (
-            m.groupId === 19 &&
+            (m.groupId === 19 || m.groupId === 17) &&
             m.role.shortName === 'MOV' &&
             period >= '2025-10'
           ) {
@@ -1168,7 +1168,9 @@ export class DashboardsService {
 
       // Определение топов
       const topTotalSales = [...userData]
-        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpace === 'ВК' && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort((a, b) => b.totalSales - a.totalSales)
         .slice(0, 3)
         .map((u, i) => {
@@ -1186,7 +1188,9 @@ export class DashboardsService {
         });
 
       const topDopSales = [...userData]
-        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpace === 'ВК' && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort((a, b) => b.dopSales - a.dopSales)
         .slice(0, 3)
         .map((u, i) => {
@@ -1203,7 +1207,9 @@ export class DashboardsService {
           }
         });
       const topDimmerSales = [...userData]
-        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpace === 'ВК' && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort((a, b) => b.dimmerSales - a.dimmerSales)
         .slice(0, 3)
         .map((u, i) => {
@@ -1220,7 +1226,9 @@ export class DashboardsService {
           }
         });
       const topSalesWithoutDesigners = [...userData]
-        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpace === 'ВК' && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort(
           (a, b) => b.dealsSalesWithoutDesigners - a.dealsSalesWithoutDesigners,
         )
@@ -1239,7 +1247,9 @@ export class DashboardsService {
           }
         });
       const topConversionDayToDay = [...userData]
-        .filter((u) => u.workSpace === 'ВК' && u.groupId !== 19)
+        .filter(
+          (u) => u.workSpace === 'ВК' && u.groupId !== 19 && u.groupId !== 17,
+        )
         .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
         .slice(0, 3)
         .map((u, i) => {

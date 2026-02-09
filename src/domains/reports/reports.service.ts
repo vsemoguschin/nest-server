@@ -53,10 +53,16 @@ export class ReportsService {
     }
 
     let shiftCost = existingUser.isIntern ? 800 : 666.67;
-    if (existingUser.groupId === 19 && existingUser.role.shortName == 'MOP') {
+    if (
+      (existingUser.groupId === 19 || existingUser.groupId === 17) &&
+      existingUser.role.shortName == 'MOP'
+    ) {
       shiftCost = 800;
     }
-    if (existingUser.groupId === 19 && existingUser.role.shortName == 'MOV') {
+    if (
+      (existingUser.groupId === 19 || existingUser.groupId === 17) &&
+      existingUser.role.shortName == 'MOV'
+    ) {
       shiftCost = 1333;
     }
 
@@ -735,6 +741,12 @@ export class ReportsService {
                   gte: range.from,
                   lte: range.to,
                 },
+                deal: {
+                  reservation: false,
+                  status: {
+                    not: 'Возврат',
+                  },
+                },
               },
             },
             adExpenses: {
@@ -788,10 +800,15 @@ export class ReportsService {
       const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
       const dateDeals = r.group!.deals.filter((d) => d.saleDate === date);
       const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
+      const regularDeals = dateDeals.filter((d) => d.client?.isRegular);
+      const regularSales = regularDeals.reduce((a, b) => a + b.price, 0);
+      const regularDealsCount = regularDeals.length;
       const dateDops = r.group!.dops.filter((d) => d.saleDate === date);
 
       const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
       const totalSales = dopSales + dealSales;
+      const datePayments = r.group!.payments.filter((p) => p.date === date);
+      const paymentsFact = datePayments.reduce((a, b) => a + b.price, 0);
       const dealsAmount = dateDeals.length;
       const averageBill = dealsAmount ? totalSales / dealsAmount : 0;
       const conversion = calls ? +((dealsAmount / calls) * 100).toFixed(2) : 0;
@@ -840,9 +857,12 @@ export class ReportsService {
         group: r.group?.title || 'Нет группы',
         calls, // количество заявок
         dealSales, //сумма сделок
+        regularSales, //сумма сделок постоянников
+        regularDealsCount, //количество сделок постоянников
         dealsAmount, //количество сделок
         dopSales, //сумма доп продаж
         totalSales, //общая сумма продаж
+        paymentsFact, //факт оплат
         averageBill: +averageBill.toFixed(), //средний чек
         makets, //количество макетов
         maketsDayToDay, //количество макетов день в день

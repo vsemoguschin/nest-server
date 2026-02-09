@@ -431,7 +431,7 @@ export class PnlService {
       // movSalaries,
     ] = await Promise.all([
       // Income
-      this.getIncomeDatas(periods, { in: [19] }),
+      this.getIncomeDatas(periods, { in: [19, 17] }),
 
       // Расходы на производство - оптимизированный запрос
       this.getExpensesByCategory(periods, 143, 2),
@@ -440,7 +440,7 @@ export class PnlService {
       this.getExpensesByCategory(periods, 141, 2),
 
       // Расходы на рекламу - оптимизированный запрос
-      this.getAdExpensesByPeriods(periods, 19),
+      this.getAdExpensesByPeriods(periods, [19, 17]),
     ]);
 
     const rops = await this.prisma.user.findMany({
@@ -448,7 +448,7 @@ export class PnlService {
         role: {
           shortName: 'ROP',
         },
-        groupId: 19,
+        groupId: { in: [19, 17] },
       },
     });
 
@@ -478,6 +478,7 @@ export class PnlService {
     categoryId: number,
     projectId?: number,
   ): Promise<{ period: string; value: number }[]> {
+    
     // Один запрос вместо 4-х
     const where: {
       expenseCategoryId: number;
@@ -513,12 +514,12 @@ export class PnlService {
   // Приватная функция: один запрос на рекламные расходы
   private async getAdExpensesByPeriods(
     periods: string[],
-    groupId: number,
+    groupIds: number[],
   ): Promise<{ period: string; value: number }[]> {
     // Один запрос вместо 4-х
     const allAdExpenses = await this.prisma.adExpense.findMany({
       where: {
-        groupId,
+        groupId: { in: groupIds },
         OR: periods.map((p) => ({ date: { startsWith: p } })),
       },
       select: {
@@ -571,11 +572,11 @@ export class PnlService {
 
   async getNewDatas(period: string) {
     const EASYNEON_GROUP_IDS = [2, 3, 18];
-    const EASYBOOK_GROUP_IDS = [19];
+    const EASYBOOK_GROUP_IDS = [19, 17];
     const PRODUCTION_BOARD_IDS = [10, 5];
-    const EASYNEON_PROJECT_ID = 1;
+    const EASYNEON_PROJECT_ID = 3;
     const EASYBOOK_PROJECT_ID = 2;
-    const GENERAL_PROJECT_ID = 3;
+    const GENERAL_PROJECT_ID = 1;
 
     const baseDealWhere = {
       saleDate: { startsWith: period },
@@ -633,13 +634,753 @@ export class PnlService {
       );
 
     const getProjectData = async (groupIds: number[]) => {
-      const [deals, dops, deliveries] = await Promise.all([
+      const [deals, dops, latestDeliveriesRaw] = await Promise.all([
         this.prisma.deal.findMany({
           where: {
             ...baseDealWhere,
             groupId: { in: groupIds },
           },
           select: { price: true },
+        }),
+        this.prisma.dop.findMany({
+          where: {
+            ...baseDopWhere,
+            groupId: { in: groupIds },
+          },
+          select: { price: true },
+        }),
+        this.prisma.delivery.findMany({
+          where: {
+            deletedAt: null,
+            purpose: 'Заказ',
+            deal: {
+              ...baseDeliveryDealWhere,
+              groupId: { in: groupIds },
+            },
+          },
+          orderBy: { date: 'desc' },
+          include: {
+            deal: {
+              include: { dops: true },
+            },
+          },
+        }),
+      ]);
+
+      const latestDeliveries: typeof latestDeliveriesRaw = [];
+      const seenDealIds = new Set<number>();
+      for (const delivery of latestDeliveriesRaw) {
+        if (!seenDealIds.has(delivery.dealId)) {
+          latestDeliveries.push(delivery);
+          seenDealIds.add(delivery.dealId);
+        }
+      }
+
+      const shippedDeliveries = latestDeliveries.filter((delivery) =>
+        delivery.date.startsWith(period),
+      );
+
+      return {
+        orders: sumPrices(deals) + sumPrices(dops),
+        shipped: sumDeliveries(shippedDeliveries),
+        deliveries: shippedDeliveries,
+        shippedDealIds: Array.from(
+          new Set(shippedDeliveries.map((delivery) => delivery.dealId)),
+        ),
+      };
+    };
+
+    const [easyneon, easybook] = await Promise.all([
+      getProjectData(EASYNEON_GROUP_IDS),
+      getProjectData(EASYBOOK_GROUP_IDS),
+    ]);
+
+    const easyneonDealIds = await this.prisma.deal.findMany({
+      where: {
+        ...baseDealWhere,
+        groupId: { in: EASYNEON_GROUP_IDS },
+      },
+      select: { id: true },
+    });
+
+    const easyneonTasks = easyneonDealIds.length
+      ? await this.prisma.kanbanTask.findMany({
+          where: {
+            dealId: { in: easyneonDealIds.map((deal) => deal.id) },
+            boardId: { in: PRODUCTION_BOARD_IDS },
+          },
+          include: {
+            orders: {
+              include: {
+                orderCost: true,
+              },
+            },
+          },
+        })
+      : [];
+
+    const shippedEasyneonTasks = easyneon.shippedDealIds.length
+      ? await this.prisma.kanbanTask.findMany({
+          where: {
+            dealId: { in: easyneon.shippedDealIds },
+            boardId: { in: PRODUCTION_BOARD_IDS },
+          },
+          select: {
+            id: true,
+            orders: {
+              select: { id: true },
+            },
+          },
+        })
+      : [];
+
+    const shippedTaskIds = shippedEasyneonTasks.map((task) => task.id);
+    const shippedOrderIds = shippedEasyneonTasks.flatMap((task) =>
+      task.orders.map((order) => order.id),
+    );
+
+    const [shippedMasterReports, shippedPackerReports] = await Promise.all([
+      shippedOrderIds.length
+        ? this.prisma.masterReport.findMany({
+            where: {
+              orderId: { in: shippedOrderIds },
+              deletedAt: null,
+            },
+            select: { cost: true, penaltyCost: true },
+          })
+        : Promise.resolve([] as Array<{ cost: number; penaltyCost: number }>),
+      shippedTaskIds.length
+        ? this.prisma.packerReport.findMany({
+            where: {
+              taskId: { in: shippedTaskIds },
+              deletedAt: null,
+            },
+            select: { cost: true, penaltyCost: true },
+          })
+        : Promise.resolve([] as Array<{ cost: number; penaltyCost: number }>),
+    ]);
+
+    const orderCostTotals = {
+      priceForBoard: 0,
+      priceForScreen: 0,
+      adapterPrice: 0,
+      neonPrice: 0,
+      lightingPrice: 0,
+      wireAcoustic: 0,
+      wireShvvp: 0,
+    };
+
+    easyneonTasks.forEach((task) => {
+      task.orders.forEach((order) => {
+        const cost = order.orderCost;
+        if (!cost) {
+          return;
+        }
+        orderCostTotals.priceForBoard += resolveNumber(cost.priceForBoard);
+        orderCostTotals.priceForScreen += resolveNumber(cost.priceForScreen);
+        orderCostTotals.adapterPrice += resolveNumber(cost.adapterPrice);
+        orderCostTotals.neonPrice += resolveNumber(cost.neonPrice);
+        orderCostTotals.lightingPrice += resolveNumber(cost.lightingPrice);
+
+        const wireType = String(cost.wireType ?? '').toLowerCase();
+        if (wireType.includes('шввп')) {
+          orderCostTotals.wireShvvp += resolveNumber(cost.wirePrice);
+        } else {
+          orderCostTotals.wireAcoustic += resolveNumber(cost.wirePrice);
+        }
+      });
+    });
+
+    const SUPPLIE_CATEGORIES = [
+      'Акрил',
+      'Пленки',
+      'Упаковка',
+      'Другое',
+    ];
+
+    const suppliePositions = await this.prisma.suppliePosition.findMany({
+      where: {
+        category: { in: SUPPLIE_CATEGORIES },
+        supplie: {
+          shipmentDate: { startsWith: period },
+        },
+      },
+      select: {
+        category: true,
+        quantity: true,
+        priceForItem: true,
+      },
+    });
+
+    const supplieTotals = SUPPLIE_CATEGORIES.reduce<Record<string, number>>(
+      (acc, category) => {
+        acc[category] = 0;
+        return acc;
+      },
+      {},
+    );
+
+    suppliePositions.forEach((position) => {
+      const category = position.category;
+      if (!category) {
+        return;
+      }
+      const total =
+        resolveNumber(position.quantity) * resolveNumber(position.priceForItem);
+      supplieTotals[category] = (supplieTotals[category] ?? 0) + total;
+    });
+
+    const [
+      logistShifts,
+      frezerReports,
+      masterRepairReports,
+      otherReports,
+      easyneonAdExpenses,
+      easybookAdExpenses,
+      mopNeonSalesManagers,
+      mopBookSalesManagers,
+      bookPLDatas,
+      installationExpenses,
+      productionHeadExpenses,
+      easyneonDesignExpenses,
+      easyneonDesignLeadExpenses,
+      easybookDesignLeadExpenses,
+      easyneonSalesDirectorSalary,
+      easybookSalesDirectorSalary,
+      easyneonMarketingTarget,
+      easyneonMarketingAvito,
+      easyneonMarketingSmm,
+      easybookMarketingTarget,
+      easybookMarketingAvito,
+      easybookMarketingSmm,
+      easyneonMarketingAds38,
+      easyneonMarketingAds42,
+      easyneonMarketingAds45,
+      easybookMarketingAds38,
+      easybookMarketingAds42,
+      easybookMarketingAds45,
+      rentExpenses,
+      accountingExpenses,
+      hrExpenses,
+      dividendsExpenses,
+      rkoExpenses,
+      financeExpenses,
+      programmersExpenses,
+      easyneonPackPartsExpenses,
+      easyneonMasterPartsExpenses,
+      easyneonVkAccountManagers,
+      easyneonVkOrderManagers,
+      easybookVkAccountManagers,
+      easybookBookLeadManagers,
+      easybookBookOrderManagers,
+    ] = await Promise.all([
+      this.prisma.logistShift.findMany({
+        where: {
+          shift_date: { startsWith: period },
+        },
+        select: { cost: true },
+      }),
+      this.prisma.frezerReport.findMany({
+        where: {
+          date: { startsWith: period },
+        },
+        select: { cost: true, penaltyCost: true },
+      }),
+      this.prisma.masterRepairReport.findMany({
+        where: {
+          date: { startsWith: period },
+          deletedAt: null,
+        },
+        select: { cost: true, penaltyCost: true },
+      }),
+      this.prisma.otherReport.findMany({
+        where: {
+          date: { startsWith: period },
+          deletedAt: null,
+        },
+        select: { cost: true, penaltyCost: true },
+      }),
+      this.prisma.adExpense.findMany({
+        where: {
+          date: { startsWith: period },
+          groupId: { in: EASYNEON_GROUP_IDS },
+        },
+        select: { price: true },
+      }),
+      this.prisma.adExpense.findMany({
+        where: {
+          date: { startsWith: period },
+          groupId: { in: EASYBOOK_GROUP_IDS },
+        },
+        select: { price: true },
+      }),
+      this.commercialDatasService.getMOPNeonPNLDatas(period),
+      this.commercialDatasService.getMOPBookPNLDatas(period),
+      this.getBookPLDatas(period),
+      this.getExpensesByCategory([period], 57, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 52, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 72, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 71, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 71, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 81, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 81, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 83, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 84, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 85, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 83, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 84, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 85, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 38, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 42, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 45, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 38, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 42, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 45, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 36),
+      this.getExpensesByCategory([period], 68),
+      this.getExpensesByCategory([period], 43),
+      this.getExpensesByCategory([period], 138, GENERAL_PROJECT_ID),
+      this.getExpensesByCategory([period], 48),
+      this.getExpensesByCategory([period], 151),
+      this.getExpensesByCategory([period], 87),
+      this.getExpensesByCategory([period], 23, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 24, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 79, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 80, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 79, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 142, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([period], 140, EASYBOOK_PROJECT_ID),
+    ]);
+
+    const sumCostMinusPenalty = (
+      items: Array<{ cost: unknown; penaltyCost?: unknown }>,
+    ) =>
+      items.reduce(
+        (sum, item) =>
+          sum + resolveNumber(item.cost) - resolveNumber(item.penaltyCost ?? 0),
+        0,
+      );
+
+    const assemblersTotal = sumCostMinusPenalty(shippedMasterReports);
+    const packersTotal = sumCostMinusPenalty(shippedPackerReports);
+    const logistTotal = logistShifts.reduce(
+      (sum, shift) => sum + resolveNumber(shift.cost),
+      0,
+    );
+    const frezerTotal = sumCostMinusPenalty(frezerReports);
+    const repairsTotal = sumCostMinusPenalty(masterRepairReports);
+    const otherReportsTotal = sumCostMinusPenalty(otherReports);
+    const easyneonDeliveryTotal = easyneon.deliveries
+      .filter((delivery) => delivery.type === 'Бесплатно')
+      .reduce((sum, delivery) => sum + resolveNumber(delivery.price), 0);
+    const easybookDeliveryTotal = easybook.deliveries
+      .filter((delivery) => delivery.type === 'Бесплатно')
+      .reduce((sum, delivery) => sum + resolveNumber(delivery.price), 0);
+    const promotionEasyneonTotal = sumPrices(easyneonAdExpenses);
+    const promotionEasybookTotal = sumPrices(easybookAdExpenses);
+    const salesManagersEasyneonTotal = resolveNumber(mopNeonSalesManagers);
+    const salesManagersEasybookTotal = resolveNumber(mopBookSalesManagers);
+    const easyneonVkAccountManagersTotal = resolveNumber(
+      easyneonVkAccountManagers?.[0]?.value ?? 0,
+    );
+    const easyneonVkOrderManagersTotal = resolveNumber(
+      easyneonVkOrderManagers?.[0]?.value ?? 0,
+    );
+    const easybookVkAccountManagersTotal = resolveNumber(
+      easybookVkAccountManagers?.[0]?.value ?? 0,
+    );
+    const easybookBookLeadManagersTotal = resolveNumber(
+      easybookBookLeadManagers?.[0]?.value ?? 0,
+    );
+    const easybookBookOrderManagersTotal = resolveNumber(
+      easybookBookOrderManagers?.[0]?.value ?? 0,
+    );
+    const ropsEasybookTotal = resolveNumber(
+      bookPLDatas?.ropSalaries?.find((row) => row.period === period)?.value ??
+        0,
+    );
+    const bookPrintTotal = resolveNumber(
+      bookPLDatas?.prodExpensesByPeriod?.find((row) => row.period === period)
+        ?.value ?? 0,
+    );
+    const bookDesignTotal = resolveNumber(
+      bookPLDatas?.designExpensesByPeriod?.find((row) => row.period === period)
+        ?.value ?? 0,
+    );
+    const installersTotal = resolveNumber(
+      installationExpenses?.[0]?.value ?? 0,
+    );
+    const productionHeadTotal = resolveNumber(
+      productionHeadExpenses?.[0]?.value ?? 0,
+    );
+    const easyneonDesignTotal = resolveNumber(
+      easyneonDesignExpenses?.[0]?.value ?? 0,
+    );
+    const easyneonDesignLeadTotal = resolveNumber(
+      easyneonDesignLeadExpenses?.[0]?.value ?? 0,
+    );
+    const easybookDesignLeadTotal = resolveNumber(
+      easybookDesignLeadExpenses?.[0]?.value ?? 0,
+    );
+    const easyneonSalesDirectorSalaryTotal = resolveNumber(
+      easyneonSalesDirectorSalary?.[0]?.value ?? 0,
+    );
+    const easybookSalesDirectorSalaryTotal = resolveNumber(
+      easybookSalesDirectorSalary?.[0]?.value ?? 0,
+    );
+    const easyneonMarketingTargetTotal = resolveNumber(
+      easyneonMarketingTarget?.[0]?.value ?? 0,
+    );
+    const easyneonMarketingAvitoTotal = resolveNumber(
+      easyneonMarketingAvito?.[0]?.value ?? 0,
+    );
+    const easyneonMarketingSmmTotal = resolveNumber(
+      easyneonMarketingSmm?.[0]?.value ?? 0,
+    );
+    const easybookMarketingTargetTotal = resolveNumber(
+      easybookMarketingTarget?.[0]?.value ?? 0,
+    );
+    const easybookMarketingAvitoTotal = resolveNumber(
+      easybookMarketingAvito?.[0]?.value ?? 0,
+    );
+    const easybookMarketingSmmTotal = resolveNumber(
+      easybookMarketingSmm?.[0]?.value ?? 0,
+    );
+    const easyneonMarketingAdsTotal =
+      resolveNumber(easyneonMarketingAds38?.[0]?.value ?? 0) +
+      resolveNumber(easyneonMarketingAds42?.[0]?.value ?? 0) +
+      resolveNumber(easyneonMarketingAds45?.[0]?.value ?? 0);
+    const easybookMarketingAdsTotal =
+      resolveNumber(easybookMarketingAds38?.[0]?.value ?? 0) +
+      resolveNumber(easybookMarketingAds42?.[0]?.value ?? 0) +
+      resolveNumber(easybookMarketingAds45?.[0]?.value ?? 0);
+    const easyneonPackPartsTotal = resolveNumber(
+      easyneonPackPartsExpenses?.[0]?.value ?? 0,
+    );
+    const easyneonMasterPartsTotal = resolveNumber(
+      easyneonMasterPartsExpenses?.[0]?.value ?? 0,
+    );
+    const rentTotal = resolveNumber(rentExpenses?.[0]?.value ?? 0);
+    const accountingTotal = resolveNumber(accountingExpenses?.[0]?.value ?? 0);
+    const hrTotal = resolveNumber(hrExpenses?.[0]?.value ?? 0);
+    const dividendsTotal = resolveNumber(dividendsExpenses?.[0]?.value ?? 0);
+    const rkoTotal = resolveNumber(rkoExpenses?.[0]?.value ?? 0);
+    const financeTotal = resolveNumber(financeExpenses?.[0]?.value ?? 0);
+    const programmersTotal = resolveNumber(programmersExpenses?.[0]?.value ?? 0);
+
+    const staffTotal =
+      productionHeadTotal +
+      assemblersTotal +
+      packersTotal +
+      logistTotal +
+      frezerTotal;
+
+    const easyneonMaterialsTotal =
+      orderCostTotals.priceForBoard +
+      orderCostTotals.priceForScreen +
+      orderCostTotals.adapterPrice +
+      orderCostTotals.neonPrice +
+      orderCostTotals.lightingPrice +
+      orderCostTotals.wireAcoustic +
+      orderCostTotals.wireShvvp +
+      (supplieTotals['Акрил'] ?? 0) +
+      (supplieTotals['Пленки'] ?? 0) +
+      (supplieTotals['Упаковка'] ?? 0) +
+      easyneonPackPartsTotal +
+      easyneonMasterPartsTotal +
+      (supplieTotals['Другое'] ?? 0);
+
+    const easyneonCogsTotal =
+      easyneonMaterialsTotal +
+      staffTotal +
+      installersTotal +
+      repairsTotal +
+      otherReportsTotal +
+      easyneonDeliveryTotal;
+
+    const easybookCogsTotal = bookPrintTotal + easybookDeliveryTotal;
+
+    const grossProfitEasyneon = easyneon.shipped - easyneonCogsTotal;
+    const grossProfitEasybook = easybook.shipped - easybookCogsTotal;
+    const totalRevenue = easyneon.shipped + easybook.shipped;
+    const roundPercent = (value: number) => Math.round(value * 100) / 100;
+    const grossMarginEasyneon =
+      easyneon.shipped > 0
+        ? roundPercent((grossProfitEasyneon / easyneon.shipped) * 100)
+        : 0;
+    const grossMarginEasybook =
+      easybook.shipped > 0
+        ? roundPercent((grossProfitEasybook / easybook.shipped) * 100)
+        : 0;
+    const grossMarginTotal =
+      totalRevenue > 0
+        ? roundPercent(
+            ((grossProfitEasyneon + grossProfitEasybook) / totalRevenue) * 100,
+          )
+        : 0;
+    const vatEasyneon = easyneon.shipped * 0.05;
+    const vatEasybook = easybook.shipped * 0.05;
+
+    const commercialEasyneon =
+      easyneonDesignLeadTotal +
+      easyneonDesignTotal +
+      easyneonSalesDirectorSalaryTotal +
+      salesManagersEasyneonTotal +
+      easyneonVkAccountManagersTotal +
+      easyneonVkOrderManagersTotal +
+      easyneonMarketingTargetTotal +
+      easyneonMarketingAvitoTotal +
+      easyneonMarketingSmmTotal +
+      easyneonMarketingAdsTotal;
+
+    const commercialEasybook =
+      easybookDesignLeadTotal +
+      bookDesignTotal +
+      easybookSalesDirectorSalaryTotal +
+      salesManagersEasybookTotal +
+      easybookVkAccountManagersTotal +
+      easybookBookLeadManagersTotal +
+      easybookBookOrderManagersTotal +
+      easybookMarketingTargetTotal +
+      easybookMarketingAvitoTotal +
+      easybookMarketingSmmTotal +
+      easybookMarketingAdsTotal +
+      ropsEasybookTotal;
+
+    const commercialWithPromotionEasyneon =
+      commercialEasyneon + promotionEasyneonTotal;
+    const commercialWithPromotionEasybook =
+      commercialEasybook + promotionEasybookTotal;
+
+    const marginalIncomeEasyneon =
+      grossProfitEasyneon - commercialWithPromotionEasyneon - vatEasyneon;
+    const marginalIncomeEasybook =
+      grossProfitEasybook - commercialWithPromotionEasybook - vatEasybook;
+
+    const operatingExpensesTotal =
+      rentTotal +
+      accountingTotal +
+      hrTotal +
+      rkoTotal +
+      programmersTotal;
+
+    const ebitdaTotal =
+      marginalIncomeEasyneon + marginalIncomeEasybook - operatingExpensesTotal;
+    const ebitdaMargin =
+      totalRevenue > 0 ? roundPercent((ebitdaTotal / totalRevenue) * 100) : 0;
+
+    const belowEbitdaTotal = 0;
+    const profitBeforeTax = ebitdaTotal - belowEbitdaTotal;
+    const profitBeforeTaxMargin =
+      totalRevenue > 0
+        ? roundPercent((profitBeforeTax / totalRevenue) * 100)
+        : 0;
+
+    const taxesPayroll = 0;
+    const profitTax = (totalRevenue - (vatEasyneon + vatEasybook)) * 0.01;
+    const taxLoadBase = totalRevenue - (vatEasyneon + vatEasybook);
+    const taxLoad =
+      taxLoadBase > 0
+        ? roundPercent(
+            ((taxesPayroll + profitTax + vatEasyneon + vatEasybook) /
+              taxLoadBase) *
+              100,
+          )
+        : 0;
+
+    const netProfit = profitBeforeTax - taxesPayroll - profitTax;
+    const netProfitMargin =
+      totalRevenue > 0 ? roundPercent((netProfit / totalRevenue) * 100) : 0;
+    const marginalMarginEasyneon =
+      easyneon.shipped > 0
+        ? roundPercent((marginalIncomeEasyneon / easyneon.shipped) * 100)
+        : 0;
+    const marginalMarginEasybook =
+      easybook.shipped > 0
+        ? roundPercent((marginalIncomeEasybook / easybook.shipped) * 100)
+        : 0;
+    const marginalMarginTotal =
+      totalRevenue > 0
+        ? roundPercent(
+            ((marginalIncomeEasyneon + marginalIncomeEasybook) / totalRevenue) *
+              100,
+          )
+        : 0;
+
+    return {
+      period,
+      rows: {
+        'revenue-easyneon-orders': easyneon.orders,
+        revenue: easyneon.shipped + easybook.shipped,
+        'revenue-easyneon': easyneon.shipped,
+        'revenue-easybook': easybook.shipped,
+        'revenue-easyneon-shipped': easyneon.shipped,
+        'revenue-easybook-orders': easybook.orders,
+        'revenue-easybook-shipped': easybook.shipped,
+        'gross-profit-easyneon': grossProfitEasyneon,
+        'gross-profit-easybook': grossProfitEasybook,
+        'gross-margin': grossMarginTotal,
+        'gross-margin-easyneon': grossMarginEasyneon,
+        'gross-margin-easybook': grossMarginEasybook,
+        'vat-easyneon': vatEasyneon,
+        'vat-easybook': vatEasybook,
+        'marginal-income-easyneon': marginalIncomeEasyneon,
+        'marginal-income-easybook': marginalIncomeEasybook,
+        'marginal-margin': marginalMarginTotal,
+        'marginal-margin-easyneon': marginalMarginEasyneon,
+        'marginal-margin-easybook': marginalMarginEasybook,
+        'promotion-easyneon': promotionEasyneonTotal,
+        'promotion-easybook': promotionEasybookTotal,
+        'easyneon-sales-managers': salesManagersEasyneonTotal,
+        'easyneon-sales-accounts': easyneonVkAccountManagersTotal,
+        'easyneon-sales-vk-ordering': easyneonVkOrderManagersTotal,
+        'easybook-sales-managers': salesManagersEasybookTotal,
+        'easybook-sales-accounts': easybookVkAccountManagersTotal,
+        'easybook-sales-book-lead': easybookBookLeadManagersTotal,
+        'easybook-sales-book-ordering': easybookBookOrderManagersTotal,
+        'easybook-sales-rops': ropsEasybookTotal,
+        'easyneon-design-head': easyneonDesignLeadTotal,
+        'easyneon-design-team': easyneonDesignTotal,
+        'easybook-design-head': easybookDesignLeadTotal,
+        'easyneon-sales-cd-salary': easyneonSalesDirectorSalaryTotal,
+        'easybook-sales-cd-salary': easybookSalesDirectorSalaryTotal,
+        'easyneon-marketing-target': easyneonMarketingTargetTotal,
+        'easyneon-marketing-avito': easyneonMarketingAvitoTotal,
+        'easyneon-marketing-smm': easyneonMarketingSmmTotal,
+        'easyneon-marketing-ads': easyneonMarketingAdsTotal,
+        'easybook-marketing-target': easybookMarketingTargetTotal,
+        'easybook-marketing-avito': easybookMarketingAvitoTotal,
+        'easybook-marketing-smm': easybookMarketingSmmTotal,
+        'easybook-marketing-ads': easybookMarketingAdsTotal,
+        'operating-expenses-rent': rentTotal,
+        'operating-expenses-accounting': accountingTotal,
+        'operating-expenses-finance': financeTotal,
+        'operating-expenses-hr': hrTotal,
+        'operating-expenses-rko': rkoTotal,
+        'cogs-easybook-print': bookPrintTotal,
+        'cogs-easybook-delivery': easybookDeliveryTotal,
+        'easybook-design-team': bookDesignTotal,
+        'operating-expenses-dev': programmersTotal,
+        ebitda: ebitdaTotal,
+        'ebitda-margin': ebitdaMargin,
+        'below-ebitda': belowEbitdaTotal,
+        'profit-before-tax': profitBeforeTax,
+        'profit-before-tax-margin': profitBeforeTaxMargin,
+        'taxes-payroll': taxesPayroll,
+        'taxes-profit': profitTax,
+        'taxes-load': taxLoad,
+        'net-profit': netProfit,
+        'net-profit-margin': netProfitMargin,
+        'net-profit-dividends': dividendsTotal,
+        'cogs-easyneon-materials': easyneonMaterialsTotal,
+        'cogs-easyneon-staff': staffTotal,
+        'cogs-easyneon-prod-head': productionHeadTotal,
+        'cogs-easyneon-assemblers': assemblersTotal,
+        'cogs-easyneon-packers': packersTotal,
+        'cogs-easyneon-logist': logistTotal,
+        'cogs-easyneon-millers': frezerTotal,
+        'cogs-easyneon-installers': installersTotal,
+        'cogs-easyneon-repair': repairsTotal,
+        'cogs-easyneon-repair-other': otherReportsTotal,
+        'cogs-easyneon-delivery': easyneonDeliveryTotal,
+        'cogs-easyneon-polycarbonate': orderCostTotals.priceForBoard,
+        'cogs-easyneon-screen': orderCostTotals.priceForScreen,
+        'cogs-easyneon-power': orderCostTotals.adapterPrice,
+        'cogs-easyneon-neon': orderCostTotals.neonPrice,
+        'cogs-easyneon-lighting': orderCostTotals.lightingPrice,
+        'cogs-easyneon-acoustic': orderCostTotals.wireAcoustic,
+        'cogs-easyneon-shvvp': orderCostTotals.wireShvvp,
+        'cogs-easyneon-acrylic': supplieTotals['Акрил'],
+        'cogs-easyneon-film': supplieTotals['Пленки'],
+        'cogs-easyneon-pack': supplieTotals['Упаковка'],
+        'cogs-easyneon-pack-parts': easyneonPackPartsTotal,
+        'cogs-easyneon-master-parts': easyneonMasterPartsTotal,
+        'cogs-easyneon-other': supplieTotals['Другое'],
+      },
+    };
+  }
+
+  async getMyNewDatas(period: string) {
+    const EASYNEON_GROUP_IDS = [2, 3, 18];
+    const EASYBOOK_GROUP_IDS = [19, 17];
+    const PRODUCTION_BOARD_IDS = [10, 5];
+    const EASYNEON_PROJECT_ID = 1;
+    const EASYBOOK_PROJECT_ID = 2;
+    const GENERAL_PROJECT_ID = 3;
+
+    const baseDealWhere = {
+      saleDate: { startsWith: period },
+      reservation: false,
+      status: { not: 'Возврат' },
+      deletedAt: null,
+    };
+
+    const baseDopWhere = {
+      saleDate: { startsWith: period },
+      deal: {
+        reservation: false,
+        status: { not: 'Возврат' },
+        deletedAt: null,
+      },
+    };
+
+    const baseDeliveryDealWhere = {
+      saleDate: { startsWith: period },
+      status: { not: 'Возврат' },
+      reservation: false,
+      deletedAt: null,
+    };
+
+    const resolveNumber = (value: unknown) => {
+      if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : 0;
+      }
+      if (
+        value &&
+        typeof value === 'object' &&
+        'toNumber' in value &&
+        typeof (value as { toNumber?: () => number }).toNumber === 'function'
+      ) {
+        const numeric = (value as { toNumber: () => number }).toNumber();
+        return Number.isFinite(numeric) ? numeric : 0;
+      }
+      const normalized = Number(value ?? 0);
+      return Number.isFinite(normalized) ? normalized : 0;
+    };
+
+    const sumPrices = (items: Array<{ price: unknown }>) =>
+      items.reduce((sum, item) => sum + resolveNumber(item.price), 0);
+
+    const sumPayments = (
+      items: Array<{ payments?: Array<{ price: unknown }> }>,
+    ) => items.reduce((sum, item) => sum + sumPrices(item.payments ?? []), 0);
+
+    const sumDeliveries = (
+      deliveries: Array<{
+        deal: { price: unknown; dops: Array<{ price: unknown }> };
+      }>,
+    ) =>
+      deliveries.reduce(
+        (sum, delivery) =>
+          sum +
+          resolveNumber(delivery.deal.price) +
+          sumPrices(delivery.deal.dops),
+        0,
+      );
+
+    const getProjectData = async (groupIds: number[]) => {
+      const [deals, dops, deliveries] = await Promise.all([
+        this.prisma.deal.findMany({
+          where: {
+            ...baseDealWhere,
+            groupId: { in: groupIds },
+          },
+          select: {
+            price: true,
+            payments: {
+              select: { price: true },
+            },
+          },
         }),
         this.prisma.dop.findMany({
           where: {
@@ -660,13 +1401,13 @@ export class PnlService {
             deal: {
               include: { dops: true },
             },
-            
           },
         }),
       ]);
 
       return {
         orders: sumPrices(deals) + sumPrices(dops),
+        paid: sumPayments(deals),
         shipped: sumDeliveries(deliveries),
         deliveries,
         shippedDealIds: Array.from(
@@ -918,9 +1659,7 @@ export class PnlService {
     ) =>
       items.reduce(
         (sum, item) =>
-          sum +
-          resolveNumber(item.cost) -
-          resolveNumber(item.penaltyCost ?? 0),
+          sum + resolveNumber(item.cost) - resolveNumber(item.penaltyCost ?? 0),
         0,
       );
 
@@ -945,7 +1684,8 @@ export class PnlService {
     const salesManagersEasybookTotal = resolveNumber(mopBookSalesManagers);
     const accountManagersEasybookTotal = resolveNumber(movBookAccountManagers);
     const ropsEasybookTotal = resolveNumber(
-      bookPLDatas?.ropSalaries?.find((row) => row.period === period)?.value ?? 0,
+      bookPLDatas?.ropSalaries?.find((row) => row.period === period)?.value ??
+        0,
     );
     const bookPrintTotal = resolveNumber(
       bookPLDatas?.prodExpensesByPeriod?.find((row) => row.period === period)
@@ -955,7 +1695,9 @@ export class PnlService {
       bookPLDatas?.designExpensesByPeriod?.find((row) => row.period === period)
         ?.value ?? 0,
     );
-    const installersTotal = resolveNumber(installationExpenses?.[0]?.value ?? 0);
+    const installersTotal = resolveNumber(
+      installationExpenses?.[0]?.value ?? 0,
+    );
     const productionHeadTotal = resolveNumber(
       productionHeadExpenses?.[0]?.value ?? 0,
     );
@@ -1089,9 +1831,7 @@ export class PnlService {
     const ebitdaTotal =
       marginalIncomeEasyneon + marginalIncomeEasybook - operatingExpensesTotal;
     const ebitdaMargin =
-      totalRevenue > 0
-        ? roundPercent((ebitdaTotal / totalRevenue) * 100)
-        : 0;
+      totalRevenue > 0 ? roundPercent((ebitdaTotal / totalRevenue) * 100) : 0;
 
     const belowEbitdaTotal = 0;
     const profitBeforeTax = ebitdaTotal - belowEbitdaTotal;
@@ -1135,11 +1875,13 @@ export class PnlService {
       period,
       rows: {
         'revenue-easyneon-orders': easyneon.orders,
-        'revenue': easyneon.shipped + easybook.shipped,
+        'revenue-easyneon-paid': easyneon.paid,
+        revenue: easyneon.shipped + easybook.shipped,
         'revenue-easyneon': easyneon.shipped,
         'revenue-easybook': easybook.shipped,
         'revenue-easyneon-shipped': easyneon.shipped,
         'revenue-easybook-orders': easybook.orders,
+        'revenue-easybook-paid': easybook.paid,
         'revenue-easybook-shipped': easybook.shipped,
         'gross-profit-easyneon': grossProfitEasyneon,
         'gross-profit-easybook': grossProfitEasybook,
@@ -1177,7 +1919,7 @@ export class PnlService {
         'cogs-easybook-delivery': easybookDeliveryTotal,
         'easybook-design-team': bookDesignTotal,
         'operating-expenses-dev': 100000,
-        'ebitda': ebitdaTotal,
+        ebitda: ebitdaTotal,
         'ebitda-margin': ebitdaMargin,
         'below-ebitda': belowEbitdaTotal,
         'profit-before-tax': profitBeforeTax,
@@ -1210,7 +1952,8 @@ export class PnlService {
         'cogs-easyneon-film': supplieTotals['Пленки'],
         'cogs-easyneon-pack': supplieTotals['Упаковка'],
         'cogs-easyneon-pack-parts': supplieTotals['Комплектующие для упаковки'],
-        'cogs-easyneon-master-parts': supplieTotals['Комплектующие для мастеров'],
+        'cogs-easyneon-master-parts':
+          supplieTotals['Комплектующие для мастеров'],
         'cogs-easyneon-other': supplieTotals['Другое'],
       },
     };
