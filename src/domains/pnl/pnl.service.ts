@@ -577,6 +577,11 @@ export class PnlService {
     const EASYNEON_PROJECT_ID = 3;
     const EASYBOOK_PROJECT_ID = 2;
     const GENERAL_PROJECT_ID = 1;
+    const [periodYear, periodMonth] = period.split('-').map(Number);
+    const prevPeriod = format(
+      subMonths(new Date(periodYear, periodMonth - 1), 1),
+      'yyyy-MM',
+    );
 
     const baseDealWhere = {
       saleDate: { startsWith: period },
@@ -859,7 +864,9 @@ export class PnlService {
       easybookMarketingAds38,
       easybookMarketingAds42,
       easybookMarketingAds45,
-      rentExpenses,
+      easyneonRentExpenses,
+      easybookRentExpenses,
+      vkCashbackExpensesPrev,
       accountingExpenses,
       hrExpenses,
       dividendsExpenses,
@@ -936,7 +943,9 @@ export class PnlService {
       this.getExpensesByCategory([period], 38, EASYBOOK_PROJECT_ID),
       this.getExpensesByCategory([period], 42, EASYBOOK_PROJECT_ID),
       this.getExpensesByCategory([period], 45, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 36),
+      this.getExpensesByCategory([period], 36, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 36, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([prevPeriod], 39),
       this.getExpensesByCategory([period], 68),
       this.getExpensesByCategory([period], 43),
       this.getExpensesByCategory([period], 138, GENERAL_PROJECT_ID),
@@ -1060,7 +1069,17 @@ export class PnlService {
     const easyneonMasterPartsTotal = resolveNumber(
       easyneonMasterPartsExpenses?.[0]?.value ?? 0,
     );
-    const rentTotal = resolveNumber(rentExpenses?.[0]?.value ?? 0);
+    const easyneonRentTotal = resolveNumber(
+      easyneonRentExpenses?.[0]?.value ?? 0,
+    );
+    const easybookRentTotal = resolveNumber(
+      easybookRentExpenses?.[0]?.value ?? 0,
+    );
+    const vkCashbackBaseTotal = resolveNumber(
+      vkCashbackExpensesPrev?.[0]?.value ?? 0,
+    );
+    const vkCashbackTotalRaw = vkCashbackBaseTotal * 0.17;
+    const vkCashbackTotal = vkCashbackTotalRaw ? vkCashbackTotalRaw : 0;
     const accountingTotal = resolveNumber(accountingExpenses?.[0]?.value ?? 0);
     const hrTotal = resolveNumber(hrExpenses?.[0]?.value ?? 0);
     const dividendsTotal = resolveNumber(dividendsExpenses?.[0]?.value ?? 0);
@@ -1096,9 +1115,11 @@ export class PnlService {
       installersTotal +
       repairsTotal +
       otherReportsTotal +
-      easyneonDeliveryTotal;
+      easyneonDeliveryTotal +
+      easyneonRentTotal;
 
-    const easybookCogsTotal = bookPrintTotal + easybookDeliveryTotal;
+    const easybookCogsTotal =
+      bookPrintTotal + easybookDeliveryTotal + easybookRentTotal;
 
     const grossProfitEasyneon = easyneon.shipped - easyneonCogsTotal;
     const grossProfitEasybook = easybook.shipped - easybookCogsTotal;
@@ -1158,19 +1179,21 @@ export class PnlService {
       grossProfitEasybook - commercialWithPromotionEasybook - vatEasybook;
 
     const operatingExpensesTotal =
-      rentTotal +
-      accountingTotal +
-      hrTotal +
-      rkoTotal +
-      programmersTotal;
+      accountingTotal + hrTotal + rkoTotal + programmersTotal;
 
     const ebitdaTotal =
       marginalIncomeEasyneon + marginalIncomeEasybook - operatingExpensesTotal;
     const ebitdaMargin =
       totalRevenue > 0 ? roundPercent((ebitdaTotal / totalRevenue) * 100) : 0;
 
+    const depositInterestTotal = 0;
     const belowEbitdaTotal = 0;
-    const profitBeforeTax = ebitdaTotal - belowEbitdaTotal;
+    const interestExpensesTotal = 0;
+    const profitBeforeTax =
+      ebitdaTotal +
+      vkCashbackTotal +
+      depositInterestTotal -
+      interestExpensesTotal;
     const profitBeforeTaxMargin =
       totalRevenue > 0
         ? roundPercent((profitBeforeTax / totalRevenue) * 100)
@@ -1252,18 +1275,21 @@ export class PnlService {
         'easybook-marketing-avito': easybookMarketingAvitoTotal,
         'easybook-marketing-smm': easybookMarketingSmmTotal,
         'easybook-marketing-ads': easybookMarketingAdsTotal,
-        'operating-expenses-rent': rentTotal,
         'operating-expenses-accounting': accountingTotal,
         'operating-expenses-finance': financeTotal,
         'operating-expenses-hr': hrTotal,
         'operating-expenses-rko': rkoTotal,
         'cogs-easybook-print': bookPrintTotal,
         'cogs-easybook-delivery': easybookDeliveryTotal,
+        'cogs-easybook-rent': easybookRentTotal,
         'easybook-design-team': bookDesignTotal,
         'operating-expenses-dev': programmersTotal,
         ebitda: ebitdaTotal,
         'ebitda-margin': ebitdaMargin,
         'below-ebitda': belowEbitdaTotal,
+        'below-ebitda-interest': interestExpensesTotal,
+        'other-income-vk-cashback': vkCashbackTotal,
+        'other-income-deposit-interest': depositInterestTotal,
         'profit-before-tax': profitBeforeTax,
         'profit-before-tax-margin': profitBeforeTaxMargin,
         'taxes-payroll': taxesPayroll,
@@ -1283,6 +1309,7 @@ export class PnlService {
         'cogs-easyneon-repair': repairsTotal,
         'cogs-easyneon-repair-other': otherReportsTotal,
         'cogs-easyneon-delivery': easyneonDeliveryTotal,
+        'cogs-easyneon-rent': easyneonRentTotal,
         'cogs-easyneon-polycarbonate': orderCostTotals.priceForBoard,
         'cogs-easyneon-screen': orderCostTotals.priceForScreen,
         'cogs-easyneon-power': orderCostTotals.adapterPrice,
@@ -1307,6 +1334,11 @@ export class PnlService {
     const EASYNEON_PROJECT_ID = 1;
     const EASYBOOK_PROJECT_ID = 2;
     const GENERAL_PROJECT_ID = 3;
+    const [periodYear, periodMonth] = period.split('-').map(Number);
+    const prevPeriod = format(
+      subMonths(new Date(periodYear, periodMonth - 1), 1),
+      'yyyy-MM',
+    );
 
     const baseDealWhere = {
       saleDate: { startsWith: period },
@@ -1582,7 +1614,9 @@ export class PnlService {
       easyneonMarketingAds38,
       easyneonMarketingAds42,
       easyneonMarketingSubs,
-      rentExpenses,
+      easyneonRentExpenses,
+      easybookRentExpenses,
+      vkCashbackExpensesPrev,
       accountingExpenses,
       hrExpenses,
       dividendsExpenses,
@@ -1646,7 +1680,9 @@ export class PnlService {
       this.getExpensesByCategory([period], 38),
       this.getExpensesByCategory([period], 42),
       this.getExpensesByCategory([period], 45),
-      this.getExpensesByCategory([period], 36),
+      this.getExpensesByCategory([period], 36, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 36, EASYBOOK_PROJECT_ID),
+      this.getExpensesByCategory([prevPeriod], 39),
       this.getExpensesByCategory([period], 68),
       this.getExpensesByCategory([period], 43),
       this.getExpensesByCategory([period], 138, GENERAL_PROJECT_ID),
@@ -1731,7 +1767,17 @@ export class PnlService {
     const easyneonMarketingSubsTotal = resolveNumber(
       easyneonMarketingSubs?.[0]?.value ?? 0,
     );
-    const rentTotal = resolveNumber(rentExpenses?.[0]?.value ?? 0);
+    const easyneonRentTotal = resolveNumber(
+      easyneonRentExpenses?.[0]?.value ?? 0,
+    );
+    const easybookRentTotal = resolveNumber(
+      easybookRentExpenses?.[0]?.value ?? 0,
+    );
+    const vkCashbackBaseTotal = resolveNumber(
+      vkCashbackExpensesPrev?.[0]?.value ?? 0,
+    );
+    const vkCashbackTotalRaw = vkCashbackBaseTotal * 0.17;
+    const vkCashbackTotal = vkCashbackTotalRaw ? vkCashbackTotalRaw : 0;
     const accountingTotal = resolveNumber(accountingExpenses?.[0]?.value ?? 0);
     const hrTotal = resolveNumber(hrExpenses?.[0]?.value ?? 0);
     const dividendsTotal = resolveNumber(dividendsExpenses?.[0]?.value ?? 0);
@@ -1766,9 +1812,11 @@ export class PnlService {
       installersTotal +
       repairsTotal +
       otherReportsTotal +
-      easyneonDeliveryTotal;
+      easyneonDeliveryTotal +
+      easyneonRentTotal;
 
-    const easybookCogsTotal = bookPrintTotal + easybookDeliveryTotal;
+    const easybookCogsTotal =
+      bookPrintTotal + easybookDeliveryTotal + easybookRentTotal;
 
     const grossProfitEasyneon = easyneon.shipped - easyneonCogsTotal;
     const grossProfitEasybook = easybook.shipped - easybookCogsTotal;
@@ -1821,7 +1869,6 @@ export class PnlService {
     const servicesSubscriptionsTotal =
       easyneonMarketingAdsTotal + easyneonMarketingSubsTotal;
     const operatingExpensesTotal =
-      rentTotal +
       accountingTotal +
       servicesSubscriptionsTotal +
       hrTotal +
@@ -1833,8 +1880,14 @@ export class PnlService {
     const ebitdaMargin =
       totalRevenue > 0 ? roundPercent((ebitdaTotal / totalRevenue) * 100) : 0;
 
+    const depositInterestTotal = 0;
     const belowEbitdaTotal = 0;
-    const profitBeforeTax = ebitdaTotal - belowEbitdaTotal;
+    const interestExpensesTotal = 0;
+    const profitBeforeTax =
+      ebitdaTotal +
+      vkCashbackTotal +
+      depositInterestTotal -
+      interestExpensesTotal;
     const profitBeforeTaxMargin =
       totalRevenue > 0
         ? roundPercent((profitBeforeTax / totalRevenue) * 100)
@@ -1909,7 +1962,6 @@ export class PnlService {
         'easyneon-marketing-target': easyneonMarketingTargetTotal,
         'easyneon-marketing-avito': easyneonMarketingAvitoTotal,
         'easyneon-marketing-smm': easyneonMarketingSmmTotal,
-        'operating-expenses-rent': rentTotal,
         'operating-expenses-accounting': accountingTotal,
         'operating-expenses-services': servicesSubscriptionsTotal,
         'operating-expenses-finance': financeTotal,
@@ -1917,11 +1969,15 @@ export class PnlService {
         'operating-expenses-rko': rkoTotal,
         'cogs-easybook-print': bookPrintTotal,
         'cogs-easybook-delivery': easybookDeliveryTotal,
+        'cogs-easybook-rent': easybookRentTotal,
         'easybook-design-team': bookDesignTotal,
         'operating-expenses-dev': 100000,
         ebitda: ebitdaTotal,
         'ebitda-margin': ebitdaMargin,
         'below-ebitda': belowEbitdaTotal,
+        'below-ebitda-interest': interestExpensesTotal,
+        'other-income-vk-cashback': vkCashbackTotal,
+        'other-income-deposit-interest': depositInterestTotal,
         'profit-before-tax': profitBeforeTax,
         'profit-before-tax-margin': profitBeforeTaxMargin,
         'taxes-payroll': taxesPayroll,
@@ -1941,6 +1997,7 @@ export class PnlService {
         'cogs-easyneon-repair': repairsTotal,
         'cogs-easyneon-repair-other': otherReportsTotal,
         'cogs-easyneon-delivery': easyneonDeliveryTotal,
+        'cogs-easyneon-rent': easyneonRentTotal,
         'cogs-easyneon-polycarbonate': orderCostTotals.priceForBoard,
         'cogs-easyneon-screen': orderCostTotals.priceForScreen,
         'cogs-easyneon-power': orderCostTotals.adapterPrice,
