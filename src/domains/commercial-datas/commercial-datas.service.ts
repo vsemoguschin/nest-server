@@ -541,7 +541,9 @@ export class CommercialDatasService {
           dealSales,
           paymentsFact,
           toSalary:
-            period >= '2026-01' ? +(toSalary * 0.95).toFixed(2) : +toSalary.toFixed(2),
+            period >= '2026-01'
+              ? +(toSalary * 0.95).toFixed(2)
+              : +toSalary.toFixed(2),
         };
       }),
     );
@@ -1650,7 +1652,9 @@ export class CommercialDatasService {
     });
     // Определение топов
     const topTotalSales = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
+      .filter(
+        (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+      )
       .sort((a, b) => b.totalSales - a.totalSales)
       .slice(0, 3)
       .map((u, i) => {
@@ -1667,7 +1671,9 @@ export class CommercialDatasService {
       });
 
     const topDopSales = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
+      .filter(
+        (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+      )
       .sort((a, b) => b.dopSales - a.dopSales)
       .slice(0, 3)
       .map((u, i) => {
@@ -1683,7 +1689,9 @@ export class CommercialDatasService {
         }
       });
     const topDimmerSales = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
+      .filter(
+        (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+      )
       .sort((a, b) => b.dimmerSales - a.dimmerSales)
       .slice(0, 3)
       .map((u, i) => {
@@ -1699,7 +1707,9 @@ export class CommercialDatasService {
         }
       });
     const topSalesWithoutDesigners = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
+      .filter(
+        (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+      )
       .sort(
         (a, b) => b.dealsSalesWithoutDesigners - a.dealsSalesWithoutDesigners,
       )
@@ -1717,7 +1727,9 @@ export class CommercialDatasService {
         }
       });
     const topConversionDayToDay = [...userData]
-      .filter((u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17)
+      .filter(
+        (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+      )
       .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
       .slice(0, 3)
       .map((u, i) => {
@@ -3027,6 +3039,18 @@ export class CommercialDatasService {
       salaryCorrectionPlus -
       salaryCorrectionMinus; //3999
     return mopsSalary;
+  }
+
+  /** данные по ропу */
+  async getROPBookPNLDatas(period: string) {
+    const groups = [19, 17];
+    const ropDatas = await Promise.all(
+      groups.map((groupId) => this.getROPSalesDatas(groupId, period)),
+    );
+    return ropDatas.reduce((sum, groupDatas) => {
+      // const currentPeriod = groupDatas.find((row) => row.per === period);
+      return sum + groupDatas.reduce((a, b) => a + b.toSalary, 0);
+    }, 0);
   }
 
   /** данные по мопу */

@@ -1527,7 +1527,7 @@ export class ProductionService {
     const users = await this.prisma.user.findMany({
       where: {
         role: {
-          shortName: { in: ['PACKER', 'LOGIST', 'MASTER'] },
+          shortName: { in: ['PACKER', 'LOGIST', 'MASTER', 'DP'] },
         },
         id: userSearch,
         workSpaceId:

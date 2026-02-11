@@ -409,6 +409,16 @@ export class PnlService {
       }),
     );
 
+    const ropSalaries = await Promise.all(
+      periods.map(async (p) => {
+        const value = await this.commercialDatasService.getROPBookPNLDatas(p);
+        return {
+          period: p,
+          value,
+        };
+      }),
+    );
+
     const mopSalaries = await Promise.all(
       periods.map(async (p) => {
         const value = await this.commercialDatasService.getMOPBookPNLDatas(p);
@@ -443,23 +453,6 @@ export class PnlService {
       this.getAdExpensesByPeriods(periods, [19, 17]),
     ]);
 
-    const rops = await this.prisma.user.findMany({
-      where: {
-        role: {
-          shortName: 'ROP',
-        },
-        groupId: { in: [19, 17] },
-      },
-    });
-
-    const ropSalaries = income.map((i) => {
-      // console.log(i.revenue);
-      return {
-        period: i.period,
-        value: i.revenue * 0.01 * rops.length,
-      };
-    });
-
     return {
       periods,
       income,
@@ -478,7 +471,6 @@ export class PnlService {
     categoryId: number,
     projectId?: number,
   ): Promise<{ period: string; value: number }[]> {
-    
     // Один запрос вместо 4-х
     const where: {
       expenseCategoryId: number;
@@ -501,9 +493,19 @@ export class PnlService {
 
     // Группируем по периодам
     const grouped = periods.map((period) => {
-      const value = allExpenses
-        .filter((exp) => exp.period === period)
-        .reduce((sum, exp) => sum + exp.amount, 0);
+      const periodExpenses = allExpenses.filter((exp) => exp.period === period);
+      const value = periodExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+      if (categoryId === 13) {
+        console.log('[PNL] Deposit interest breakdown', {
+          categoryId,
+          projectId,
+          period,
+          count: periodExpenses.length,
+          amounts: periodExpenses.map((exp) => Number(exp.amount)),
+          total: value,
+        });
+      }
 
       return { period, value };
     });
@@ -567,7 +569,6 @@ export class PnlService {
     const deliveredDeliveries = deliveries.filter(
       (d) => d.deliveredDate !== '',
     );
-    console.log(sendDeliveries.length, deliveredDeliveries.length);
   }
 
   async getNewDatas(period: string) {
@@ -796,12 +797,7 @@ export class PnlService {
       });
     });
 
-    const SUPPLIE_CATEGORIES = [
-      'Акрил',
-      'Пленки',
-      'Упаковка',
-      'Другое',
-    ];
+    const SUPPLIE_CATEGORIES = ['Акрил', 'Пленки', 'Упаковка', 'Другое'];
 
     const suppliePositions = await this.prisma.suppliePosition.findMany({
       where: {
@@ -844,6 +840,7 @@ export class PnlService {
       easybookAdExpenses,
       mopNeonSalesManagers,
       mopBookSalesManagers,
+      movBookAccountManagers,
       bookPLDatas,
       installationExpenses,
       productionHeadExpenses,
@@ -872,12 +869,13 @@ export class PnlService {
       dividendsExpenses,
       rkoExpenses,
       financeExpenses,
+      depositInterestExpenses,
+      interestExpenses,
       programmersExpenses,
       easyneonPackPartsExpenses,
       easyneonMasterPartsExpenses,
       easyneonVkAccountManagers,
       easyneonVkOrderManagers,
-      easybookVkAccountManagers,
       easybookBookLeadManagers,
       easybookBookOrderManagers,
     ] = await Promise.all([
@@ -923,6 +921,7 @@ export class PnlService {
       }),
       this.commercialDatasService.getMOPNeonPNLDatas(period),
       this.commercialDatasService.getMOPBookPNLDatas(period),
+      this.commercialDatasService.getMOVBookPNLDatas(period),
       this.getBookPLDatas(period),
       this.getExpensesByCategory([period], 57, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 52, EASYNEON_PROJECT_ID),
@@ -951,12 +950,13 @@ export class PnlService {
       this.getExpensesByCategory([period], 138, GENERAL_PROJECT_ID),
       this.getExpensesByCategory([period], 48),
       this.getExpensesByCategory([period], 151),
+      this.getExpensesByCategory([period], 13),
+      this.getExpensesByCategory([period], 63),
       this.getExpensesByCategory([period], 87),
       this.getExpensesByCategory([period], 23, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 24, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 79, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 80, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 79, EASYBOOK_PROJECT_ID),
       this.getExpensesByCategory([period], 142, EASYBOOK_PROJECT_ID),
       this.getExpensesByCategory([period], 140, EASYBOOK_PROJECT_ID),
     ]);
@@ -995,9 +995,7 @@ export class PnlService {
     const easyneonVkOrderManagersTotal = resolveNumber(
       easyneonVkOrderManagers?.[0]?.value ?? 0,
     );
-    const easybookVkAccountManagersTotal = resolveNumber(
-      easybookVkAccountManagers?.[0]?.value ?? 0,
-    );
+    const accountManagersEasybookTotal = resolveNumber(movBookAccountManagers);
     const easybookBookLeadManagersTotal = resolveNumber(
       easybookBookLeadManagers?.[0]?.value ?? 0,
     );
@@ -1075,6 +1073,7 @@ export class PnlService {
     const easybookRentTotal = resolveNumber(
       easybookRentExpenses?.[0]?.value ?? 0,
     );
+
     const vkCashbackBaseTotal = resolveNumber(
       vkCashbackExpensesPrev?.[0]?.value ?? 0,
     );
@@ -1085,7 +1084,23 @@ export class PnlService {
     const dividendsTotal = resolveNumber(dividendsExpenses?.[0]?.value ?? 0);
     const rkoTotal = resolveNumber(rkoExpenses?.[0]?.value ?? 0);
     const financeTotal = resolveNumber(financeExpenses?.[0]?.value ?? 0);
-    const programmersTotal = resolveNumber(programmersExpenses?.[0]?.value ?? 0);
+    const depositInterestTotal = resolveNumber(
+      depositInterestExpenses?.[0]?.value ?? 0,
+    );
+    const interestExpensesTotal = resolveNumber(
+      interestExpenses?.[0]?.value ?? 0,
+    );
+    console.log('[PNL] Deposit interest totals (new-my)', {
+      period,
+      depositInterestTotal,
+    });
+    console.log('[PNL] Deposit interest totals (new)', {
+      period,
+      depositInterestTotal,
+    });
+    const programmersTotal = resolveNumber(
+      programmersExpenses?.[0]?.value ?? 0,
+    );
 
     const staffTotal =
       productionHeadTotal +
@@ -1159,9 +1174,9 @@ export class PnlService {
       bookDesignTotal +
       easybookSalesDirectorSalaryTotal +
       salesManagersEasybookTotal +
-      easybookVkAccountManagersTotal +
-      easybookBookLeadManagersTotal +
-      easybookBookOrderManagersTotal +
+      accountManagersEasybookTotal +
+      // easybookBookLeadManagersTotal +
+      // easybookBookOrderManagersTotal +
       easybookMarketingTargetTotal +
       easybookMarketingAvitoTotal +
       easybookMarketingSmmTotal +
@@ -1186,9 +1201,7 @@ export class PnlService {
     const ebitdaMargin =
       totalRevenue > 0 ? roundPercent((ebitdaTotal / totalRevenue) * 100) : 0;
 
-    const depositInterestTotal = 0;
     const belowEbitdaTotal = 0;
-    const interestExpensesTotal = 0;
     const profitBeforeTax =
       ebitdaTotal +
       vkCashbackTotal +
@@ -1258,9 +1271,9 @@ export class PnlService {
         'easyneon-sales-accounts': easyneonVkAccountManagersTotal,
         'easyneon-sales-vk-ordering': easyneonVkOrderManagersTotal,
         'easybook-sales-managers': salesManagersEasybookTotal,
-        'easybook-sales-accounts': easybookVkAccountManagersTotal,
-        'easybook-sales-book-lead': easybookBookLeadManagersTotal,
-        'easybook-sales-book-ordering': easybookBookOrderManagersTotal,
+        'easybook-sales-accounts': accountManagersEasybookTotal,
+        // 'easybook-sales-book-lead': easybookBookLeadManagersTotal,
+        // 'easybook-sales-book-ordering': easybookBookOrderManagersTotal,
         'easybook-sales-rops': ropsEasybookTotal,
         'easyneon-design-head': easyneonDesignLeadTotal,
         'easyneon-design-team': easyneonDesignTotal,
@@ -1622,6 +1635,8 @@ export class PnlService {
       dividendsExpenses,
       rkoExpenses,
       financeExpenses,
+      depositInterestExpenses,
+      interestExpenses,
     ] = await Promise.all([
       this.prisma.logistShift.findMany({
         where: {
@@ -1688,6 +1703,8 @@ export class PnlService {
       this.getExpensesByCategory([period], 138, GENERAL_PROJECT_ID),
       this.getExpensesByCategory([period], 48),
       this.getExpensesByCategory([period], 151),
+      this.getExpensesByCategory([period], 13),
+      this.getExpensesByCategory([period], 155),
     ]);
 
     const sumCostMinusPenalty = (
@@ -1773,6 +1790,7 @@ export class PnlService {
     const easybookRentTotal = resolveNumber(
       easybookRentExpenses?.[0]?.value ?? 0,
     );
+
     const vkCashbackBaseTotal = resolveNumber(
       vkCashbackExpensesPrev?.[0]?.value ?? 0,
     );
@@ -1783,6 +1801,12 @@ export class PnlService {
     const dividendsTotal = resolveNumber(dividendsExpenses?.[0]?.value ?? 0);
     const rkoTotal = resolveNumber(rkoExpenses?.[0]?.value ?? 0);
     const financeTotal = resolveNumber(financeExpenses?.[0]?.value ?? 0);
+    const depositInterestTotal = resolveNumber(
+      depositInterestExpenses?.[0]?.value ?? 0,
+    );
+    const interestExpensesTotal = resolveNumber(
+      interestExpenses?.[0]?.value ?? 0,
+    );
 
     const staffTotal =
       productionHeadTotal +
@@ -1880,9 +1904,7 @@ export class PnlService {
     const ebitdaMargin =
       totalRevenue > 0 ? roundPercent((ebitdaTotal / totalRevenue) * 100) : 0;
 
-    const depositInterestTotal = 0;
     const belowEbitdaTotal = 0;
-    const interestExpensesTotal = 0;
     const profitBeforeTax =
       ebitdaTotal +
       vkCashbackTotal +

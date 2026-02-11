@@ -438,17 +438,22 @@ export class PlanfactController {
     @Body()
     categoriesData: {
       counterPartyAccount: string;
-      incomeExpenseCategoryId?: number;
-      outcomeExpenseCategoryId?: number;
+      incomeExpenseCategoryId?: number | null;
+      outcomeExpenseCategoryId?: number | null;
     },
   ) {
     if (!categoriesData.counterPartyAccount) {
       throw new BadRequestException('Параметр counterPartyAccount обязателен');
     }
-    if (
-      !categoriesData.incomeExpenseCategoryId &&
-      !categoriesData.outcomeExpenseCategoryId
-    ) {
+    const hasIncome = Object.prototype.hasOwnProperty.call(
+      categoriesData,
+      'incomeExpenseCategoryId',
+    );
+    const hasOutcome = Object.prototype.hasOwnProperty.call(
+      categoriesData,
+      'outcomeExpenseCategoryId',
+    );
+    if (!hasIncome && !hasOutcome) {
       throw new BadRequestException(
         'Необходимо указать хотя бы одну категорию (incomeExpenseCategoryId или outcomeExpenseCategoryId)',
       );
@@ -467,14 +472,22 @@ export class PlanfactController {
     @Body()
     projectsData: {
       counterPartyAccount: string;
-      incomeProjectId?: number;
-      outcomeProjectId?: number;
+      incomeProjectId?: number | null;
+      outcomeProjectId?: number | null;
     },
   ) {
     if (!projectsData.counterPartyAccount) {
       throw new BadRequestException('Параметр counterPartyAccount обязателен');
     }
-    if (!projectsData.incomeProjectId && !projectsData.outcomeProjectId) {
+    const hasIncome = Object.prototype.hasOwnProperty.call(
+      projectsData,
+      'incomeProjectId',
+    );
+    const hasOutcome = Object.prototype.hasOwnProperty.call(
+      projectsData,
+      'outcomeProjectId',
+    );
+    if (!hasIncome && !hasOutcome) {
       throw new BadRequestException(
         'Необходимо указать хотя бы один проект (incomeProjectId или outcomeProjectId)',
       );

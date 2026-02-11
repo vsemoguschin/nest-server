@@ -1983,8 +1983,8 @@ export class PlanfactService {
   async assignExpenseCategoriesToCounterParty(
     counterPartyId: number,
     categoriesData: {
-      incomeExpenseCategoryId?: number;
-      outcomeExpenseCategoryId?: number;
+      incomeExpenseCategoryId?: number | null;
+      outcomeExpenseCategoryId?: number | null;
     },
   ) {
     // Проверяем существование контрагента
@@ -2003,7 +2003,7 @@ export class PlanfactService {
     }
 
     // Проверяем существование категорий если они указаны
-    if (categoriesData.incomeExpenseCategoryId) {
+    if (categoriesData.incomeExpenseCategoryId != null) {
       const incomeCategory = await this.prisma.expenseCategory.findUnique({
         where: { id: categoriesData.incomeExpenseCategoryId },
       });
@@ -2014,7 +2014,7 @@ export class PlanfactService {
       }
     }
 
-    if (categoriesData.outcomeExpenseCategoryId) {
+    if (categoriesData.outcomeExpenseCategoryId != null) {
       const outcomeCategory = await this.prisma.expenseCategory.findUnique({
         where: { id: categoriesData.outcomeExpenseCategoryId },
       });
@@ -2116,8 +2116,8 @@ export class PlanfactService {
   async assignExpenseCategoriesToCounterPartyByAccount(
     counterPartyAccount: string,
     categoriesData: {
-      incomeExpenseCategoryId?: number;
-      outcomeExpenseCategoryId?: number;
+      incomeExpenseCategoryId?: number | null;
+      outcomeExpenseCategoryId?: number | null;
     },
   ) {
     // Находим контрагента по номеру счета
@@ -2154,8 +2154,8 @@ export class PlanfactService {
   async assignProjectsToCounterParty(
     counterPartyId: number,
     projectsData: {
-      incomeProjectId?: number;
-      outcomeProjectId?: number;
+      incomeProjectId?: number | null;
+      outcomeProjectId?: number | null;
     },
   ) {
     const counterParty = await this.prisma.counterParty.findUnique({
@@ -2172,7 +2172,7 @@ export class PlanfactService {
       );
     }
 
-    if (projectsData.incomeProjectId) {
+    if (projectsData.incomeProjectId != null) {
       const incomeProject = await this.prisma.project.findUnique({
         where: { id: projectsData.incomeProjectId },
       });
@@ -2183,7 +2183,7 @@ export class PlanfactService {
       }
     }
 
-    if (projectsData.outcomeProjectId) {
+    if (projectsData.outcomeProjectId != null) {
       const outcomeProject = await this.prisma.project.findUnique({
         where: { id: projectsData.outcomeProjectId },
       });
@@ -2195,8 +2195,8 @@ export class PlanfactService {
     }
 
     const updateData: {
-      incomeProjectId?: number;
-      outcomeProjectId?: number;
+      incomeProjectId?: number | null;
+      outcomeProjectId?: number | null;
     } = {};
     if (projectsData.incomeProjectId !== undefined) {
       updateData.incomeProjectId = projectsData.incomeProjectId;
@@ -2231,7 +2231,7 @@ export class PlanfactService {
         position.originalOperation?.typeOfOperation ||
         position.operation?.typeOfOperation;
 
-      let newProjectId: number | undefined;
+      let newProjectId: number | null | undefined;
       if (
         typeOfOperation === 'Credit' &&
         projectsData.incomeProjectId !== undefined
@@ -2266,8 +2266,8 @@ export class PlanfactService {
   async assignProjectsToCounterPartyByAccount(
     counterPartyAccount: string,
     projectsData: {
-      incomeProjectId?: number;
-      outcomeProjectId?: number;
+      incomeProjectId?: number | null;
+      outcomeProjectId?: number | null;
     },
   ) {
     const counterParty = await this.prisma.counterParty.findFirst({

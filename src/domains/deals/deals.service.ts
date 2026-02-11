@@ -889,6 +889,7 @@ export class DealsService {
         gte: from,
         lte: to,
       },
+      deletedAt: null,
       groupId: groupId ? groupId : { gt: 0 },
       group: groupsSearch,
     };
@@ -1173,6 +1174,7 @@ export class DealsService {
         },
       ],
       group: groupsSearch,
+      deletedAt: null,
     };
 
     const [deals, totals] = await Promise.all([
@@ -1674,6 +1676,7 @@ export class DealsService {
 
   async delete(id: number, user: UserDto) {
     const dealExists = await this.prisma.deal.findUnique({ where: { id } });
+    console.log(dealExists);
     if (!dealExists) {
       throw new NotFoundException(`Сделка с ID ${id} не найдена`);
     }

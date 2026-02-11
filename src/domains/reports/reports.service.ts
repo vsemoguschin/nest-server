@@ -781,6 +781,20 @@ export class ReportsService {
       },
     });
 
+    const groups = await this.prisma.group.findMany({
+      where: {},
+      include: {
+        adExpenses: {
+          where: {
+            date: {
+              gte: range.from,
+              lte: range.to,
+            },
+          },
+        },
+      },
+    });
+
     // console.log(reports);
 
     const reportsData = reports.map((r) => {
@@ -793,9 +807,14 @@ export class ReportsService {
           a + b.deal.price + b.deal.dops.reduce((a, b) => a + b.price, 0),
         0,
       );
-      // console.log(dateDeliveriesSales);
+      const reportGroup =
+        r.groupId === 17
+          ? groups.find((g) => g.id === 19)
+          : groups.find((g) => g.id === r.groupId);
 
-      const dateExpenses = r.group!.adExpenses.filter((e) => e.date === date);
+      // const dateExpenses = r.group!.adExpenses.filter((e) => e.date === date);
+      const dateExpenses =
+        reportGroup?.adExpenses.filter((e) => e.date === date) ?? [];
 
       const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
       const dateDeals = r.group!.deals.filter((d) => d.saleDate === date);
