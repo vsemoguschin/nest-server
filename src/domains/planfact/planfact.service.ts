@@ -14,6 +14,12 @@ import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
+import { SocksProxyAgent } from 'socks-proxy-agent';
+
+const tbankProxy = 'socks5h://127.0.0.1:1080';
+const tbankProxyAgent = tbankProxy
+  ? new SocksProxyAgent(tbankProxy)
+  : undefined;
 
 const tToken = process.env.TB_TOKEN;
 
@@ -242,7 +248,9 @@ export class PlanfactService {
         include: { operationPositions: true },
       });
 
-      const fallbackPeriod = (dto.operationDate || operation.operationDate).slice(0, 7);
+      const fallbackPeriod = (
+        dto.operationDate || operation.operationDate
+      ).slice(0, 7);
 
       // Если есть позиции, обновляем/создаем/удаляем их
       if (dto.operationPositions) {
@@ -632,7 +640,6 @@ export class PlanfactService {
   }
 
   async getExpenseCategoriesByType(type: string) {
-
     // Получаем все категории нужного типа без include (более эффективно)
     const allCategories = await this.prisma.expenseCategory.findMany({
       where: {
@@ -677,7 +684,6 @@ export class PlanfactService {
     const categories = rootCategories.map((rootCategory) =>
       buildCategoryTree(rootCategory),
     );
-
 
     const flattenCategories = (categories, prefix = '') => {
       return categories.reduce((acc, cat) => {
@@ -1407,9 +1413,7 @@ export class PlanfactService {
         .map((pos) => pos.counterParty?.title)
         .filter((title): title is string => Boolean(title))
         .map((title) => this.replaceLegalEntities(title));
-      const uniqueCounterPartyTitles = Array.from(
-        new Set(counterPartyTitles),
-      );
+      const uniqueCounterPartyTitles = Array.from(new Set(counterPartyTitles));
       const categoryNames = operationPositions
         .map((pos) => pos.expenseCategory?.name)
         .filter((name): name is string => Boolean(name));
@@ -1626,7 +1630,7 @@ export class PlanfactService {
           selfTransferInnerTotal += transferAmount;
           selfTransferTotals.credit += transferAmount;
         }
-        isTransferOperation = true;
+        // isTransferOperation = true;
       }
 
       // Пропускаем transfer операции - они не должны попадать в другие тоталы
@@ -1634,14 +1638,14 @@ export class PlanfactService {
         continue;
       }
 
-      if (
-        operation.payPurpose.includes('Возврат д/с с депозита "Овернайт"') ||
-        operation.payPurpose.includes(
-          'Внутренний перевод на депозит "Овернайт"',
-        )
-      ) {
-        continue;
-      }
+      // if (
+      //   operation.payPurpose.includes('Возврат д/с с депозита "Овернайт"') ||
+      //   operation.payPurpose.includes(
+      //     'Внутренний перевод на депозит "Овернайт"',
+      //   )
+      // ) {
+      //   continue;
+      // }
 
       for (const position of relevantPositions) {
         // Подсчет по контрагентам с разделением на debit и credit
@@ -2404,6 +2408,80 @@ export class PlanfactService {
       );
       throw error;
     }
+  }
+
+  async fetchStatementBalancesByPeriod(period: string) {
+    if (!tToken) {
+      throw new Error('TB_TOKEN не установлен в переменных окружения');
+    }
+
+    const [year, month] = period.split('-').map(Number);
+    if (
+      !Number.isInteger(year) ||
+      !Number.isInteger(month) ||
+      month < 1 ||
+      month > 12
+    ) {
+      throw new BadRequestException(
+        'Период должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+
+    const fromDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+    const toDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+    const accounts = [
+      { name: 'ИзиНеон(7213)', accountNumber: '40802810800000977213' },
+      { name: 'ИзиБук(0999)', accountNumber: '40802810900002610999' },
+    ];
+
+    const results = await Promise.all(
+      accounts.map(async (account) => {
+        const response = await axios.get(
+          'https://business.tbank.ru/openapi/api/v1/statement',
+          {
+            proxy: false,
+            // httpAgent: tbankProxyAgent,
+            // httpsAgent: tbankProxyAgent,
+            headers: {
+              Authorization: 'Bearer ' + tToken,
+              'Content-Type': 'application/json',
+            },
+            params: {
+              accountNumber: account.accountNumber,
+              operationStatus: 'Transaction',
+              from: fromDate.toISOString(),
+              to: toDate.toISOString(),
+              withBalances: true,
+              limit: 1,
+            },
+            maxBodyLength: Infinity,
+          },
+        );
+
+        console.log('T-Bank statement balances:', {
+          account: account.name,
+          accountNumber: account.accountNumber,
+          period,
+          from: fromDate.toISOString(),
+          to: toDate.toISOString(),
+          response: response.data,
+        });
+
+        return {
+          account: account.name,
+          accountNumber: account.accountNumber,
+          data: response.data,
+        };
+      }),
+    );
+
+    return {
+      period,
+      from: fromDate.toISOString(),
+      to: toDate.toISOString(),
+      results,
+    };
   }
 
   async saveOriginalOperationsWithCategories(

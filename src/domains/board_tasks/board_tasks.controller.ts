@@ -455,6 +455,36 @@ export class TasksController {
     return created;
   }
 
+  @Post('columns/:columnId/copy-to-board')
+  @ApiOperation({ summary: 'Копировать все задачи колонки на другую доску' })
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST')
+  async copyColumnToBoard(
+    @CurrentUser() user: UserDto,
+    @Param('columnId', ParseIntPipe) columnId: number,
+    @Body(new ValidationPipe({ transform: true, whitelist: true }))
+    dto: CopyTaskToBoardDto,
+  ) {
+    const result = await this.tasksService.copyColumnToBoard(
+      user,
+      columnId,
+      dto,
+    );
+    for (const item of result.created) {
+      await this.audit.log({
+        userId: user.id,
+        taskId: item.id,
+        action: 'TASK_CREATED',
+        description: `Скопировано из колонки #${columnId} → доска ${dto.boardId}`,
+        payload: {
+          fromTaskId: item.fromTaskId,
+          fromColumnId: columnId,
+          toBoardId: dto.boardId,
+        },
+      });
+    }
+    return result;
+  }
+
   @Post(':taskId/move-to-board')
   @ApiOperation({ summary: 'Переместить задачу на другую доску' })
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST')

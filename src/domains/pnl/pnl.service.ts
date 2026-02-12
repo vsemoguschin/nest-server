@@ -496,21 +496,150 @@ export class PnlService {
       const periodExpenses = allExpenses.filter((exp) => exp.period === period);
       const value = periodExpenses.reduce((sum, exp) => sum + exp.amount, 0);
 
-      if (categoryId === 13) {
-        console.log('[PNL] Deposit interest breakdown', {
-          categoryId,
-          projectId,
-          period,
-          count: periodExpenses.length,
-          amounts: periodExpenses.map((exp) => Number(exp.amount)),
-          total: value,
-        });
-      }
-
       return { period, value };
     });
 
     return grouped;
+  }
+
+  // Приватная функция: сумма по категории за период через originalOperation.operationDate
+  private async getExpenseAmountByCategoryForPeriod(
+    period: string,
+    categoryId: number,
+    projectId?: number,
+  ): Promise<number> {
+    const where: {
+      expenseCategoryId: number;
+      originalOperation: { operationDate: { startsWith: string } };
+      projectId?: number;
+    } = {
+      expenseCategoryId: categoryId,
+      originalOperation: {
+        operationDate: { startsWith: period },
+      },
+    };
+
+    if (typeof projectId === 'number') {
+      where.projectId = projectId;
+    }
+
+    const positions = await this.prisma.operationPosition.findMany({
+      where,
+      select: {
+        amount: true,
+      },
+    });
+
+    const total = positions.reduce((sum, position) => sum + position.amount, 0);
+    return Math.round(total * 100) / 100;
+  }
+
+  async getDdsData(period: string) {
+    const EASYNEON_PROJECT_ID = 3;
+    const EASYBOOK_PROJECT_ID = 2;
+    const GENERAL_PROJECT_ID = 1;
+    const [periodYear, periodMonth] = period.split('-').map(Number);
+    const prevPeriod = format(
+      subMonths(new Date(periodYear, periodMonth - 1), 1),
+      'yyyy-MM',
+    );
+
+    const roundToCents = (value: number) => Math.round(value * 100) / 100;
+    const vkCashbackBaseTotal =
+      await this.getExpenseAmountByCategoryForPeriod(prevPeriod, 39);
+    const vkCashbackTotal = roundToCents(vkCashbackBaseTotal * 0.17);
+
+    const itemsConfig = [
+      { id: 2, projectId: EASYNEON_PROJECT_ID },
+      { id: 4, projectId: EASYNEON_PROJECT_ID },
+      { id: 10, projectId: EASYNEON_PROJECT_ID },
+      { id: 1, projectId: EASYNEON_PROJECT_ID },
+      { id: 3, projectId: EASYNEON_PROJECT_ID },
+      { id: 5, projectId: EASYNEON_PROJECT_ID },
+      { id: 2, projectId: EASYBOOK_PROJECT_ID },
+      { id: 4, projectId: EASYBOOK_PROJECT_ID },
+      { id: 10, projectId: EASYBOOK_PROJECT_ID },
+      { id: 1, projectId: EASYBOOK_PROJECT_ID },
+      { id: 3, projectId: EASYBOOK_PROJECT_ID },
+      { id: 5, projectId: EASYBOOK_PROJECT_ID },
+      { id: 14 },
+      { id: 158 },
+      { id: 13 },
+      { id: 154 },
+      { id: 148 },
+      { id: 18, projectId: EASYNEON_PROJECT_ID },
+      { id: 17, projectId: EASYNEON_PROJECT_ID },
+      { id: 152, projectId: EASYNEON_PROJECT_ID },
+      { id: 153, projectId: EASYNEON_PROJECT_ID },
+      { id: 22, projectId: EASYNEON_PROJECT_ID },
+      { id: 23, projectId: EASYNEON_PROJECT_ID },
+      { id: 146, projectId: EASYNEON_PROJECT_ID },
+      { id: 21, projectId: EASYNEON_PROJECT_ID },
+      { id: 24, projectId: EASYNEON_PROJECT_ID },
+      { id: 47, projectId: EASYNEON_PROJECT_ID },
+      { id: 34, projectId: EASYNEON_PROJECT_ID },
+      { id: 26, projectId: EASYNEON_PROJECT_ID },
+      { id: 52, projectId: EASYNEON_PROJECT_ID },
+      { id: 54, projectId: EASYNEON_PROJECT_ID },
+      { id: 55, projectId: EASYNEON_PROJECT_ID },
+      { id: 89, projectId: EASYNEON_PROJECT_ID },
+      { id: 56, projectId: EASYNEON_PROJECT_ID },
+      { id: 29, projectId: EASYNEON_PROJECT_ID },
+      { id: 31, projectId: EASYNEON_PROJECT_ID },
+      { id: 48, projectId: EASYNEON_PROJECT_ID },
+      { id: 81, projectId: EASYNEON_PROJECT_ID },
+      { id: 71, projectId: EASYNEON_PROJECT_ID },
+      { id: 72, projectId: EASYNEON_PROJECT_ID },
+      { id: 75, projectId: EASYNEON_PROJECT_ID },
+      { id: 79, projectId: EASYNEON_PROJECT_ID },
+      { id: 80, projectId: EASYNEON_PROJECT_ID },
+      { id: 76, projectId: EASYNEON_PROJECT_ID },
+      { id: 39, projectId: EASYNEON_PROJECT_ID },
+      { id: 45, projectId: EASYNEON_PROJECT_ID },
+      { id: 143, projectId: EASYBOOK_PROJECT_ID },
+      { id: 81, projectId: EASYBOOK_PROJECT_ID },
+      { id: 71, projectId: EASYBOOK_PROJECT_ID },
+      { id: 141, projectId: EASYBOOK_PROJECT_ID },
+      { id: 75, projectId: EASYBOOK_PROJECT_ID },
+      { id: 140, projectId: EASYBOOK_PROJECT_ID },
+      { id: 142, projectId: EASYBOOK_PROJECT_ID },
+      { id: 39, projectId: EASYBOOK_PROJECT_ID },
+      { id: 45, projectId: EASYBOOK_PROJECT_ID },
+      { id: 29, projectId: EASYBOOK_PROJECT_ID },
+      { id: 48, projectId: EASYBOOK_PROJECT_ID },
+      { id: 68, projectId: GENERAL_PROJECT_ID },
+      { id: 87, projectId: GENERAL_PROJECT_ID },
+      { id: 151, projectId: GENERAL_PROJECT_ID },
+      { id: 43, projectId: GENERAL_PROJECT_ID },
+      { id: 31, projectId: GENERAL_PROJECT_ID },
+      { id: 45, projectId: GENERAL_PROJECT_ID },
+      { id: 48, projectId: GENERAL_PROJECT_ID },
+      { id: 159 },
+      { id: 147 },
+      { id: 63 },
+      { id: 49 },
+      { id: 67 },
+      { id: 138 },
+    ];
+
+    const items = await Promise.all(
+      itemsConfig.map(async ({ id, projectId }) => {
+        if (id === 154) {
+          return { id, projectId, value: vkCashbackTotal };
+        }
+        const value = await this.getExpenseAmountByCategoryForPeriod(
+          period,
+          id,
+          projectId,
+        );
+        return { id, projectId, value };
+      }),
+    );
+
+    return {
+      period,
+      items,
+    };
   }
 
   // Приватная функция: один запрос на рекламные расходы

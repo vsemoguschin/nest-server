@@ -617,6 +617,43 @@ export class TasksService {
   }
 
   /**
+   * Скопировать все задачи из колонки на другую доску (в первую колонку целевой доски).
+   */
+  async copyColumnToBoard(
+    user: UserDto,
+    columnId: number,
+    dto: { boardId: number },
+  ) {
+    const column = await this.ensureTaskColumn(columnId);
+    await this.assertBoardAccess(user.id, column.boardId);
+
+    const tasks = await this.prisma.kanbanTask.findMany({
+      where: {
+        columnId,
+        deletedAt: null,
+        archived: false,
+      },
+      orderBy: { position: 'asc' },
+      select: { id: true },
+    });
+
+    const created: Array<{
+      fromTaskId: number;
+      id: number;
+      boardId: number;
+      columnId: number;
+      title: string;
+    }> = [];
+
+    for (const task of tasks) {
+      const copied = await this.copyToBoard(user, task.id, dto);
+      created.push({ fromTaskId: task.id, ...copied });
+    }
+
+    return { count: created.length, created };
+  }
+
+  /**
    * Переместить задачу на другую доску: меняем boardId, назначаем первую колонку целевой доски,
    * ставим задачу в конец этой колонки (nextPosition). Вложения, метки, заказы и участники сохраняются.
    */

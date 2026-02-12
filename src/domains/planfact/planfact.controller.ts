@@ -97,6 +97,17 @@ export class PlanfactController {
     return this.planfactService.getBankAccounts();
   }
 
+  @Get('statement-balances')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async getStatementBalances(@Query('period') period: string) {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+    return this.planfactService.fetchStatementBalancesByPeriod(period);
+  }
+
   @Get('original-operations')
   @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async getOriginalOperations(
