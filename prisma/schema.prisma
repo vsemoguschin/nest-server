@@ -1163,6 +1163,7 @@ model TaskOrder {
   switch         Boolean         @default(true)    // Выключатель
   fitting        String          @default("")    // Крепления
   dimmer         Boolean         @default(false) // Диммер
+  dimmerType     String          @default("") // Модель диммера
   giftPack       Boolean         @default(false) // Подарочная упаковка
   description    String          @default("")    // Описание
   deletedAt      DateTime?                       // Для мягкого удаления

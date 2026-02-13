@@ -16,8 +16,17 @@ import { NeonDto } from './neon.dto';
 import { LightingDto } from './lighting.dto';
 import { PackageItemDto } from './package-item.dto';
 
-const HOLE_TYPES = ['Нет', '9мм', '6мм', '8мм', '10мм', '4мм', 'Другое'] as const;
+const HOLE_TYPES = [
+  'Нет',
+  '9мм',
+  '6мм',
+  '8мм',
+  '10мм',
+  '4мм',
+  'Другое',
+] as const;
 const ADAPTER_TYPES = ['Помещение', 'Уличный', 'Нет', 'Другое'] as const;
+const DIMMERS_TYPES = ['Пульт', 'Кнопка', ''] as const;
 const PLUG_TYPES = ['Нет', 'Другое', 'Подарочный', 'Стандарт', 'USB'] as const;
 const PLUG_COLORS = ['Черный', 'Белый', 'Другое'] as const;
 const WIRE_TYPES = ['Акустический', 'Белый', 'Черный', 'Нет'] as const;
@@ -74,6 +83,7 @@ export class CreateTaskOrderDto {
   plugLength?: number;
   @IsOptional() @IsString() fitting?: string;
   @IsOptional() @IsBoolean() dimmer?: boolean;
+  @IsOptional() @IsString() @IsIn(DIMMERS_TYPES) dimmerType?: string;
   @IsOptional() @IsBoolean() switch?: boolean;
   @IsOptional() @IsBoolean() screen?: boolean;
   @IsOptional() @IsBoolean() giftPack?: boolean;

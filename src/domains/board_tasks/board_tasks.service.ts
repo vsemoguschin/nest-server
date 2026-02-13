@@ -398,6 +398,10 @@ export class TasksService {
           ? ((order as any).acrylic ?? '')
           : '';
         const normalizedStand = (order as any).stand ?? false;
+        const normalizedDimmer = (order as any).dimmer ?? false;
+        const normalizedDimmerType = normalizedDimmer
+          ? ((order as any).dimmerType ?? '')
+          : '';
         const packageItemsData = ((order as any).package?.items ?? [])
           .filter((item: any) => {
             const name = String(item?.name ?? '').trim();
@@ -461,7 +465,8 @@ export class TasksService {
             switch: order.switch ?? true,
             screen: (order as any).screen ?? false,
             fitting: order.fitting ?? '',
-            dimmer: order.dimmer ?? false,
+            dimmer: normalizedDimmer,
+            dimmerType: normalizedDimmerType,
             giftPack: order.giftPack ?? false,
             description: order.description ?? '',
             docs: (order as any).docs ?? false,
@@ -1748,6 +1753,8 @@ export class TasksService {
       plug,
       plugColor,
       plugLength,
+      dimmer,
+      dimmerType,
       packageItems = [],
       ...rest
     } = dto;
@@ -1785,6 +1792,8 @@ export class TasksService {
 
     const normalizedWireType = wireType ?? 'Акустический';
     const normalizedWireLength = normalizedWireType === 'Нет' ? 0 : wireLength;
+    const normalizedDimmer = typeof dimmer === 'boolean' ? dimmer : false;
+    const normalizedDimmerType = normalizedDimmer ? (dimmerType ?? '') : '';
 
     const packageItemsData = packageItems
       .filter((item) => {
@@ -1822,6 +1831,9 @@ export class TasksService {
           taskId,
           ...(dealId !== undefined ? { dealId: dealId as any } : {}), // если dealId опционален в схеме — можно передать null
           ...rest,
+          ...(dimmer !== undefined || dimmerType !== undefined
+            ? { dimmer: normalizedDimmer, dimmerType: normalizedDimmerType }
+            : {}),
           isAcrylic: normalizedIsAcrylic,
           acrylic: normalizedAcrylic,
           wireType: normalizedWireType,
@@ -1906,6 +1918,8 @@ export class TasksService {
         adapter: true,
         isAcrylic: true,
         stand: true,
+        dimmer: true,
+        dimmerType: true,
       },
     });
     if (!ex) throw new NotFoundException('Order not found');
@@ -1924,6 +1938,8 @@ export class TasksService {
       plug,
       plugColor,
       plugLength,
+      dimmer,
+      dimmerType,
       packageItems,
       ...rest
     } = dto;
@@ -1968,6 +1984,15 @@ export class TasksService {
         plug !== undefined ||
         plugColor !== undefined ||
         plugLength !== undefined;
+
+      const effectiveDimmer =
+        typeof dimmer === 'boolean' ? dimmer : (ex.dimmer ?? false);
+      const dimmerTypeData =
+        dimmer !== undefined || dimmerType !== undefined
+          ? effectiveDimmer
+            ? dimmerType ?? ex.dimmerType ?? ''
+            : ''
+          : undefined;
 
       const plugColorData = shouldTouchPlugRelated
         ? effectivePlug === 'Нет'
@@ -2044,6 +2069,10 @@ export class TasksService {
           ...(plugColorData !== undefined ? { plugColor: plugColorData } : {}),
           ...(plugLengthData !== undefined
             ? { plugLength: plugLengthData }
+            : {}),
+          ...(dimmer !== undefined ? { dimmer } : {}),
+          ...(dimmerTypeData !== undefined
+            ? { dimmerType: dimmerTypeData }
             : {}),
           ...(packageItems !== undefined
             ? {

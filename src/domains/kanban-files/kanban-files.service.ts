@@ -69,7 +69,7 @@ export class KanbanFilesService {
 
   /** Категория по mime/расширению и директория */
   private resolveCategory(file: Express.Multer.File): {
-    category: 'images' | 'pdf' | 'cdr';
+    category: 'images' | 'pdf' | 'cdr' | 'psd' | 'ai' | 'archives';
     ext: string;
   } {
     const mime = (file.mimetype || '').toLowerCase();
@@ -93,8 +93,47 @@ export class KanbanFilesService {
       return { category: 'cdr', ext: '.cdr' };
     }
 
+    // PSD (Adobe Photoshop)
+    if (
+      ext === '.psd' ||
+      mime === 'application/vnd.adobe.photoshop' ||
+      mime === 'image/vnd.adobe.photoshop' ||
+      mime === 'application/x-photoshop'
+    ) {
+      return { category: 'psd', ext: '.psd' };
+    }
+
+    // AI (Adobe Illustrator)
+    if (
+      ext === '.ai' ||
+      mime === 'application/illustrator' ||
+      mime === 'application/vnd.adobe.illustrator' ||
+      mime === 'application/postscript'
+    ) {
+      return { category: 'ai', ext: '.ai' };
+    }
+
+    // Archives (zip/rar)
+    if (
+      ext === '.zip' ||
+      ext === '.rar' ||
+      mime === 'application/zip' ||
+      mime === 'application/x-zip-compressed' ||
+      mime === 'application/x-zip' ||
+      mime === 'application/vnd.rar' ||
+      mime === 'application/x-rar-compressed'
+    ) {
+      const resolvedExt =
+        ext === '.zip' || ext === '.rar'
+          ? ext
+          : mime.includes('rar')
+            ? '.rar'
+            : '.zip';
+      return { category: 'archives', ext: resolvedExt };
+    }
+
     throw new BadRequestException(
-      'Unsupported file type. Allowed: images, pdf, cdr',
+      'Unsupported file type. Allowed: images, pdf, cdr, psd, ai, archives(zip/rar)',
     );
   }
 
@@ -167,6 +206,9 @@ export class KanbanFilesService {
     await this.ensureFolder(`${boardFolder}/images`);
     await this.ensureFolder(`${boardFolder}/pdf`);
     await this.ensureFolder(`${boardFolder}/cdr`);
+    await this.ensureFolder(`${boardFolder}/psd`);
+    await this.ensureFolder(`${boardFolder}/ai`);
+    await this.ensureFolder(`${boardFolder}/archives`);
   }
 
   /** Загрузка и привязка к задаче */
