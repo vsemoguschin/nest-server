@@ -749,14 +749,6 @@ export class ReportsService {
                 },
               },
             },
-            adExpenses: {
-              where: {
-                date: {
-                  gte: range.from,
-                  lte: range.to,
-                },
-              },
-            },
           },
         },
       },
@@ -781,24 +773,18 @@ export class ReportsService {
       },
     });
 
-    const groups = await this.prisma.group.findMany({
-      where: {},
-      include: {
-        adExpenses: {
-          where: {
-            date: {
-              gte: range.from,
-              lte: range.to,
-            },
-          },
+    // console.log(reports);
+    const adExpenses = await this.prisma.adExpense.findMany({
+      where: {
+        date: {
+          gte: range.from,
+          lte: range.to,
         },
       },
     });
 
-    // console.log(reports);
-
     const reportsData = reports.map((r) => {
-      const { date, calls, makets, maketsDayToDay, redirectToMSG } = r;
+      const { date, makets, maketsDayToDay, redirectToMSG } = r;
       const dateDeliveries = deliveries
         .filter((d) => d.date === date)
         .filter((d) => d.deal.groupId === r.groupId);
@@ -807,17 +793,49 @@ export class ReportsService {
           a + b.deal.price + b.deal.dops.reduce((a, b) => a + b.price, 0),
         0,
       );
-      const reportGroup =
-        r.groupId === 17
-          ? groups.find((g) => g.id === 19)
-          : groups.find((g) => g.id === r.groupId);
 
-      // const dateExpenses = r.group!.adExpenses.filter((e) => e.date === date);
-      const dateExpenses =
-        reportGroup?.adExpenses.filter((e) => e.date === date) ?? [];
+      const easyBookFilter =
+        r.groupId === 19 || r.groupId === 17 ? true : false;
 
+      // находим все траты
+      const dateExpenses = adExpenses.filter(
+        (e) => e.date === date && e.groupId === r.groupId,
+      );
+      //собираем все заявки
+      const dateCalls = reports.filter(
+        (e) => e.date === date && e.groupId === r.groupId,
+      );
+      //количество этих заявок
+      const calls = dateCalls.reduce((a, b) => a + b.calls, 0);
+      // затраты
       const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
+
+      //стоимость заявки
+      let callCost = calls ? +(dateExpensesPrice / calls).toFixed(2) : 0;
+
+      //считаем для изибука
+      if (easyBookFilter) {
+        // расходы на обе группы
+        const bookProjectExpenses = adExpenses
+          .filter(
+            (ex) =>
+              (ex.date === date && ex.groupId === 19) || ex.groupId === 17,
+          )
+          .reduce((a, b) => a + b.price, 0);
+        //заявок на обе группы
+        const bookProjectCalls = reports
+          .filter(
+            (rep) =>
+              (rep.date === date && rep.groupId === 19) || rep.groupId === 17,
+          )
+          .reduce((a, b) => a + b.calls, 0);
+        //стоимость заявки
+        callCost = +(bookProjectExpenses / bookProjectCalls).toFixed(2);
+      }
+
+      const totalExpensesPrice = calls * callCost;
       const dateDeals = r.group!.deals.filter((d) => d.saleDate === date);
+
       const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
       const regularDeals = dateDeals.filter((d) => d.client?.isRegular);
       const regularSales = regularDeals.reduce((a, b) => a + b.price, 0);
@@ -857,9 +875,8 @@ export class ReportsService {
         ? +((dealsDayToDayCount / calls) * 100).toFixed(2)
         : 0;
 
-      const callCost = calls ? +(dateExpensesPrice / calls).toFixed(2) : 0;
-      const drr = totalSales
-        ? +((dateExpensesPrice / totalSales) * 100).toFixed(2)
+      let drr = totalSales
+        ? +((totalExpensesPrice / totalSales) * 100).toFixed(2)
         : 0;
 
       const conversionMaketDayToDay = calls

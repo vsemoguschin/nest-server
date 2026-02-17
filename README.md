@@ -26,6 +26,13 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Внутренние стандарты
+- Основные правила агента: `AGENTS.md`
+- Детальный playbook: `docs/NEST_AGENT_PLAYBOOK.md`
+- Быстрая навигация: `docs/PROJECT_NAVIGATION.md`
+- Рецепты поиска: `docs/SEARCH_RECIPES.md`
+- Эволюция инструкций: `docs/INSTRUCTION_LIFECYCLE.md`
+
 ## Project setup
 
 ```bash

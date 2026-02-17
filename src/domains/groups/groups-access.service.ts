@@ -29,6 +29,20 @@ export class GroupsAccessService {
     }
 
     if (
+      (user.groupId === 17 || user.groupId === 19) &&
+      user.role.shortName === 'MOV'
+    ) {
+      scope.id = { in: [17, 19] };
+    }
+
+    if (
+      (user.groupId === 17 || user.groupId === 19) &&
+      user.role.shortName === 'MOP'
+    ) {
+      scope.id = user.groupId;
+    }
+
+    if (
       user.groupId === 18 ||
       user.groupId === 3
     ) {

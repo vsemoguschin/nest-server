@@ -26,6 +26,23 @@ model RefreshToken {
   @@index([userId])
 }
 
+// --- ЯДРО БИЗНЕСА ---
+// Project — корневая сущность. Все домены должны быть привязаны к проекту.
+model Project {
+  id        Int      @id @default(autoincrement()) // ID проекта
+  name      String   // Название проекта (главная бизнес-единица)
+  code      String?  @unique // Короткий уникальный код (опционально)
+  isActive  Boolean  @default(true) // Активен ли проект
+  createdAt DateTime @default(now()) // Дата создания
+  updatedAt DateTime @updatedAt // Дата обновления
+
+  groups    Group[]          // Группы пользователей внутри проекта
+
+  operationPositions OperationPosition[]
+  counterPartiesIncome CounterParty[]  @relation("CounterPartyIncomeProject")
+  counterPartiesOutcome CounterParty[] @relation("CounterPartyOutcomeProject")
+}
+
 // ПРОСТРАНСТВО
 model WorkSpace {
   id                 Int          @id @default(autoincrement()) 
@@ -56,6 +73,9 @@ model Group {
   deletedAt  DateTime?  // Поле для мягкого удаления
   createdAt  DateTime   @default(now())
 
+  projectId Int?      // Проект
+  project   Project?  @relation(fields: [projectId], references: [id]) // Связь с проектом
+
   workSpaceId Int
   workSpace  WorkSpace @relation(fields: [workSpaceId], references: [id])
 
@@ -67,6 +87,8 @@ model Group {
   reports     RopReport[]
   adExpenses  AdExpense[]
   adSources   AdSource[]
+
+  @@index([projectId])
 }
 
 // РОЛЬ
@@ -731,20 +753,6 @@ model FrezerReport {
 
   userId       Int
   user         User    @relation(fields: [userId], references: [id])
-}
-
-//планфакт ----------
-model Project {
-  id         Int       @id @default(autoincrement())
-  name       String
-  code       String?   @unique
-  isActive   Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  operationPositions OperationPosition[]
-  counterPartiesIncome CounterParty[]  @relation("CounterPartyIncomeProject")
-  counterPartiesOutcome CounterParty[] @relation("CounterPartyOutcomeProject")
 }
 
 model ExpenseCategory {

@@ -1464,6 +1464,302 @@ export class CommercialDatasService {
         b2bTop: [],
       };
     }
+    if (groupId === 19 || groupId === 17) {
+      const groups = await this.prisma.group.findMany({
+        where: {
+          id: { in: [17, 19] },
+          users: {
+            some: {},
+          },
+        },
+        include: {
+          adExpenses: {
+            where: {
+              date: {
+                startsWith: period,
+              },
+            },
+          },
+          users: {
+            include: {
+              managerReports: {
+                where: {
+                  date: {
+                    startsWith: period,
+                  },
+                },
+              },
+              dealSales: {
+                where: {
+                  deal: {
+                    saleDate: {
+                      startsWith: period,
+                    },
+                    reservation: false,
+                    deletedAt: null,
+                    status: { not: 'Возврат' },
+                  },
+                },
+                include: {
+                  deal: {
+                    include: {
+                      client: true,
+                    },
+                  },
+                },
+              },
+              dops: {
+                where: {
+                  saleDate: {
+                    startsWith: period,
+                  },
+                  deal: {
+                    reservation: false,
+                    deletedAt: null,
+                    status: { not: 'Возврат' },
+                  },
+                },
+              },
+            },
+          },
+          deals: {
+            where: {
+              saleDate: {
+                startsWith: period,
+              },
+              reservation: false,
+              deletedAt: null,
+              status: { not: 'Возврат' },
+            },
+          },
+          dops: {
+            where: {
+              saleDate: {
+                startsWith: period,
+              },
+              deal: {
+                reservation: false,
+                deletedAt: null,
+                status: { not: 'Возврат' },
+              },
+            },
+          },
+        },
+      });
+      const adExpenses = groups
+        .flatMap((g) => g.adExpenses)
+        .reduce((a, b) => a + b.price, 0);
+      /** количество заявок проекта*/
+      const totalCalls = groups
+        .flatMap((g) => g.users)
+        .flatMap((u) => u.managerReports)
+        .reduce((a, b) => a + b.calls, 0);
+      /** стоимость заявки в проекте*/
+      const callCost = totalCalls ? adExpenses / totalCalls : 0;
+      // console.log('self', totalCalls);
+      const ropPlan = await this.prisma.managersPlan.findFirst({
+        where: {
+          period,
+          user: {
+            role: {
+              shortName: 'DO',
+            },
+            fullName: { in: ['Юлия Куштанова'] },
+          },
+        },
+        include: {
+          user: true,
+        },
+      });
+
+      let isOverRopPlan = false;
+      const ropPlanValue = ropPlan?.plan || 0;
+      const groupDealSales = groups
+        .flatMap((g) => g.deals)
+        .reduce((acc, d) => acc + d.price, 0);
+      const groupDopSales = groups
+        .flatMap((g) => g.dops)
+        .reduce((acc, d) => acc + d.price, 0);
+      const groupTotalSales = groupDealSales + groupDopSales;
+
+      if (groupTotalSales > ropPlanValue && ropPlanValue > 0) {
+        isOverRopPlan = true;
+      }
+      const vkTop: {
+        topTotalSales: { user: string; sales: number }[];
+        topDopSales: { user: string; sales: number }[];
+        topDimmerSales: { user: string; sales: number }[];
+        topSalesWithoutDesigners: { user: string; sales: number }[];
+        topConversionDayToDay: { user: string; sales: number }[];
+      } = {
+        topTotalSales: [],
+        topDopSales: [],
+        topDimmerSales: [],
+        topSalesWithoutDesigners: [],
+        topConversionDayToDay: [],
+      };
+      const userData = groups
+        .flatMap((g) => g.users)
+        .map((m) => {
+          const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
+          const dopSales = m.dops.reduce((a, b) => a + b.price, 0);
+          const totalSales = dealSales + dopSales;
+          const shift = m.managerReports.length;
+          const dealsAmount = m.dealSales.length;
+          const averageBill = dealsAmount
+            ? +(totalSales / dealsAmount).toFixed()
+            : 0;
+          const dimmerSales = m.dops
+            .filter((d) => d.type === 'Диммер')
+            .reduce((a, b) => a + b.price, 0);
+          // Находим сделки без дизайнеров
+          const dealsWithoutDesigners = m.dealSales
+            .flatMap((ds) => ds.deal)
+            .filter((d) =>
+              [
+                'Заготовка из базы',
+                'Рекламный',
+                'Из рассылки',
+                'Визуализатор',
+              ].includes(d.maketType),
+            );
+
+          const dealsSalesWithoutDesigners = dealsWithoutDesigners.reduce(
+            (sum, deal) => sum + (deal.price || 0),
+            0,
+          );
+          const dealsDayToDay = m.dealSales.filter(
+            (ds) => ds.deal.saleDate === ds.deal.client.firstContact,
+          );
+          const calls = m.managerReports.reduce((a, b) => a + b.calls, 0);
+          const conversionDayToDay = calls
+            ? +((dealsDayToDay.length / calls) * 100).toFixed(2)
+            : 0;
+          // Конверсия
+          const conversion = calls
+            ? +((dealsAmount / calls) * 100).toFixed(2)
+            : 0;
+          return {
+            id: m.id,
+            fullName: m.fullName,
+            groupId: m.groupId,
+            workSpaceId: m.workSpaceId,
+            totalSales,
+            shift,
+            topBonus: 0,
+            dopSales,
+            dimmerSales,
+            dealsSalesWithoutDesigners,
+            conversionDayToDay,
+            dealSales,
+            averageBill,
+            conversion,
+          };
+        });
+      // Определение топов
+      const topTotalSales = [...userData]
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
+        .sort((a, b) => b.totalSales - a.totalSales)
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+            }
+            vkTop.topTotalSales.push({
+              user: u.fullName,
+              sales: u.totalSales,
+            });
+          }
+        });
+
+      const topDopSales = [...userData]
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
+        .sort((a, b) => b.dopSales - a.dopSales)
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+            }
+            vkTop.topDopSales.push({
+              user: u.fullName,
+              sales: u.dopSales,
+            });
+          }
+        });
+      const topDimmerSales = [...userData]
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
+        .sort((a, b) => b.dimmerSales - a.dimmerSales)
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+            }
+            vkTop.topDimmerSales.push({
+              user: u.fullName,
+              sales: u.dimmerSales,
+            });
+          }
+        });
+      const topSalesWithoutDesigners = [...userData]
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
+        .sort(
+          (a, b) => b.dealsSalesWithoutDesigners - a.dealsSalesWithoutDesigners,
+        )
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+            }
+            vkTop.topSalesWithoutDesigners.push({
+              user: u.fullName,
+              sales: u.dealsSalesWithoutDesigners,
+            });
+          }
+        });
+      const topConversionDayToDay = [...userData]
+        .filter(
+          (u) => u.workSpaceId === 3 && u.groupId !== 19 && u.groupId !== 17,
+        )
+        .sort((a, b) => b.conversionDayToDay - a.conversionDayToDay)
+        .slice(0, 3)
+        .map((u, i) => {
+          const user = userData.find((us) => us.id === u.id)!;
+          if (user.totalSales !== 0) {
+            if (user.shift > 12) {
+              user.topBonus += (-i + 3) * 1000;
+            }
+            vkTop.topConversionDayToDay.push({
+              user: u.fullName,
+              sales: u.conversionDayToDay,
+            });
+          }
+        });
+      return {
+        adExpenses,
+        totalCalls,
+        callCost,
+        isOverRopPlan,
+        tops: userData.filter((u) => u.topBonus > 0),
+        vkTop,
+        b2bTop: [],
+      };
+    }
     const group = await this.prisma.group.findFirst({
       where: {
         id: groupId,
@@ -1865,7 +2161,8 @@ export class CommercialDatasService {
         ? { gt: 0 }
         : user.workSpaceId;
 
-    const groupsSearch = ['MOP', 'MOV'].includes(user.role.shortName)
+    const isSelfOnlyRole = ['MOP', 'MOV'].includes(user.role.shortName);
+    const groupsSearch = ['MOP', 'MOV', 'ROP'].includes(user.role.shortName)
       ? user.groupId
       : { gt: 0 };
     const where: any = {
@@ -1883,7 +2180,14 @@ export class CommercialDatasService {
       groupId: groupsSearch,
     };
 
-    if (groupId !== undefined) {
+    if (isSelfOnlyRole) {
+      where.id = user.id;
+      where.role = {
+        shortName: user.role.shortName,
+      };
+    }
+
+    if (groupId !== undefined && !isSelfOnlyRole) {
       where.groupId = groupId;
     }
 
@@ -1947,19 +2251,44 @@ export class CommercialDatasService {
       },
     };
 
-    if (groupId !== undefined) {
+    const managersReportsWhere: any = {
+      date: {
+        startsWith: period,
+      },
+      user: { groupId: groupsSearch },
+    };
+
+    if (isSelfOnlyRole) {
+      adExpenseWhere.groupId = user.groupId;
+    }
+
+    if (groupId !== undefined && !isSelfOnlyRole) {
       adExpenseWhere.groupId = groupId;
+    }
+
+    if (groupId === 19 || groupId === 17) {
+      adExpenseWhere.groupId = {
+        in: [19, 17],
+      };
+      managersReportsWhere.user.groupId = { in: [19, 17] };
     }
 
     const groupAdExpenses = await this.prisma.adExpense.findMany({
       where: adExpenseWhere,
     });
     const adExpenses = groupAdExpenses.reduce((a, b) => a + b.price, 0);
-    const totalCalls = managers
-      .flatMap((u) => u.managerReports)
-      .reduce((a, b) => a + b.calls, 0);
+    const managerReports = await this.prisma.managerReport.findMany({
+      where: managersReportsWhere,
+      select: {
+        calls: true,
+      },
+    });
+    // const totalCalls = managers
+    //   .flatMap((u) => u.managerReports)
+    //   .reduce((a, b) => a + b.calls, 0);
+    const totalCalls = managerReports.reduce((a, b) => a + b.calls, 0);
     const callCost = totalCalls ? adExpenses / totalCalls : 0;
-
+    // console.log(totalCalls, managersReportsWhere.user);
     const res = managers
       .map((m) => {
         const dealSales = m.dealSales.reduce((a, b) => a + b.price, 0);
