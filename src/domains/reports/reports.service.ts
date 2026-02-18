@@ -808,7 +808,7 @@ export class ReportsService {
       //количество этих заявок
       const calls = dateCalls.reduce((a, b) => a + b.calls, 0);
       // затраты
-      const dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
+      let dateExpensesPrice = dateExpenses.reduce((a, b) => a + b.price, 0);
 
       //стоимость заявки
       let callCost = calls ? +(dateExpensesPrice / calls).toFixed(2) : 0;
@@ -831,6 +831,7 @@ export class ReportsService {
           .reduce((a, b) => a + b.calls, 0);
         //стоимость заявки
         callCost = +(bookProjectExpenses / bookProjectCalls).toFixed(2);
+        dateExpensesPrice = calls * callCost;
       }
 
       const totalExpensesPrice = calls * callCost;
@@ -875,7 +876,7 @@ export class ReportsService {
         ? +((dealsDayToDayCount / calls) * 100).toFixed(2)
         : 0;
 
-      let drr = totalSales
+      const drr = totalSales
         ? +((totalExpensesPrice / totalSales) * 100).toFixed(2)
         : 0;
 

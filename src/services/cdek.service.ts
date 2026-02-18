@@ -45,22 +45,26 @@ export class CdekService {
       return response.data.access_token;
     } catch (error) {
       this.logger.error('Failed to get CDEK access token:', error.message);
-      throw new Error('CDEK auth error');
+      throw error;
     }
+  }
+
+  async getOrderInfoStrict(cdek_number: string, token: string): Promise<any> {
+    const response = await axios.get('https://api.cdek.ru/v2/orders', {
+      params: { cdek_number },
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return response.data.entity;
   }
 
   async getOrderInfo(cdek_number: string, token: string): Promise<any> {
     try {
-      const response = await axios.get('https://api.cdek.ru/v2/orders', {
-        params: { cdek_number },
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      console.log(response.data.entity);
-
-      return response.data.entity;
+      const entity = await this.getOrderInfoStrict(cdek_number, token);
+      console.log(entity);
+      return entity;
     } catch (error) {
       this.logger.error(
         `Failed to fetch order info for ${cdek_number}: ${error.message}`,

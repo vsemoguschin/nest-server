@@ -2431,8 +2431,38 @@ export class PlanfactService {
     const toDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
     const accounts = [
-      { name: 'ИзиНеон(7213)', accountNumber: '40802810800000977213' },
-      { name: 'ИзиБук(0999)', accountNumber: '40802810900002610999' },
+      {
+        name: 'ИзиНеон(7213)',
+        accountNumber: '40802810800000977213',
+        openingKey: 'opening_account_1',
+        closingKey: 'closing_account_1',
+        inflowKey: 'opening_inflow_1',
+        outflowKey: 'closing_outflow_1',
+      },
+      {
+        name: 'ИзиБук(0999)',
+        accountNumber: '40802810900002610999',
+        openingKey: 'opening_account_2',
+        closingKey: 'closing_account_2',
+        inflowKey: 'opening_inflow_2',
+        outflowKey: 'closing_outflow_2',
+      },
+      {
+        name: 'Копилка',
+        accountNumber: '40802810600008448575',
+        openingKey: 'opening_account_3',
+        closingKey: 'closing_account_3',
+        inflowKey: 'opening_inflow_3',
+        outflowKey: 'closing_outflow_3',
+      },
+      {
+        name: 'Счет 4658',
+        accountNumber: '40802810900002414658',
+        openingKey: 'opening_account_4',
+        closingKey: 'closing_account_4',
+        inflowKey: 'opening_inflow_4',
+        outflowKey: 'closing_outflow_4',
+      },
     ];
 
     const results = await Promise.all(
@@ -2441,8 +2471,8 @@ export class PlanfactService {
           'https://business.tbank.ru/openapi/api/v1/statement',
           {
             proxy: false,
-            // httpAgent: tbankProxyAgent,
-            // httpsAgent: tbankProxyAgent,
+            httpAgent: tbankProxyAgent,
+            httpsAgent: tbankProxyAgent,
             headers: {
               Authorization: 'Bearer ' + tToken,
               'Content-Type': 'application/json',
@@ -2471,6 +2501,10 @@ export class PlanfactService {
         return {
           account: account.name,
           accountNumber: account.accountNumber,
+          openingKey: account.openingKey,
+          closingKey: account.closingKey,
+          inflowKey: account.inflowKey,
+          outflowKey: account.outflowKey,
           data: response.data,
         };
       }),
