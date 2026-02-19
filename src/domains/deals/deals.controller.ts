@@ -23,6 +23,7 @@ import { UserDto } from '../users/dto/user.dto';
 import { DealDto } from './dto/deal.dto';
 import { UpdateDealDto } from './dto/deal-update.dto';
 import { UpdateDealersDto } from './dto/dealers-update.dto';
+import { UpdateDealGroupDto } from './dto/deal-group-update.dto';
 import type { Response } from 'express';
 
 @UseGuards(RolesGuard)
@@ -340,6 +341,20 @@ export class DealsController {
     @CurrentUser() user: UserDto,
   ) {
     return this.dealsService.update(id, updateDealDto, user);
+  }
+
+  @Patch(':id/group')
+  @ApiOperation({
+    summary: 'Изменить проект сделки',
+    description: 'Endpoint: PATCH /deals/:id/group. Изменяет project(groupId) сделки.',
+  })
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP')
+  async updateGroup(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateDealGroupDto: UpdateDealGroupDto,
+    @CurrentUser() user: UserDto,
+  ) {
+    return this.dealsService.updateGroup(id, updateDealGroupDto, user);
   }
 
   @Delete(':id')

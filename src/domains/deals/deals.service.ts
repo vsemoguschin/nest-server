@@ -10,6 +10,7 @@ import { CreateDealDto } from './dto/deal-create.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { UpdateDealDto } from './dto/deal-update.dto';
 import { UpdateDealersDto } from './dto/dealers-update.dto';
+import { UpdateDealGroupDto } from './dto/deal-group-update.dto';
 import { GroupsAccessService } from '../groups/groups-access.service';
 import { YandexDiskClient } from 'src/integrations/yandex-disk/yandex-disk.client';
 
@@ -1670,6 +1671,97 @@ export class DealsService {
         },
       });
     }
+
+    return updatedDeal;
+  }
+
+  async updateGroup(
+    id: number,
+    updateDealGroupDto: UpdateDealGroupDto,
+    user: UserDto,
+  ) {
+    const groupsScope = this.groupsAccessService.buildGroupsScope(user);
+
+    const dealExists = await this.prisma.deal.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        group: groupsScope,
+      },
+      include: {
+        group: {
+          select: {
+            id: true,
+            title: true,
+            workSpaceId: true,
+          },
+        },
+      },
+    });
+    if (!dealExists) {
+      throw new NotFoundException(`Сделка с ID ${id} не найдена`);
+    }
+
+    const targetGroup = await this.prisma.group.findFirst({
+      where: {
+        AND: [{ id: updateDealGroupDto.groupId }, groupsScope],
+      },
+      select: {
+        id: true,
+        title: true,
+        workSpaceId: true,
+      },
+    });
+    if (!targetGroup) {
+      throw new NotFoundException(
+        `Проект с ID ${updateDealGroupDto.groupId} не найден или недоступен`,
+      );
+    }
+
+    if (dealExists.groupId === targetGroup.id) {
+      return dealExists;
+    }
+
+    const updatedDeal = await this.prisma.$transaction(async (prisma) => {
+      const deal = await prisma.deal.update({
+        where: { id },
+        data: {
+          groupId: targetGroup.id,
+          workSpaceId: targetGroup.workSpaceId,
+        },
+        include: {
+          group: true,
+        },
+      });
+
+      await Promise.all([
+        prisma.payment.updateMany({
+          where: { dealId: id },
+          data: {
+            groupId: targetGroup.id,
+            workSpaceId: targetGroup.workSpaceId,
+          },
+        }),
+        prisma.dop.updateMany({
+          where: { dealId: id },
+          data: {
+            groupId: targetGroup.id,
+            workSpaceId: targetGroup.workSpaceId,
+          },
+        }),
+      ]);
+
+      await prisma.dealAudit.create({
+        data: {
+          dealId: id,
+          userId: user.id,
+          action: 'Смена проекта',
+          comment: `Проект изменен: "${dealExists.group?.title ?? dealExists.groupId}" -> "${targetGroup.title}"`,
+        },
+      });
+
+      return deal;
+    });
 
     return updatedDeal;
   }
