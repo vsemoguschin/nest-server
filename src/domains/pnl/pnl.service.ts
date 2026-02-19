@@ -538,16 +538,6 @@ export class PnlService {
     const EASYNEON_PROJECT_ID = 3;
     const EASYBOOK_PROJECT_ID = 2;
     const GENERAL_PROJECT_ID = 1;
-    const [periodYear, periodMonth] = period.split('-').map(Number);
-    const prevPeriod = format(
-      subMonths(new Date(periodYear, periodMonth - 1), 1),
-      'yyyy-MM',
-    );
-
-    const roundToCents = (value: number) => Math.round(value * 100) / 100;
-    const vkCashbackBaseTotal =
-      await this.getExpenseAmountByCategoryForPeriod(prevPeriod, 39);
-    const vkCashbackTotal = roundToCents(vkCashbackBaseTotal * 0.17);
 
     const itemsConfig = [
       { id: 2, projectId: EASYNEON_PROJECT_ID },
@@ -565,7 +555,6 @@ export class PnlService {
       { id: 14 },
       { id: 158 },
       { id: 13 },
-      { id: 154 },
       { id: 148 },
       { id: 156 },
       { id: 18, projectId: EASYNEON_PROJECT_ID },
@@ -622,13 +611,12 @@ export class PnlService {
       { id: 49 },
       { id: 67 },
       { id: 138 },
+      { id: 160 },
+      { id: 161 },
     ];
 
     const items = await Promise.all(
       itemsConfig.map(async ({ id, projectId }) => {
-        if (id === 154) {
-          return { id, projectId, value: vkCashbackTotal };
-        }
         const value = await this.getExpenseAmountByCategoryForPeriod(
           period,
           id,
