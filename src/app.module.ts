@@ -47,6 +47,7 @@ import { AutoCategoryRulesModule } from './domains/auto-category-rules/auto-cate
 import { YandexDiskModule } from './integrations/yandex-disk/yandex-disk.module';
 import { PnlModule } from './domains/pnl/pnl.module';
 import { CdekModule } from './domains/cdek/cdek.module';
+import { VkMessagesModule } from './domains/vk-messages/vk-messages.module';
 
 @Module({
   imports: [
@@ -94,6 +95,7 @@ import { CdekModule } from './domains/cdek/cdek.module';
     AutoCategoryRulesModule,
     PnlModule,
     CdekModule,
+    VkMessagesModule,
 
     // другие модули
   ],
