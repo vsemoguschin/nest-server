@@ -537,6 +537,7 @@ export class PnlService {
   async getDdsData(period: string) {
     const EASYNEON_PROJECT_ID = 3;
     const EASYBOOK_PROJECT_ID = 2;
+    const EASYBANYA_PROJECT_ID = 4;
     const GENERAL_PROJECT_ID = 1;
 
     const itemsConfig = [
@@ -597,6 +598,7 @@ export class PnlService {
       { id: 45, projectId: EASYBOOK_PROJECT_ID },
       { id: 29, projectId: EASYBOOK_PROJECT_ID },
       { id: 48, projectId: EASYBOOK_PROJECT_ID },
+      { id: 162, projectId: EASYBANYA_PROJECT_ID },
       { id: 68, projectId: GENERAL_PROJECT_ID },
       { id: 87, projectId: GENERAL_PROJECT_ID },
       { id: 151, projectId: GENERAL_PROJECT_ID },
