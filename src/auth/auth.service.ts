@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Cron } from '@nestjs/schedule';
 // Импортируйте UsersService или репозиторий для поиска пользователя
@@ -19,6 +20,7 @@ export class AuthService {
     private readonly userService: UsersService,
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
   ) {}
   // Метод для проверки пользователя (например, по email и паролю)
   async validateUser(
@@ -128,6 +130,129 @@ export class AuthService {
     const new_refresh_token = await this.createRefreshToken(user.id);
 
     return { accessToken, refreshToken: new_refresh_token };
+  }
+
+  async createBookEditorBridgeToken(user: Pick<User, 'id'>, returnTo?: string) {
+    const secret = (process.env.BOOK_EDITOR_BRIDGE_SECRET || '').trim();
+    if (!secret) {
+      throw new UnauthorizedException('BOOK_EDITOR_BRIDGE_SECRET не настроен');
+    }
+
+    const issuer = (process.env.BOOK_EDITOR_BRIDGE_ISSUER || 'crm-core').trim() || 'crm-core';
+    const audience =
+      (process.env.BOOK_EDITOR_BRIDGE_AUDIENCE || 'book-editor-backend').trim() ||
+      'book-editor-backend';
+    const expiresIn = (process.env.BOOK_EDITOR_BRIDGE_TTL || '60s').trim() || '60s';
+
+    const safeReturnTo =
+      typeof returnTo === 'string' && returnTo.trim().startsWith('/')
+        ? returnTo.trim()
+        : '/';
+
+    const token = await this.jwtService.signAsync(
+      {
+        userId: String(user.id),
+        rt: safeReturnTo,
+      },
+      {
+        secret,
+        algorithm: 'HS256',
+        issuer,
+        audience,
+        subject: String(user.id),
+        expiresIn,
+        jwtid: crypto.randomUUID(),
+      },
+    );
+
+    return {
+      token,
+      tokenType: 'Bearer',
+      expiresIn,
+      userId: String(user.id),
+      returnTo: safeReturnTo,
+    };
+  }
+
+  async logoutExternalServiceSessions(user: Pick<User, 'id'>) {
+    const baseUrl = (this.configService.get<string>('AUTH_SERVICE_BASE_URL') ?? '').trim();
+    const apiKey = (this.configService.get<string>('AUTH_INTERNAL_API_KEY') ?? '').trim();
+    const enabled = (this.configService.get<string>('AUTH_SERVICE_SYNC_ENABLED') ?? 'true')
+      .trim()
+      .toLowerCase();
+
+    if (enabled === 'false') {
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'auth_sync_disabled',
+      };
+    }
+
+    if (!baseUrl || !apiKey) {
+      this.logger.warn(
+        'logoutExternalServiceSessions skipped: AUTH_SERVICE_BASE_URL or AUTH_INTERNAL_API_KEY is not configured',
+      );
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'auth_service_not_configured',
+      };
+    }
+
+    const timeoutMs = Number(
+      this.configService.get<string>('AUTH_SERVICE_SYNC_TIMEOUT_MS') ?? '3000',
+    );
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      Number.isFinite(timeoutMs) ? timeoutMs : 3000,
+    );
+
+    try {
+      const response = await fetch(new URL('/auth/internal/users/revoke-sessions', baseUrl).toString(), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-auth-internal-key': apiKey,
+        },
+        body: JSON.stringify({
+          userId: String(user.id),
+          reason: 'logout_all',
+          initiatorId: String(user.id),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        this.logger.warn(
+          `logoutExternalServiceSessions failed ${response.status}: ${text || '<empty response>'}`,
+        );
+        return {
+          ok: false,
+          status: response.status,
+          error: 'auth_service_revoke_failed',
+        };
+      }
+
+      const data = await response.json().catch(() => null);
+      return {
+        ok: true,
+        revoked: true,
+        userId: String(user.id),
+        authService: data,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`logoutExternalServiceSessions request error: ${message}`);
+      return {
+        ok: false,
+        error: 'auth_service_revoke_request_error',
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   // Метод для периодической очистки истекших и отозванных токенов

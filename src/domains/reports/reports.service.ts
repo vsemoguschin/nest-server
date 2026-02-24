@@ -819,14 +819,14 @@ export class ReportsService {
         const bookProjectExpenses = adExpenses
           .filter(
             (ex) =>
-              (ex.date === date && ex.groupId === 19) || ex.groupId === 17,
+              ex.date === date && (ex.groupId === 19 || ex.groupId === 17),
           )
           .reduce((a, b) => a + b.price, 0);
         //заявок на обе группы
         const bookProjectCalls = reports
           .filter(
             (rep) =>
-              (rep.date === date && rep.groupId === 19) || rep.groupId === 17,
+              rep.date === date && (rep.groupId === 19 || rep.groupId === 17),
           )
           .reduce((a, b) => a + b.calls, 0);
         //стоимость заявки

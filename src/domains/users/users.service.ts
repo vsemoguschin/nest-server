@@ -10,10 +10,14 @@ import * as bcrypt from 'bcrypt';
 import { UserProfileDto } from 'src/profile/dto/user-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Prisma } from '@prisma/client';
+import { UsersAuthSyncService } from './users-auth-sync.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly usersAuthSync: UsersAuthSyncService,
+  ) {}
 
   async getProfile(userId: number): Promise<UserProfileDto> {
     const user = await this.prisma.user.findUnique({
@@ -77,6 +81,11 @@ export class UsersService {
           tg: createUserDto.tg,
         },
       });
+      await this.usersAuthSync.syncUserCreated({
+        userId: String(createdUser.id),
+        roles: [role.shortName],
+        scopes: this.usersAuthSync.getDefaultBookEditorScopes(),
+      });
       console.log({ ...createdUser, role });
       return { ...createdUser, role };
     } catch (error) {
@@ -139,6 +148,7 @@ export class UsersService {
       where: { id: userId },
       data: { deletedAt: new Date() },
     });
+    await this.usersAuthSync.syncUserSoftDeleted({ userId: String(userId) });
   }
 
   // Метод для сравнения пароля (plainPassword с хешированным)
@@ -183,6 +193,7 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     const data: any = {};
+    let updatedRoleShortName: string | undefined;
 
     if (dto.fullName !== undefined) data.fullName = String(dto.fullName).trim();
     if (dto.tg !== undefined) data.tg = String(dto.tg).trim();
@@ -198,6 +209,7 @@ export class UsersService {
       });
       if (!role) throw new NotFoundException(`Role ${dto.roleId} not found`);
       data.roleId = dto.roleId;
+      updatedRoleShortName = role.shortName;
     }
 
     if (Object.keys(data).length === 0) {
@@ -205,7 +217,7 @@ export class UsersService {
       return null;
     }
 
-    return this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data,
       select: {
@@ -217,6 +229,16 @@ export class UsersService {
         roleId: true,
       },
     });
+
+    if (updatedRoleShortName) {
+      await this.usersAuthSync.syncUserRolesChanged({
+        userId: String(id),
+        roles: [updatedRoleShortName],
+        scopes: this.usersAuthSync.getDefaultBookEditorScopes(),
+      });
+    }
+
+    return updatedUser;
   }
 
   async updateAvatar(id: number, avatarUrl: string) {
