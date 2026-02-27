@@ -1075,6 +1075,69 @@ export class NotificationSchedulerService {
     }
   }
 
+  // Ночная сверка БД и T-Bank API за последние 30 дней (создание api-only + удаление db-only)
+  @Cron('0 15 2 * * *', { timeZone: 'Europe/Moscow' })
+  async reconcileTbankOperationsLast30Days() {
+    if (this.env === 'development') {
+      this.logger.debug(`[dev] skip reconcileTbankOperationsLast30Days`);
+      return;
+    }
+
+    if (this.isTbankSyncRunning) {
+      this.logger.warn('[T-Bank Reconcile] Sync is already running, skipping...');
+      return;
+    }
+
+    this.isTbankSyncRunning = true;
+    const startTime = new Date();
+
+    try {
+      const toDate = this.ymdInMoscow(startTime);
+      const fromDate = this.addDaysYmd(toDate, -29);
+
+      this.logger.log(
+        `[T-Bank Reconcile] Start ${fromDate}..${toDate} (${startTime.toISOString()})`,
+      );
+
+      const result = await this.tbankSync.reconcileOperationsByPeriod(
+        fromDate,
+        toDate,
+      );
+
+      const duration = Date.now() - startTime.getTime();
+      this.logger.log(
+        `[T-Bank Reconcile] Completed in ${duration}ms: accounts=${result.accountsProcessed}/${result.accountsTotal}, created=${result.createdTotal}, deleted=${result.deletedTotal}`,
+      );
+
+      const perAccountLines = result.accountSummaries
+        .map(
+          (item) =>
+            item.status === 'error'
+              ? `• #${item.accountId} ${item.accountNumber.slice(-4)}: error`
+              : `• #${item.accountId} ${item.accountNumber.slice(-4)} api=${item.apiOperations} db=${item.dbOperations} +${item.created} -${item.deleted}`,
+        )
+        .join('\n');
+
+      await this.notifyAdmins(
+        [
+          '✅ Ночная сверка Т-Банка завершена',
+          `Период: ${result.from}..${result.to}`,
+          `Аккаунты: ${result.accountsProcessed}/${result.accountsTotal}`,
+          `Итого: API=${result.apiOperationsTotal}, БД=${result.dbOperationsTotal}, +${result.createdTotal}, -${result.deletedTotal}`,
+          perAccountLines ? `Счета:\n${perAccountLines}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[T-Bank Reconcile] Failed: ${message}`);
+      await this.notifyAdmins(`🔥 Ночная сверка Т-Банка упала: ${message}`);
+    } finally {
+      this.isTbankSyncRunning = false;
+    }
+  }
+
   // Нормализация позиций задач во всех колонках
   @Cron('0 30 4 * * *', { timeZone: 'Europe/Moscow' })
   async normalizeTaskPositions() {

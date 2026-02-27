@@ -20,7 +20,6 @@ import { PlanfactService } from './planfact.service';
 import { ApiTags } from '@nestjs/swagger';
 import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
 import { CreateOperationDto } from './dto/create-operation.dto';
-import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
@@ -346,18 +345,6 @@ export class PlanfactController {
   @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async createOperation(@Body() createOperationDto: CreateOperationDto) {
     return this.planfactService.createOperation(createOperationDto);
-  }
-
-  @Patch('operation/:operationId')
-  @Roles('ADMIN', 'G', 'KD', 'BUKH')
-  async updateOperation(
-    @Param('operationId') operationId: string,
-    @Body() updateOperationDto: UpdateOperationDto,
-  ) {
-    return this.planfactService.updateOperation(
-      operationId,
-      updateOperationDto,
-    );
   }
 
   @Delete('operation/:operationId')

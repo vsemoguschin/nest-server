@@ -24,6 +24,32 @@ interface OperationFromApi {
   expenseCategoryName: string | null;
 }
 
+interface ReconcileOperationsResult {
+  from: string;
+  to: string;
+  accountsTotal: number;
+  accountsProcessed: number;
+  apiOperationsTotal: number;
+  dbOperationsTotal: number;
+  apiOnlyTotal: number;
+  dbOnlyTotal: number;
+  createdTotal: number;
+  deletedTotal: number;
+  accountSummaries: Array<{
+    accountId: number;
+    accountName: string;
+    accountNumber: string;
+    apiOperations: number;
+    dbOperations: number;
+    apiOnly: number;
+    dbOnly: number;
+    created: number;
+    deleted: number;
+    status: 'success' | 'error';
+    errorMessage?: string;
+  }>;
+}
+
 @Injectable()
 export class TbankSyncService {
   private readonly logger = new Logger(TbankSyncService.name);
@@ -62,6 +88,23 @@ export class TbankSyncService {
       easyneonId: byCode.get('easyneon') ?? generalId,
       easybookId: byCode.get('easybook') ?? generalId,
     };
+  }
+
+  private resolveProjectIdForAccount(
+    accountId: number,
+    ids: { generalId: number; easyneonId: number; easybookId: number },
+  ) {
+    if (accountId === 1) return ids.easyneonId;
+    if (accountId === 3) return ids.easybookId;
+    return ids.generalId;
+  }
+
+  private chunkArray<T>(items: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < items.length; i += size) {
+      chunks.push(items.slice(i, i + size));
+    }
+    return chunks;
   }
 
   // Функция для определения категории на основе условий
@@ -219,6 +262,7 @@ export class TbankSyncService {
     limit: number = 1000,
     categories?: string[],
     inns?: string[],
+    options?: { verbose?: boolean },
   ) {
     const tToken = process.env.TB_TOKEN;
     if (!tToken) {
@@ -228,6 +272,7 @@ export class TbankSyncService {
     const allOperations: OperationFromApi[] = [];
     let cursor: string | undefined = undefined;
     let hasMore = true;
+    const verbose = options?.verbose ?? true;
 
     try {
       while (hasMore) {
@@ -274,9 +319,11 @@ export class TbankSyncService {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
 
-        this.logger.log(
-          `Получено ${operations.length} операций, всего: ${allOperations.length}`,
-        );
+        if (verbose) {
+          this.logger.log(
+            `Получено ${operations.length} операций, всего: ${allOperations.length}`,
+          );
+        }
       }
 
       return allOperations;
@@ -293,9 +340,11 @@ export class TbankSyncService {
     operations: OperationFromApi[],
     accountId: number,
     projectId: number,
+    options?: { verbose?: boolean },
   ) {
     let savedCount = 0;
     let lastOperationDate = '';
+    const verbose = options?.verbose ?? true;
 
     // Подготовим правила из БД для payPurpose
     const rules: Array<{
@@ -338,9 +387,11 @@ export class TbankSyncService {
       return true;
     };
 
-    this.logger.log(
-      `✅ Загружено ${rules.length} правил из БД для автокатегоризации`,
-    );
+    if (verbose) {
+      this.logger.log(
+        `✅ Загружено ${rules.length} правил из БД для автокатегоризации`,
+      );
+    }
 
     const applyRules = (
       op: OperationFromApi,
@@ -527,12 +578,14 @@ export class TbankSyncService {
 
         // Если позиции уже есть, пропускаем создание новых
         if (existingPositions.length > 0) {
+        if (verbose) {
           this.logger.log(
             `Операция ${op.operationId} уже имеет позиции, пропускаем создание позиций`,
           );
-          savedCount++;
-          continue;
         }
+        savedCount++;
+        continue;
+      }
 
         // Определяем категорию: 1) правила БД по payPurpose (приоритет); 2) по типу операции/категории контрагента
         let expenseCategoryId: number | null = null;
@@ -540,17 +593,21 @@ export class TbankSyncService {
         // Сначала проверяем правила БД (высший приоритет)
         if (op.typeOfOperation === 'Credit' && incomeCategoryId) {
           expenseCategoryId = incomeCategoryId;
-          this.logger.log(
-            `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по правилу БД (Credit)`,
-          );
+          if (verbose) {
+            this.logger.log(
+              `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по правилу БД (Credit)`,
+            );
+          }
         } else if (
           op.typeOfOperation === 'Debit' &&
           outcomeCategoryIdFromRules
         ) {
           expenseCategoryId = outcomeCategoryIdFromRules;
-          this.logger.log(
-            `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по правилу БД (Debit)`,
-          );
+          if (verbose) {
+            this.logger.log(
+              `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по правилу БД (Debit)`,
+            );
+          }
         } else {
           // Если правила не сработали, используем категорию контрагента
           if (
@@ -558,18 +615,22 @@ export class TbankSyncService {
             counterParty.incomeExpenseCategory
           ) {
             expenseCategoryId = counterParty.incomeExpenseCategory.id;
-            this.logger.log(
-              `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-            );
+            if (verbose) {
+              this.logger.log(
+                `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+              );
+            }
           } else if (
             op.typeOfOperation === 'Debit' &&
             counterParty.outcomeExpenseCategory
           ) {
             // Для Debit - используем исходящую категорию контрагента
             expenseCategoryId = counterParty.outcomeExpenseCategory.id;
-            this.logger.log(
-              `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-            );
+            if (verbose) {
+              this.logger.log(
+                `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
+              );
+            }
           }
         }
 
@@ -664,6 +725,194 @@ export class TbankSyncService {
     }
   }
 
+  async reconcileOperationsByPeriod(
+    from: string,
+    to: string,
+  ): Promise<ReconcileOperationsResult> {
+    const result: ReconcileOperationsResult = {
+      from,
+      to,
+      accountsTotal: 0,
+      accountsProcessed: 0,
+      apiOperationsTotal: 0,
+      dbOperationsTotal: 0,
+      apiOnlyTotal: 0,
+      dbOnlyTotal: 0,
+      createdTotal: 0,
+      deletedTotal: 0,
+      accountSummaries: [],
+    };
+
+    const fromDate = new Date(`${from}T00:00:00.000Z`);
+    const toDate = new Date(`${to}T23:59:59.999Z`);
+
+    const projectIds = await this.getProjectIds();
+    const accounts = await this.prisma.planFactAccount.findMany({
+      where: { isReal: true },
+      select: {
+        id: true,
+        name: true,
+        accountNumber: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    result.accountsTotal = accounts.length;
+
+    const originalOperationRepo = this.prisma as unknown as {
+      originalOperationFromTbank: {
+        findMany: (args: {
+          where: Record<string, unknown>;
+          select: { id: true; operationId: true };
+          orderBy?: Record<string, 'asc' | 'desc'>;
+        }) => Promise<Array<{ id: number; operationId: string }>>;
+        deleteMany: (args: {
+          where: { id: { in: number[] } };
+        }) => Promise<{ count: number }>;
+      };
+    };
+
+    for (const account of accounts) {
+      try {
+        const apiOperations = await this.fetchOperationsFromTbank(
+          account.accountNumber,
+          from,
+          to,
+          1000,
+          undefined,
+          undefined,
+          { verbose: false },
+        );
+        result.apiOperationsTotal += apiOperations.length;
+
+        const dbOperations = await originalOperationRepo.originalOperationFromTbank.findMany(
+          {
+            where: {
+              accountId: account.id,
+              operationDate: {
+                gte: fromDate,
+                lte: toDate,
+              },
+            },
+            select: {
+              id: true,
+              operationId: true,
+            },
+            orderBy: {
+              id: 'asc',
+            },
+          },
+        );
+        result.dbOperationsTotal += dbOperations.length;
+
+        const dbOperationIds = new Set(dbOperations.map((item) => item.operationId));
+        const apiOperationIds = new Set(apiOperations.map((item) => item.operationId));
+
+        const apiOnlyOperations = apiOperations.filter(
+          (item) => !dbOperationIds.has(item.operationId),
+        );
+        const dbOnlyIds = dbOperations
+          .filter((item) => !apiOperationIds.has(item.operationId))
+          .map((item) => item.id);
+
+        result.apiOnlyTotal += apiOnlyOperations.length;
+        result.dbOnlyTotal += dbOnlyIds.length;
+
+        let createdCount = 0;
+        if (apiOnlyOperations.length > 0) {
+          const projectId = this.resolveProjectIdForAccount(account.id, projectIds);
+          const saveResult = await this.saveOriginalOperations(
+            apiOnlyOperations,
+            account.id,
+            projectId,
+            { verbose: false },
+          );
+          createdCount = saveResult.savedCount;
+          result.createdTotal += saveResult.savedCount;
+        } else {
+          await this.updateSyncStatus(account.id, to, 0, 'success');
+        }
+
+        let deletedCount = 0;
+        if (dbOnlyIds.length > 0) {
+          const chunks = this.chunkArray(dbOnlyIds, 500);
+          for (const idsChunk of chunks) {
+            await this.prisma.$transaction(async (tx) => {
+              await tx.operationPosition.deleteMany({
+                where: { originalOperationId: { in: idsChunk } },
+              });
+              await (
+                tx as unknown as {
+                  originalOperationFromTbank: {
+                    deleteMany: (args: {
+                      where: { id: { in: number[] } };
+                    }) => Promise<{ count: number }>;
+                  };
+                }
+              ).originalOperationFromTbank.deleteMany({
+                where: { id: { in: idsChunk } },
+              });
+            });
+            deletedCount += idsChunk.length;
+          }
+          result.deletedTotal += deletedCount;
+        }
+
+        result.accountsProcessed += 1;
+
+        if (apiOnlyOperations.length > 0 || dbOnlyIds.length > 0) {
+          this.logger.log(
+            `[T-Bank Reconcile] accountId=${account.id} (${account.accountNumber}) db=${dbOperations.length} api=${apiOperations.length} create=${apiOnlyOperations.length} saved=${createdCount} delete=${deletedCount}`,
+          );
+        }
+
+        result.accountSummaries.push({
+          accountId: account.id,
+          accountName: account.name,
+          accountNumber: account.accountNumber,
+          apiOperations: apiOperations.length,
+          dbOperations: dbOperations.length,
+          apiOnly: apiOnlyOperations.length,
+          dbOnly: dbOnlyIds.length,
+          created: createdCount,
+          deleted: deletedCount,
+          status: 'success',
+        });
+      } catch (error) {
+        this.logger.error(
+          `[T-Bank Reconcile] accountId=${account.id} (${account.accountNumber}) failed: ${error instanceof Error ? error.message : error}`,
+        );
+        await this.updateSyncStatus(
+          account.id,
+          to,
+          0,
+          'error',
+          error instanceof Error ? error.message : 'Неизвестная ошибка',
+        );
+        result.accountSummaries.push({
+          accountId: account.id,
+          accountName: account.name,
+          accountNumber: account.accountNumber,
+          apiOperations: 0,
+          dbOperations: 0,
+          apiOnly: 0,
+          dbOnly: 0,
+          created: 0,
+          deleted: 0,
+          status: 'error',
+          errorMessage:
+            error instanceof Error ? error.message : 'Неизвестная ошибка',
+        });
+      }
+    }
+
+    this.logger.log(
+      `[T-Bank Reconcile] done ${from}..${to}: accounts=${result.accountsProcessed}/${result.accountsTotal}, db=${result.dbOperationsTotal}, api=${result.apiOperationsTotal}, apiOnly=${result.apiOnlyTotal}, dbOnly=${result.dbOnlyTotal}, created=${result.createdTotal}, deleted=${result.deletedTotal}`,
+    );
+
+    return result;
+  }
+
   async syncOperations(from?: string, to?: string) {
     this.logger.log('Starting T-Bank operations sync...');
     await this.notifyAdmins('▶️ Старт синхронизации операций Т-Банка');
@@ -710,12 +959,11 @@ export class TbankSyncService {
           );
 
           if (operations.length > 0) {
-            const projectId =
-              account.id === 1
-                ? easyneonId
-                : account.id === 3
-                  ? easybookId
-                  : generalId;
+            const projectId = this.resolveProjectIdForAccount(account.id, {
+              generalId,
+              easyneonId,
+              easybookId,
+            });
 
             const result = await this.saveOriginalOperations(
               operations,

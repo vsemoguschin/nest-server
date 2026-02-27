@@ -20,7 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "doc": "npx typedoc --out docs src",
     "git-push": "git add . && read -p 'Commit message: ' msg && git commit -m \"$msg\" && git push origin main",
-    "prisma:deploy": "prisma db push && prisma generate"
+    "prisma:deploy": "prisma db push && prisma generate",
+    "export:book-editor-backfill-users": "ts-node --transpile-only src/scripts/export-book-editor-backfill-users.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",

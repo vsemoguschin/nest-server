@@ -8,9 +8,7 @@ import * as ExcelJS from 'exceljs';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PlanFactAccountCreateDto } from './dto/planfact-account-create.dto';
 import { DashboardsService } from '../dashboards/dashboards.service';
-// import { CommercialDatasService } from '../commercial-datas/commercial-datas.service';
 import { CreateOperationDto } from './dto/create-operation.dto';
-import { UpdateOperationDto } from './dto/update-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
@@ -22,30 +20,6 @@ const tbankProxyAgent = tbankProxy
   : undefined;
 
 const tToken = process.env.TB_TOKEN;
-
-export interface OperationFromApi {
-  operationId: string;
-  operationDate: string;
-  typeOfOperation: string;
-  category: string;
-  description: string;
-  payPurpose: string;
-  accountAmount: number;
-
-  counterParty: CounterPartyFromApi;
-  expenseCategoryId: number | null;
-  expenseCategoryName: string | null;
-}
-
-export interface CounterPartyFromApi {
-  account: string;
-  inn: string;
-  kpp: string;
-  name: string;
-  bankName: string;
-  bankBic: string;
-  corrAccount: string;
-}
 
 export interface CounterPartyType {
   id: number;
@@ -91,7 +65,16 @@ export interface OriginalOperationType {
   operationDate: string;
   accountAmount: number;
   payPurpose?: string;
+  description?: string;
   counterPartyAccount?: string | null;
+  counterPartyInn?: string | null;
+  counterPartyKpp?: string | null;
+  counterPartyBic?: string | null;
+  counterPartyBankName?: string | null;
+  counterPartyTitle?: string | null;
+  expenseCategoryId?: number | null;
+  expenseCategoryName?: string | null;
+  accountId?: number;
   account?: {
     id: number;
     name: string;
@@ -107,10 +90,6 @@ interface ExtendedPrismaClient {
   originalOperationFromTbank: {
     findMany: (args: unknown) => Promise<OriginalOperationType[]>;
     findUnique: (args: unknown) => Promise<OriginalOperationType>;
-    upsert: (args: unknown) => Promise<OriginalOperationType>;
-  };
-  tbankSyncStatus: {
-    upsert: (args: unknown) => Promise<unknown>;
   };
 }
 
@@ -191,119 +170,6 @@ export class PlanfactService {
     });
   }
 
-  async updateOperation(operationId: string, dto: UpdateOperationDto) {
-    const operation = await this.prisma.operation.findUnique({
-      where: { operationId },
-      include: { operationPositions: true },
-    });
-    if (!operation) {
-      throw new NotFoundException(`Операция с ID ${operationId} не найдена`);
-    }
-
-    const account = await this.prisma.planFactAccount.findUnique({
-      where: { id: dto.accountId },
-    });
-    if (!account) {
-      throw new NotFoundException(`Счет с ID ${dto.accountId} не найден`);
-    }
-
-    // Проверка категорий и контрагентов для каждой позиции
-    if (dto.operationPositions) {
-      for (const position of dto.operationPositions) {
-        if (position.expenseCategoryId) {
-          const category = await this.prisma.expenseCategory.findUnique({
-            where: { id: position.expenseCategoryId },
-          });
-          if (!category) {
-            throw new NotFoundException(
-              `Категория с ID ${position.expenseCategoryId} не найдена`,
-            );
-          }
-        }
-
-        if (position.counterPartyId) {
-          const counterParty = await this.prisma.counterParty.findUnique({
-            where: { id: position.counterPartyId },
-          });
-          if (!counterParty) {
-            throw new NotFoundException(
-              `Контрагент с ID ${position.counterPartyId} не найден`,
-            );
-          }
-        }
-      }
-    }
-
-    return this.prisma.$transaction(async (prisma) => {
-      // Обновляем операцию
-      const updatedOperation = await prisma.operation.update({
-        where: { operationId },
-        data: {
-          operationDate: dto.operationDate,
-          operationType: dto.operationType,
-          description: dto.description || '',
-          payPurpose: dto.payPurpose || '',
-          accountId: dto.accountId,
-        },
-        include: { operationPositions: true },
-      });
-
-      const fallbackPeriod = (
-        dto.operationDate || operation.operationDate
-      ).slice(0, 7);
-
-      // Если есть позиции, обновляем/создаем/удаляем их
-      if (dto.operationPositions) {
-        // Удаляем позиции, которых нет в новом списке
-        const existingPositionIds = operation.operationPositions.map(
-          (pos) => pos.id,
-        );
-        const newPositionIds = dto.operationPositions
-          .filter((pos) => pos.id)
-          .map((pos) => pos.id!);
-        const positionsToDelete = existingPositionIds.filter(
-          (id) => !newPositionIds.includes(id),
-        );
-
-        await prisma.operationPosition.deleteMany({
-          where: {
-            id: { in: positionsToDelete },
-            operationId: operation.id,
-          },
-        });
-
-        // Создаем или обновляем позиции
-        for (const position of dto.operationPositions) {
-          if (position.id) {
-            // Обновляем существующую позицию
-            await prisma.operationPosition.update({
-              where: { id: position.id, operationId: operation.id },
-              data: {
-                amount: position.amount,
-                period: position.period || fallbackPeriod,
-                counterPartyId: position.counterPartyId || null,
-                expenseCategoryId: position.expenseCategoryId || null,
-              },
-            });
-          } else {
-            // Создаем новую позицию
-            await prisma.operationPosition.create({
-              data: {
-                amount: position.amount,
-                period: position.period || fallbackPeriod,
-                counterPartyId: position.counterPartyId || null,
-                expenseCategoryId: position.expenseCategoryId || null,
-                operationId: operation.id,
-              },
-            });
-          }
-        }
-      }
-
-      return updatedOperation;
-    });
-  }
-
   async deleteOperation(operationId: string) {
     const operation = await this.prisma.operation.findUnique({
       where: { operationId },
@@ -316,41 +182,6 @@ export class PlanfactService {
       where: { operationId },
       data: { deletedAt: new Date() },
     });
-  }
-
-  async getOrCreateCounterParty(counterPartyData: {
-    account: string;
-    inn: string;
-    kpp: string;
-    name: string;
-    bankName: string;
-    bankBic: string;
-  }) {
-    // console.log(counterPartyData);
-    const existingCounterParty = await this.prisma.counterParty.findFirst({
-      where: { account: counterPartyData.account },
-    });
-
-    if (existingCounterParty) {
-      // console.log('existingCounterParty', counterPartyData);
-      return existingCounterParty;
-    }
-    // console.log('newCounter', counterPartyData);
-
-    const counterParty = await this.prisma.counterParty.create({
-      data: {
-        title: counterPartyData.name || 'Неизвестный контрагент',
-        type: 'Получатель',
-        inn: counterPartyData.inn || '',
-        kpp: counterPartyData.kpp || '',
-        account: counterPartyData.account || '',
-        bankBic: counterPartyData.bankBic || '',
-        bankName: counterPartyData.bankName || '',
-        contrAgentGroup: 'Контрагенты без группы', // По умолчанию, если группа неизвестна
-      },
-    });
-
-    return counterParty;
   }
 
   async createCounterParty(dto: CreateCounterPartyDto) {
@@ -835,20 +666,6 @@ export class PlanfactService {
   }
 
   async getBankAccounts() {
-    // const bankAccounts = ['40802810800000977213', '40802810900002414658']; // Список банковских счетов
-
-    // const response = await axios.get(
-    //   'https://business.tbank.ru/openapi/api/v4/bank-accounts',
-    //   {
-    //     headers: {
-    //       Authorization: 'Bearer ' + tToken,
-    //       'Content-Type': 'application/json',
-    //     },
-    //     maxBodyLength: Infinity,
-    //   },
-    // );
-    // console.log(response);
-
     const accounts = await this.prisma.planFactAccount.findMany({
       select: {
         id: true,
@@ -2293,123 +2110,6 @@ export class PlanfactService {
     return this.assignProjectsToCounterParty(counterParty.id, projectsData);
   }
 
-  // Методы для синхронизации операций Т-Банка с категориями
-  async getOrCreateCounterPartyWithCategories(counterPartyData: {
-    account: string;
-    inn: string;
-    kpp: string;
-    name: string;
-    bankName: string;
-    bankBic: string;
-  }) {
-    const existingCounterParty = await this.prisma.counterParty.findFirst({
-      where: { account: counterPartyData.account },
-      include: {
-        incomeExpenseCategory: true,
-        outcomeExpenseCategory: true,
-        incomeProject: true,
-        outcomeProject: true,
-      },
-    });
-
-    if (existingCounterParty) {
-      return existingCounterParty;
-    }
-
-    const counterParty = await this.prisma.counterParty.create({
-      data: {
-        title: counterPartyData.name || 'Неизвестный контрагент',
-        type: 'Получатель',
-        inn: counterPartyData.inn || '',
-        kpp: counterPartyData.kpp || '',
-        account: counterPartyData.account || '',
-        bankBic: counterPartyData.bankBic || '',
-        bankName: counterPartyData.bankName || '',
-        contrAgentGroup: 'Контрагенты без группы',
-      },
-      include: {
-        incomeExpenseCategory: true,
-        outcomeExpenseCategory: true,
-        incomeProject: true,
-        outcomeProject: true,
-      },
-    });
-
-    return counterParty;
-  }
-
-  async fetchOperationsFromTbankWithCategories(
-    accountNumber: string,
-    from: string,
-    to: string,
-    limit: number = 1000,
-    categories?: string[],
-    inns?: string[],
-  ) {
-    const allOperations: OperationFromApi[] = [];
-    let cursor: string | undefined = undefined;
-    let hasMore = true;
-
-    try {
-      while (hasMore) {
-        const params: Record<string, string | number | boolean | string[]> = {
-          accountNumber,
-          operationStatus: 'Transaction',
-          from: new Date(from).toISOString(),
-          to: new Date(to + 'T23:59:59.999Z').toISOString(),
-          withBalances: cursor ? false : true,
-          limit: Math.min(limit, 5000),
-        };
-
-        if (categories && categories.length > 0) {
-          params.categories = categories;
-        }
-        if (inns && inns.length > 0) {
-          params.inns = inns;
-        }
-
-        if (cursor) {
-          params.cursor = cursor;
-        }
-
-        const response = await axios.get(
-          'https://business.tbank.ru/openapi/api/v1/statement',
-          {
-            proxy: false,
-            headers: {
-              Authorization: 'Bearer ' + tToken,
-              'Content-Type': 'application/json',
-            },
-            params,
-            maxBodyLength: Infinity,
-          },
-        );
-
-        const operations = response.data.operations || [];
-        allOperations.push(...operations);
-
-        cursor = response.data.nextCursor;
-        hasMore = !!cursor && operations.length > 0;
-
-        if (hasMore) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-
-        console.log(
-          `Получено ${operations.length} операций, всего: ${allOperations.length}`,
-        );
-      }
-
-      return allOperations;
-    } catch (error) {
-      console.error(
-        `Ошибка при получении операций для счета ${accountNumber}:`,
-        error,
-      );
-      throw error;
-    }
-  }
-
   async fetchStatementBalancesByPeriod(period: string) {
     if (!tToken) {
       throw new Error('TB_TOKEN не установлен в переменных окружения');
@@ -2516,281 +2216,5 @@ export class PlanfactService {
       to: toDate.toISOString(),
       results,
     };
-  }
-
-  async saveOriginalOperationsWithCategories(
-    operations: OperationFromApi[],
-    accountId: number,
-  ) {
-    let savedCount = 0;
-    let lastOperationDate = '';
-
-    for (const op of operations) {
-      try {
-        // Создаем или находим контрагента с категориями
-        const counterParty = await this.getOrCreateCounterPartyWithCategories({
-          account: op.counterParty.account || '',
-          inn: op.counterParty.inn || '',
-          kpp: op.counterParty.kpp || '',
-          name: op.counterParty.name || '',
-          bankName: op.counterParty.bankName || '',
-          bankBic: op.counterParty.bankBic || '',
-        });
-
-        // Всегда делаем upsert для операции
-        const originalOperation = await (
-          this.prisma as unknown as ExtendedPrismaClient
-        ).originalOperationFromTbank.upsert({
-          where: { operationId: op.operationId },
-          update: {
-            operationDate: op.operationDate,
-            typeOfOperation: op.typeOfOperation || 'Unknown',
-            category: op.category || '',
-            description: op.description || '',
-            payPurpose: op.payPurpose || '',
-            accountAmount: op.accountAmount,
-            counterPartyAccount: op.counterParty.account || '',
-            counterPartyInn: op.counterParty.inn || '',
-            counterPartyKpp: op.counterParty.kpp || '',
-            counterPartyBic: op.counterParty.bankBic || '',
-            counterPartyBankName: op.counterParty.bankName || '',
-            counterPartyTitle: op.counterParty.name || '',
-            expenseCategoryId: op.expenseCategoryId,
-            expenseCategoryName: op.expenseCategoryName,
-            accountId: accountId,
-          },
-          create: {
-            operationId: op.operationId,
-            operationDate: op.operationDate,
-            typeOfOperation: op.typeOfOperation || 'Unknown',
-            category: op.category || '',
-            description: op.description || '',
-            payPurpose: op.payPurpose || '',
-            accountAmount: op.accountAmount,
-            counterPartyAccount: op.counterParty.account || '',
-            counterPartyInn: op.counterParty.inn || '',
-            counterPartyKpp: op.counterParty.kpp || '',
-            counterPartyBic: op.counterParty.bankBic || '',
-            counterPartyBankName: op.counterParty.bankName || '',
-            counterPartyTitle: op.counterParty.name || '',
-            expenseCategoryId: op.expenseCategoryId,
-            expenseCategoryName: op.expenseCategoryName,
-            accountId: accountId,
-          },
-        });
-
-        // Проверяем, есть ли уже позиции у операции
-        const existingPositions = await this.prisma.operationPosition.findMany({
-          where: {
-            originalOperationId: originalOperation.id,
-          },
-        });
-
-        if (existingPositions.length > 0) {
-          console.log(
-            `Операция ${op.operationId} уже имеет позиции, пропускаем создание позиций`,
-          );
-          savedCount++;
-          continue;
-        }
-
-        // Определяем категорию на основе типа операции и контрагента
-        let expenseCategoryId: number | null = null;
-        let projectId: number | null = null;
-
-        if (
-          op.typeOfOperation === 'Credit' &&
-          counterParty.incomeExpenseCategory
-        ) {
-          // Входящая операция - используем входящую категорию контрагента
-          expenseCategoryId = counterParty.incomeExpenseCategory.id;
-          console.log(
-            `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-          );
-        } else if (
-          op.typeOfOperation === 'Debit' &&
-          counterParty.outcomeExpenseCategory
-        ) {
-          // Исходящая операция - используем исходящую категорию контрагента
-          expenseCategoryId = counterParty.outcomeExpenseCategory.id;
-          console.log(
-            `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-          );
-        } else {
-          console.log(
-            `Операция ${op.operationId}: у контрагента "${counterParty.title}" нет соответствующей категории для типа операции "${op.typeOfOperation}"`,
-          );
-        }
-
-        if (op.typeOfOperation === 'Credit' && counterParty.incomeProject) {
-          projectId = counterParty.incomeProject.id;
-        } else if (
-          op.typeOfOperation === 'Debit' &&
-          counterParty.outcomeProject
-        ) {
-          projectId = counterParty.outcomeProject.id;
-        }
-
-        // Создаем позицию (только если её еще нет)
-        await this.prisma.operationPosition.create({
-          data: {
-            amount: op.accountAmount,
-            period: op.operationDate?.slice(0, 7),
-            originalOperationId: originalOperation.id,
-            counterPartyId: counterParty.id,
-            expenseCategoryId: expenseCategoryId,
-            projectId: projectId,
-          },
-        });
-
-        savedCount++;
-        // Обновляем дату последней операции (сортируем по дате)
-        if (op.operationDate > lastOperationDate) {
-          lastOperationDate = op.operationDate;
-        }
-      } catch (error) {
-        console.error(
-          `Ошибка при сохранении операции ${op.operationId}:`,
-          error,
-        );
-      }
-    }
-
-    // Обновляем статус синхронизации
-    await this.updateSyncStatus(
-      accountId,
-      lastOperationDate,
-      savedCount,
-      'success',
-    );
-
-    return { savedCount, lastOperationDate };
-  }
-
-  async updateSyncStatus(
-    accountId: number,
-    lastOperationDate: string,
-    totalOperations: number,
-    status: 'success' | 'error' | 'in_progress',
-    errorMessage?: string,
-  ) {
-    try {
-      await (
-        this.prisma as unknown as ExtendedPrismaClient
-      ).tbankSyncStatus.upsert({
-        where: { accountId },
-        update: {
-          lastSyncDate: new Date(),
-          lastOperationDate: lastOperationDate.slice(0, 10), // YYYY-MM-DD
-          totalOperations: {
-            increment: totalOperations,
-          },
-          syncStatus: status,
-          errorMessage: errorMessage || null,
-        },
-        create: {
-          accountId,
-          lastSyncDate: new Date(),
-          lastOperationDate: lastOperationDate.slice(0, 10), // YYYY-MM-DD
-          totalOperations,
-          syncStatus: status,
-          errorMessage: errorMessage || null,
-        },
-      });
-    } catch (error) {
-      console.error(
-        `Ошибка при обновлении статуса синхронизации для аккаунта ${accountId}:`,
-        error,
-      );
-    }
-  }
-
-  async syncTbankOperations(from?: string, to?: string) {
-    console.log('Starting T-Bank operations sync with categories...');
-
-    try {
-      // Параметры по умолчанию - сегодняшний день
-      const today = new Date();
-      const fromDate = from || today.toISOString().split('T')[0];
-      const toDate = to || today.toISOString().split('T')[0];
-
-      console.log(`Синхронизация операций с ${fromDate} по ${toDate}`);
-
-      if (!tToken) {
-        throw new Error('TB_TOKEN не установлен в переменных окружения');
-      }
-
-      // Получаем все аккаунты с доступом к API
-      const accounts = await this.prisma.planFactAccount.findMany({
-        where: {
-          isReal: true,
-        },
-      });
-
-      console.log(`Найдено ${accounts.length} аккаунтов с API доступом`);
-
-      let totalSaved = 0;
-      for (const account of accounts) {
-        console.log(
-          `Обрабатываем аккаунт: ${account.name} (${account.accountNumber})`,
-        );
-
-        try {
-          // Устанавливаем статус "в процессе"
-          await this.updateSyncStatus(account.id, '', 0, 'in_progress');
-
-          const operations = await this.fetchOperationsFromTbankWithCategories(
-            account.accountNumber,
-            fromDate,
-            toDate,
-            1000,
-          );
-
-          console.log(
-            `Получено ${operations.length} операций для аккаунта ${account.name}`,
-          );
-
-          if (operations.length > 0) {
-            const result = await this.saveOriginalOperationsWithCategories(
-              operations,
-              account.id,
-            );
-            console.log(
-              `Сохранено ${result.savedCount} операций для аккаунта ${account.name}. Последняя операция: ${result.lastOperationDate}`,
-            );
-            totalSaved += result.savedCount;
-          } else {
-            // Обновляем статус даже если операций нет
-            await this.updateSyncStatus(account.id, '', 0, 'success');
-            console.log(`Операций не найдено для аккаунта ${account.name}`);
-          }
-        } catch (error) {
-          console.error(
-            `Ошибка при обработке аккаунта ${account.name}:`,
-            error,
-          );
-          // Устанавливаем статус ошибки
-          await this.updateSyncStatus(
-            account.id,
-            '',
-            0,
-            'error',
-            error instanceof Error ? error.message : 'Неизвестная ошибка',
-          );
-        }
-      }
-
-      console.log(
-        `Синхронизация завершена. Всего сохранено: ${totalSaved} операций`,
-      );
-      return {
-        success: true,
-        totalSaved,
-        message: `Синхронизация завершена. Сохранено: ${totalSaved} операций`,
-      };
-    } catch (error) {
-      console.error('Ошибка выполнения синхронизации:', error);
-      throw error;
-    }
   }
 }
