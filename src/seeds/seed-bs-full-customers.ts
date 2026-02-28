@@ -1,12 +1,14 @@
-// prisma/seed.ts
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 
 const prisma = new PrismaClient();
 
-const BLUESALES_URL = process.env.BLUESALES_URL;
+const BLUESALES_URL =
+  process.env.BLUESALES_URL ||
+  'https://bluesales.ru/app/Customers/WebServer.aspx';
 const BLUESALES_LOGIN = process.env.BLUESALES_LOGIN;
 const BLUESALES_PASSWORD = process.env.BLUESALES_PASSWORD;
+
 const BLUESALES_PAGE_SIZE = parseInt(
   process.env.BLUESALES_PAGE_SIZE || '500',
   10,
@@ -14,11 +16,28 @@ const BLUESALES_PAGE_SIZE = parseInt(
 const BLUESALES_THROTTLE_MS = parseInt(
   process.env.BLUESALES_THROTTLE_MS || '500',
   10,
-); // пауза между запросами
+);
 const BLUESALES_START_OFFSET = parseInt(
   process.env.BLUESALES_START_OFFSET || '0',
   10,
 );
+const BLUESALES_MAX_RETRIES = parseInt(
+  process.env.BLUESALES_MAX_RETRIES || '6',
+  10,
+);
+
+function ymdInMoscow(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+const BLUESALES_FULL_FROM = process.env.BLUESALES_FULL_FROM || '2023-01-01';
+const BLUESALES_FULL_TILL =
+  process.env.BLUESALES_FULL_TILL || ymdInMoscow(new Date());
 
 type ApiCustomer = {
   id: number;
@@ -29,11 +48,11 @@ type ApiCustomer = {
   birthday: string;
   sex: string;
   vk: { id: string; name: string; messagesGroupId: string } | null;
-  ok: any;
-  facebook: any;
-  instagram: any;
-  whatsApp: any;
-  telegram: any;
+  ok: unknown;
+  facebook: unknown;
+  instagram: unknown;
+  whatsApp: unknown;
+  telegram: unknown;
   avito: { id: string; name: string; chatId: string } | null;
   phone: string;
   email: string;
@@ -60,7 +79,7 @@ type ApiCustomer = {
   } | null;
   shortNotes: string;
   comments: string;
-  customFields: any[];
+  customFields: unknown[];
 };
 
 function normalizeDotDateToIso(s?: string | null): string {
@@ -73,6 +92,25 @@ function normalizeDotDateToIso(s?: string | null): string {
     return `${yyyy}-${mm}-${dd}`;
   }
   return '';
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map((v) => parseInt(v, 10));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const y2 = dt.getUTCFullYear();
+  const m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const d2 = String(dt.getUTCDate()).padStart(2, '0');
+  return `${y2}-${m2}-${d2}`;
+}
+
+function endOfMonth(ymd: string): string {
+  const [y, m] = ymd.split('-').map((v) => parseInt(v, 10));
+  const last = new Date(Date.UTC(y, m, 0));
+  const y2 = last.getUTCFullYear();
+  const m2 = String(last.getUTCMonth() + 1).padStart(2, '0');
+  const d2 = String(last.getUTCDate()).padStart(2, '0');
+  return `${y2}-${m2}-${d2}`;
 }
 
 async function getCustomersPage(
@@ -106,6 +144,7 @@ async function getCustomersPage(
     },
     timeout: 60_000,
   });
+
   return resp.data as {
     count: number;
     notReturnedCount: number;
@@ -114,7 +153,6 @@ async function getCustomersPage(
 }
 
 async function upsertReferenceData(c: ApiCustomer) {
-  // Upsert reference tables and return their IDs
   const countryId = c.country
     ? (
         await prisma.crmCountry.upsert({
@@ -252,10 +290,55 @@ async function upsertReferenceData(c: ApiCustomer) {
   };
 }
 
+async function syncCustomerTags(customerId: number, tags: ApiCustomer['tags']) {
+  if (!Array.isArray(tags) || tags.length === 0) {
+    await prisma.crmCustomerTag.deleteMany({ where: { customerId } });
+    return;
+  }
+
+  const desiredTagIds = new Set<number>();
+
+  for (const t of tags) {
+    const tag = await prisma.crmTag.upsert({
+      where: { externalId: String(t.id) },
+      update: {
+        name: t.name,
+        color: t.color || '',
+        textColor: t.textColor || '',
+      },
+      create: {
+        externalId: String(t.id),
+        name: t.name,
+        color: t.color || '',
+        textColor: t.textColor || '',
+      },
+      select: { id: true },
+    });
+
+    desiredTagIds.add(tag.id);
+
+    await prisma.crmCustomerTag.upsert({
+      where: { customerId_tagId: { customerId, tagId: tag.id } },
+      update: {},
+      create: { customerId, tagId: tag.id },
+    });
+  }
+
+  await prisma.crmCustomerTag.deleteMany({
+    where: {
+      customerId,
+      tagId: { notIn: Array.from(desiredTagIds) },
+    },
+  });
+}
+
 async function upsertCustomer(c: ApiCustomer) {
   const refs = await upsertReferenceData(c);
 
-  // Upsert customer core
+  const firstContact = normalizeDotDateToIso(c.firstContactDate);
+  const lastContact = normalizeDotDateToIso(c.lastContactDate);
+  const nextContact = normalizeDotDateToIso(c.nextContactDate);
+
   const customer = await prisma.crmCustomer.upsert({
     where: { externalId: String(c.id) },
     update: {
@@ -267,9 +350,9 @@ async function upsertCustomer(c: ApiCustomer) {
       email: c.email || '',
       address: c.address || '',
       otherContacts: c.otherContacts || '',
-      firstContactDate: normalizeDotDateToIso(c.firstContactDate),
-      lastContactDate: normalizeDotDateToIso(c.lastContactDate),
-      nextContactDate: normalizeDotDateToIso(c.nextContactDate),
+      firstContactDate: firstContact,
+      lastContactDate: lastContact,
+      nextContactDate: nextContact,
       shortNotes: c.shortNotes || '',
       comments: c.comments || '',
       countryId: refs.countryId,
@@ -291,9 +374,9 @@ async function upsertCustomer(c: ApiCustomer) {
       email: c.email || '',
       address: c.address || '',
       otherContacts: c.otherContacts || '',
-      firstContactDate: normalizeDotDateToIso(c.firstContactDate),
-      lastContactDate: normalizeDotDateToIso(c.lastContactDate),
-      nextContactDate: normalizeDotDateToIso(c.nextContactDate),
+      firstContactDate: firstContact,
+      lastContactDate: lastContact,
+      nextContactDate: nextContact,
       shortNotes: c.shortNotes || '',
       comments: c.comments || '',
       countryId: refs.countryId ?? undefined,
@@ -305,52 +388,10 @@ async function upsertCustomer(c: ApiCustomer) {
       vkId: refs.vkId ?? undefined,
       avitoId: refs.avitoId ?? undefined,
     },
+    select: { id: true },
   });
 
-  // Upsert tags and link
-  if (Array.isArray(c.tags) && c.tags.length) {
-    for (const t of c.tags) {
-      const tag = await prisma.crmTag.upsert({
-        where: { externalId: String(t.id) },
-        update: {
-          name: t.name,
-          color: t.color || '',
-          textColor: t.textColor || '',
-        },
-        create: {
-          externalId: String(t.id),
-          name: t.name,
-          color: t.color || '',
-          textColor: t.textColor || '',
-        },
-      });
-
-      await prisma.crmCustomerTag.upsert({
-        where: { customerId_tagId: { customerId: customer.id, tagId: tag.id } },
-        update: {},
-        create: { customerId: customer.id, tagId: tag.id },
-      });
-    }
-  }
-}
-
-function addDaysYmd(ymd: string, days: number) {
-  const [y, m, d] = ymd.split('-').map((v) => parseInt(v, 10));
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + days);
-  const y2 = dt.getUTCFullYear();
-  const m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
-  const d2 = String(dt.getUTCDate()).padStart(2, '0');
-  return `${y2}-${m2}-${d2}`;
-}
-
-function endOfMonth(ymd: string) {
-  const [y, m] = ymd.split('-').map((v) => parseInt(v, 10));
-  const last = new Date(Date.UTC(y, m, 0)); // day 0 of next month = last day of current
-  const y2 = last.getUTCFullYear();
-  const m2 = String(last.getUTCMonth() + 1).padStart(2, '0');
-  const d2 = String(last.getUTCDate()).padStart(2, '0');
-  return `${y2}-${m2}-${d2}`;
+  await syncCustomerTags(customer.id, c.tags);
 }
 
 async function importMonth(fromYmd: string, tillYmd: string) {
@@ -359,7 +400,6 @@ async function importMonth(fromYmd: string, tillYmd: string) {
   let pages = 0;
   let totalImported = 0;
   let retries = 0;
-  const maxRetries = 6;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -373,82 +413,97 @@ async function importMonth(fromYmd: string, tillYmd: string) {
 
       if (!customers || customers.length === 0) {
         console.log(
-          `No customers returned for ${fromYmd}..${tillYmd} at offset ${start}. Stopping this range.`,
+          `No customers returned for ${fromYmd}..${tillYmd} at offset ${start}. Stop range.`,
         );
         break;
       }
 
-      for (const c of customers) await upsertCustomer(c);
+      for (const c of customers) {
+        await upsertCustomer(c);
+      }
 
       totalImported += customers.length;
       pages += 1;
+      retries = 0;
+
       console.log(
-        `[${fromYmd}..${tillYmd}] Page ${pages}: +${customers.length}, total ${totalImported}, remaining ~${notReturnedCount}, next offset ${start + customers.length}`,
+        `[${fromYmd}..${tillYmd}] page ${pages}: +${customers.length}, total=${totalImported}, remaining~${notReturnedCount}, nextOffset=${start + customers.length}`,
       );
 
       start += customers.length;
-      retries = 0; // reset on success
 
       if (notReturnedCount <= 0) break;
-      if (BLUESALES_THROTTLE_MS > 0)
+
+      if (BLUESALES_THROTTLE_MS > 0) {
         await new Promise((r) => setTimeout(r, BLUESALES_THROTTLE_MS));
+      }
     } catch (e: any) {
       retries += 1;
+      const status = e?.response?.status;
       const delay = Math.min(
         30_000,
         (BLUESALES_THROTTLE_MS || 500) * Math.pow(2, Math.min(retries, 5)),
       );
-      const status = e?.response?.status;
-      console.log(e?.response?.data);
+
       if (status === 400) {
-        // Часто 400 у этого API = нет данных в заданном диапазоне.
         if (start === 0) {
           console.warn(
-            `400 for range ${fromYmd}..${tillYmd} at offset 0 — вероятно, нет данных. Пропускаю диапазон.`,
+            `400 for ${fromYmd}..${tillYmd} at offset 0 (likely empty range). Skip range.`,
           );
-          break;
         } else {
           console.warn(
-            `400 for range ${fromYmd}..${tillYmd} at offset ${start} — считаю, что достигнут конец данных. Переход к следующему диапазону.`,
+            `400 for ${fromYmd}..${tillYmd} at offset ${start} (likely end of range). Continue next range.`,
           );
-          break;
         }
+        break;
       }
+
       console.error(
-        `Error at offset ${start} for ${fromYmd}..${tillYmd}: ${e?.message || e}. Retry #${retries} in ${delay}ms`,
+        `Error for ${fromYmd}..${tillYmd} at offset ${start}: ${e?.message || e}. Retry ${retries}/${BLUESALES_MAX_RETRIES} in ${delay}ms`,
       );
-      if (retries > maxRetries) {
+
+      if (retries > BLUESALES_MAX_RETRIES) {
         console.error(
-          `Max retries exceeded for ${fromYmd}..${tillYmd} at offset ${start}. Moving to next range.`,
+          `Retries exhausted for ${fromYmd}..${tillYmd} at offset ${start}. Continue next range.`,
         );
         break;
       }
+
       await new Promise((r) => setTimeout(r, delay));
     }
   }
 }
 
 async function importAllCustomers() {
-  const from = process.env.BLUESALES_FULL_FROM || '2023-01-01';
-  const till = process.env.BLUESALES_FULL_TILL || '2025-09-18';
+  let cur = BLUESALES_FULL_FROM.slice(0, 7) + '-01';
 
-  // идём по месяцам, чтобы не упираться в возможные ограничения offset
-  let cur = from.slice(0, 7) + '-01';
-  while (cur <= till) {
+  while (cur <= BLUESALES_FULL_TILL) {
     const monthEnd = endOfMonth(cur);
-    const rangeEnd = monthEnd < till ? monthEnd : till;
-    console.log(`\n=== Importing range ${cur} .. ${rangeEnd} ===`);
+    const rangeEnd = monthEnd < BLUESALES_FULL_TILL ? monthEnd : BLUESALES_FULL_TILL;
+
+    console.log(`\n=== Import range ${cur}..${rangeEnd} ===`);
     await importMonth(cur, rangeEnd);
-    // следующий месяц: добавим 32 дня и установим на 1-е число
-    const next = addDaysYmd(cur, 32).slice(0, 7) + '-01';
-    cur = next;
-    if (BLUESALES_THROTTLE_MS > 0)
+
+    cur = addDaysYmd(cur, 32).slice(0, 7) + '-01';
+
+    if (BLUESALES_THROTTLE_MS > 0) {
       await new Promise((r) => setTimeout(r, BLUESALES_THROTTLE_MS));
+    }
   }
 }
 
 async function main() {
+  if (!BLUESALES_LOGIN || !BLUESALES_PASSWORD) {
+    throw new Error('BLUESALES_LOGIN and BLUESALES_PASSWORD are required');
+  }
+
+  console.log(
+    `Start full customers import: ${BLUESALES_FULL_FROM}..${BLUESALES_FULL_TILL}, pageSize=${BLUESALES_PAGE_SIZE}`,
+  );
+
   await importAllCustomers();
+
+  console.log('Full customers import completed');
 }
 
 main()

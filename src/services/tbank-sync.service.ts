@@ -743,8 +743,8 @@ export class TbankSyncService {
       accountSummaries: [],
     };
 
-    const fromDate = new Date(`${from}T00:00:00.000Z`);
-    const toDate = new Date(`${to}T23:59:59.999Z`);
+    const fromDateTime = `${from}T00:00:00.000Z`;
+    const toDateTime = `${to}T23:59:59.999Z`;
 
     const projectIds = await this.getProjectIds();
     const accounts = await this.prisma.planFactAccount.findMany({
@@ -773,6 +773,7 @@ export class TbankSyncService {
     };
 
     for (const account of accounts) {
+      let apiOperationsCount = 0;
       try {
         const apiOperations = await this.fetchOperationsFromTbank(
           account.accountNumber,
@@ -783,6 +784,7 @@ export class TbankSyncService {
           undefined,
           { verbose: false },
         );
+        apiOperationsCount = apiOperations.length;
         result.apiOperationsTotal += apiOperations.length;
 
         const dbOperations = await originalOperationRepo.originalOperationFromTbank.findMany(
@@ -790,8 +792,8 @@ export class TbankSyncService {
             where: {
               accountId: account.id,
               operationDate: {
-                gte: fromDate,
-                lte: toDate,
+                gte: fromDateTime,
+                lte: toDateTime,
               },
             },
             select: {
@@ -893,7 +895,7 @@ export class TbankSyncService {
           accountId: account.id,
           accountName: account.name,
           accountNumber: account.accountNumber,
-          apiOperations: 0,
+          apiOperations: apiOperationsCount,
           dbOperations: 0,
           apiOnly: 0,
           dbOnly: 0,

@@ -1117,12 +1117,20 @@ export class NotificationSchedulerService {
               : `• #${item.accountId} ${item.accountNumber.slice(-4)} api=${item.apiOperations} db=${item.dbOperations} +${item.created} -${item.deleted}`,
         )
         .join('\n');
+      const errorAccounts = result.accountSummaries.filter(
+        (item) => item.status === 'error',
+      ).length;
+      const title =
+        errorAccounts > 0
+          ? '⚠️ Ночная сверка Т-Банка завершена с ошибками'
+          : '✅ Ночная сверка Т-Банка завершена';
 
       await this.notifyAdmins(
         [
-          '✅ Ночная сверка Т-Банка завершена',
+          title,
           `Период: ${result.from}..${result.to}`,
           `Аккаунты: ${result.accountsProcessed}/${result.accountsTotal}`,
+          `Ошибки по счетам: ${errorAccounts}`,
           `Итого: API=${result.apiOperationsTotal}, БД=${result.dbOperationsTotal}, +${result.createdTotal}, -${result.deletedTotal}`,
           perAccountLines ? `Счета:\n${perAccountLines}` : '',
         ]
