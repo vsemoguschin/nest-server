@@ -36,6 +36,7 @@ export class ManagersController {
   }
 
   @Post(':managerId/plan')
+  @Roles('ADMIN', 'G', 'KD', 'DO')
   @ApiOperation({
     summary: 'Установить или обновить план менеджера',
     description:
@@ -57,7 +58,7 @@ export class ManagersController {
   @Roles('ADMIN', 'G', 'DO', 'KD')
   async changeInternStatus(
     @Param('managerId', ParseIntPipe) managerId: number,
-    @Body() update: {isIntern: boolean},
+    @Body() update: { isIntern: boolean },
   ) {
     return this.managersService.changeInternStatus(managerId, update);
   }

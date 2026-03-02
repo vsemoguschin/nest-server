@@ -409,7 +409,7 @@ export class PaymentsService {
     to: string,
     take: number,
     page: number,
-    groupId?: number,
+    groupIds?: number[],
     managersIds?: number[],
   ) {
     const sanitizedTake = Math.max(1, take);
@@ -430,7 +430,7 @@ export class PaymentsService {
       deal: {
         reservation: false,
         deletedAt: null,
-        ...(groupId !== undefined && { groupId: groupId }),
+        ...(groupIds?.length && { groupId: { in: groupIds } }),
       },
     };
 
@@ -438,7 +438,7 @@ export class PaymentsService {
       where.userId = { in: managersIds };
     }
 
-    const finalWhere = groupId !== undefined ? where : { ...where, ...gSearch };
+    const finalWhere = groupIds?.length ? where : { ...where, ...gSearch };
 
     const [payments, total] = await this.prisma.$transaction([
       this.prisma.payment.findMany({

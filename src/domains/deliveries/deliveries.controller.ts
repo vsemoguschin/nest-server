@@ -73,8 +73,7 @@ export class DeliveriesController {
     @Query('to') to: string,
     @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('groupId', new ParseIntPipe({ optional: true }))
-    groupId?: number,
+    @Query('groupId') groupId?: string[] | string,
   ) {
     if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
@@ -86,7 +85,29 @@ export class DeliveriesController {
         'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
       );
     }
-    return this.deliveriesService.getList(user, from, to, take, page, groupId);
+
+    const toArray = (value?: string | string[]) => {
+      if (value === undefined) return undefined;
+      const prepared = Array.isArray(value) ? value : value.split(',');
+      const normalized = prepared
+        .map((item) => item?.trim())
+        .filter((item): item is string => !!item);
+      return normalized.length ? normalized : undefined;
+    };
+
+    const numberArray = (value?: string | string[]) =>
+      toArray(value)
+        ?.filter((item) => item !== 'all')
+        ?.map((item) => Number(item))
+        .filter((item) => Number.isFinite(item));
+
+    const groupIds = numberArray(groupId);
+    const rawGroupIds = toArray(groupId)?.filter((item) => item !== 'all') ?? [];
+    if (rawGroupIds.length && (!groupIds || !groupIds.length)) {
+      throw new BadRequestException('Параметр groupId должен быть числом.');
+    }
+
+    return this.deliveriesService.getList(user, from, to, take, page, groupIds);
   }
 
   // Создание записи

@@ -59,6 +59,7 @@ model WorkSpace {
   dealSources        DealSource[]
   adSources          AdSource[]
   reports            RopReport[]
+  rovReports         RovReport[]
   adExpenses         AdExpense[]
   salaryPays         salaryPay[]
   salaryCorrections  salaryCorrection[]
@@ -85,6 +86,7 @@ model Group {
   dops        Dop[]
   payments    Payment[]
   reports     RopReport[]
+  rovReports  RovReport[]
   adExpenses  AdExpense[]
   adSources   AdSource[]
 
@@ -212,6 +214,23 @@ model RopReport {
 
   groupId         Int?
   group           Group?  @relation(fields: [groupId], references: [id])
+}
+
+//Отчет руководителя отдела ведения
+model RovReport {
+  id                 Int       @id @default(autoincrement())
+  date               String    // Дата отчета
+  takenToDesign      Int       @default(0) // Взяли в дизайн
+  sentToProduction   Int       @default(0) // Передали на производство
+
+  workSpaceId        Int
+  workSpace          WorkSpace @relation(fields: [workSpaceId], references: [id])
+
+  groupId            Int       // Связь с группой
+  group              Group     @relation(fields: [groupId], references: [id])
+
+  @@unique([groupId, date])
+  @@index([workSpaceId])
 }
 // Суммы выплат
 model salaryPay {

@@ -59,7 +59,7 @@ export class RolesService {
       ],
       ['ROD']: ['DIZ'],
       ['ROV']: ['MOV'],
-      ['DO']: ['MOP', 'MOV', 'ROP'],
+      ['DO']: ['MOP', 'MOV', 'ROP', 'ROV'],
       ['RP']: ['FRZ', 'LAM', 'MASTER', 'PACKER'],
     };
     const roles = await this.prisma.role.findMany({

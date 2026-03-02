@@ -84,7 +84,7 @@ export class DealsController {
     @CurrentUser() user: UserDto,
     @Query('from') from: string,
     @Query('to') to: string,
-    @Query('groupId') groupId?: number,
+    @Query('groupId') groupId?: string[] | string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('sortBy') sortBy?: string,
@@ -124,8 +124,15 @@ export class DealsController {
 
     const numberArray = (value?: string | string[]) =>
       toArray(value)
+        ?.filter((item) => item !== 'all')
         ?.map((item) => Number(item))
         .filter((item) => Number.isFinite(item));
+
+    const groupIds = numberArray(groupId);
+    const rawGroupIds = toArray(groupId)?.filter((item) => item !== 'all') ?? [];
+    if (rawGroupIds.length && (!groupIds || !groupIds.length)) {
+      throw new BadRequestException('Параметр groupId должен быть числом.');
+    }
 
     const filters = {
       status: toArray(status),
@@ -143,7 +150,7 @@ export class DealsController {
       user,
       from,
       to,
-      groupId,
+      groupIds,
       pageNumber,
       limitNumber,
       sortBy,
@@ -201,7 +208,7 @@ export class DealsController {
     @Query('from') from: string,
     @Query('to') to: string,
     @Res({ passthrough: true }) res: Response,
-    @Query('groupId') groupId?: string,
+    @Query('groupId') groupId?: string[] | string,
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: string,
     @Query('status') status?: string[] | string,
@@ -225,12 +232,6 @@ export class DealsController {
       );
     }
 
-    const parsedGroupId =
-      groupId && groupId !== 'all' ? Number(groupId) : undefined;
-    if (parsedGroupId !== undefined && !Number.isFinite(parsedGroupId)) {
-      throw new BadRequestException('Параметр groupId должен быть числом.');
-    }
-
     const toArray = (value?: string | string[]) => {
       if (value === undefined) return undefined;
       const prepared = Array.isArray(value) ? value : value.split(',');
@@ -242,8 +243,15 @@ export class DealsController {
 
     const numberArray = (value?: string | string[]) =>
       toArray(value)
+        ?.filter((item) => item !== 'all')
         ?.map((item) => Number(item))
         .filter((item) => Number.isFinite(item));
+
+    const groupIds = numberArray(groupId);
+    const rawGroupIds = toArray(groupId)?.filter((item) => item !== 'all') ?? [];
+    if (rawGroupIds.length && (!groupIds || !groupIds.length)) {
+      throw new BadRequestException('Параметр groupId должен быть числом.');
+    }
 
     const filters = {
       status: toArray(status),
@@ -260,7 +268,7 @@ export class DealsController {
     const buffer = await this.dealsService.exportDeals(user, {
       from,
       to,
-      groupId: parsedGroupId,
+      groupIds,
       sortBy,
       sortOrder,
       filters,

@@ -121,19 +121,24 @@ export class DashboardsService {
     }> = {
       deletedAt: null,
     };
+    const groupsWhere: { deletedAt: null; id: { gt: number } | number } = {
+      deletedAt: null,
+      id: { gt: 0 },
+    };
     if (!['ADMIN', 'G', 'KD'].includes(user.role.shortName)) {
       where = { id: user.workSpaceId, deletedAt: null };
     }
     if (['DP'].includes(user.role.shortName)) {
       where = { department: 'PRODUCTION', deletedAt: null };
     }
+    if (['ROV'].includes(user.role.shortName) && user.groupId === 26) {
+      groupsWhere.id = user.groupId;
+    }
     const workspaces = await this.prisma.workSpace.findMany({
       where,
       include: {
         groups: {
-          where: {
-            deletedAt: null,
-          },
+          where: groupsWhere,
           include: {
             users: {
               where: { deletedAt: null },
@@ -146,7 +151,6 @@ export class DashboardsService {
                 email: true,
                 tg_id: true,
                 avatarUrl: true,
-                
               },
             },
           },

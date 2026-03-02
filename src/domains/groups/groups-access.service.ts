@@ -29,10 +29,10 @@ export class GroupsAccessService {
     }
 
     if (
-      (user.groupId === 17 || user.groupId === 19) &&
-      user.role.shortName === 'MOV'
+      user.groupId === 26 &&
+      (user.role.shortName === 'MOV' || user.role.shortName === 'ROV')
     ) {
-      scope.id = { in: [17, 19] };
+      scope.id = { in: [17, 19, 26] };
     }
 
     if (
@@ -42,18 +42,23 @@ export class GroupsAccessService {
       scope.id = user.groupId;
     }
 
-    if (
-      user.groupId === 18 ||
-      user.groupId === 3
-    ) {
+    if (user.groupId === 18 || user.groupId === 3) {
       scope.id = { in: [18, 3] };
     }
 
     if (user.groupId === 3 && user.role.shortName === 'DO') {
-      scope.id = { in: [18, 3, 17, 19, 24] };
+      scope.id = { in: [18, 3, 17, 19, 24, 26] };
     }
     if (user.groupId !== 3 && user.role.shortName === 'DO') {
       scope.id = { in: [2, 16, user.groupId] };
+    }
+    //Ведение неон + руководитель
+    if (user.workSpaceId === 4 && user.role.shortName === 'ROV') {
+      scope.id = { in: [2, 18, 3, user.groupId] };
+    }
+    //ведение неон
+    if (user.workSpaceId === 4 && user.role.shortName === 'MOV') {
+      scope.id = { in: [2, 18, 3, user.groupId] };
     }
 
     if (user.id === 84 || user.id === 87) {
@@ -67,6 +72,7 @@ export class GroupsAccessService {
     if (user.id === 93) {
       scope.id = { in: [2, 18, 3, user.groupId] };
     }
+
     // console.log(user.id, user.role.shortName, user.groupId, scope);
 
     return scope;

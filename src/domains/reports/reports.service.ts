@@ -8,6 +8,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateManagerReportDto } from './dto/create-manager-report.dto';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateRopReportDto } from './dto/create-rop-report.dto';
+import { CreateRovReportDto } from './dto/create-rov-report.dto';
 
 const formatDate = (dateString: string): string => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
@@ -60,7 +61,9 @@ export class ReportsService {
       shiftCost = 800;
     }
     if (
-      (existingUser.groupId === 19 || existingUser.groupId === 17) &&
+      (existingUser.groupId === 19 ||
+        existingUser.groupId === 17 ||
+        existingUser.groupId === 26) &&
       existingUser.role.shortName == 'MOV'
     ) {
       shiftCost = 1333;
@@ -136,6 +139,46 @@ export class ReportsService {
     return report;
   }
 
+  async createRovReport(createRovReportDto: CreateRovReportDto) {
+    const { date, takenToDesign, sentToProduction, groupId } =
+      createRovReportDto;
+
+    const existingGroup = await this.prisma.group.findUnique({
+      where: {
+        id: groupId,
+      },
+    });
+
+    if (!existingGroup) {
+      throw new ConflictException(`Группа не существует`);
+    }
+
+    const existingReport = await this.prisma.rovReport.findFirst({
+      where: {
+        groupId,
+        date,
+      },
+    });
+
+    if (existingReport) {
+      throw new ConflictException(
+        `ROV-отчет для группы с ID ${groupId} и датой ${date} уже существует`,
+      );
+    }
+
+    const report = await this.prisma.rovReport.create({
+      data: {
+        date,
+        takenToDesign,
+        sentToProduction,
+        groupId,
+        workSpaceId: existingGroup.workSpaceId,
+      },
+    });
+
+    return report;
+  }
+
   async deleteRopReport(id: number) {
     const report = await this.prisma.ropReport.findUnique({
       where: { id },
@@ -151,6 +194,22 @@ export class ReportsService {
     });
 
     return { message: `Отчет с ID ${id} успешно удален` };
+  }
+
+  async deleteRovReport(id: number) {
+    const report = await this.prisma.rovReport.findUnique({
+      where: { id },
+    });
+
+    if (!report) {
+      throw new NotFoundException(`ROV-отчет с ID ${id} не найден`);
+    }
+
+    await this.prisma.rovReport.delete({
+      where: { id },
+    });
+
+    return { message: `ROV-отчет с ID ${id} успешно удален` };
   }
 
   async deleteManagerReport(id: number) {
@@ -362,6 +421,10 @@ export class ReportsService {
       user.role.department === 'administration' || user.role.shortName === 'KD'
         ? { gt: 0 }
         : user.workSpaceId;
+    const groupsSearch =
+      user.role.department === 'administration' || user.role.shortName === 'KD'
+        ? { gt: 0 }
+        : user.groupId;
     const reports = await this.prisma.managerReport.findMany({
       where: {
         date: {
@@ -370,6 +433,7 @@ export class ReportsService {
         },
         user: {
           workSpaceId: workspacesSearch,
+          groupId: groupsSearch,
         },
       },
       include: {
@@ -536,7 +600,12 @@ export class ReportsService {
     if (['DO'].includes(user.role.shortName)) {
       groupSearch = {
         id: { gt: 0 },
-        workSpaceId: user.groupId,
+        workSpaceId: user.workSpaceId,
+      };
+    }
+    if (['ROV'].includes(user.role.shortName)) {
+      groupSearch = {
+        id: user.groupId,
       };
     }
 
@@ -693,16 +762,23 @@ export class ReportsService {
       user.role.department === 'administration' || user.role.shortName === 'KD'
         ? { gt: 0 }
         : user.workSpaceId;
+    const groupsSearch =
+      user.role.department === 'administration' ||
+      user.role.shortName === 'KD' ||
+      user.role.shortName === 'DO'
+        ? { gt: 0 }
+        : user.groupId;
 
     // console.log(user);
 
-    const reports = await this.prisma.ropReport.findMany({
+    const ropReports = await this.prisma.ropReport.findMany({
       where: {
         date: {
           gte: range.from,
           lte: range.to,
         },
         workSpaceId: workspacesSearch,
+        groupId: groupsSearch,
       },
       include: {
         workSpace: true,
@@ -757,6 +833,112 @@ export class ReportsService {
       },
     });
 
+    const rovReports = await this.prisma.rovReport.findMany({
+      where: {
+        date: {
+          gte: range.from,
+          lte: range.to,
+        },
+        workSpaceId: workspacesSearch,
+        groupId: groupsSearch,
+      },
+      include: {
+        workSpace: true,
+        group: {
+          include: {
+            deals: {
+              where: {
+                saleDate: {
+                  gte: range.from,
+                  lte: range.to,
+                },
+                reservation: false,
+                status: { not: 'Возврат' },
+              },
+              include: {
+                client: true,
+              },
+            },
+            dops: {
+              where: {
+                saleDate: {
+                  gte: range.from,
+                  lte: range.to,
+                },
+                deal: {
+                  reservation: false,
+                  status: {
+                    not: 'Возврат',
+                  },
+                },
+              },
+            },
+            payments: {
+              where: {
+                date: {
+                  gte: range.from,
+                  lte: range.to,
+                },
+                deal: {
+                  reservation: false,
+                  status: {
+                    not: 'Возврат',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        date: 'desc',
+      },
+    });
+
+    const rovByDateGroup = new Map(
+      rovReports.map((report) => [`${report.groupId}__${report.date}`, report]),
+    );
+    const ropKeys = new Set(
+      ropReports.map((report) => `${report.groupId}__${report.date}`),
+    );
+
+    const combinedReports = ropReports.map((report) => {
+      const key = `${report.groupId}__${report.date}`;
+      const rov = rovByDateGroup.get(key);
+
+      return {
+        ...report,
+        reportKind: rov ? 'mixed' : 'rop',
+        ropReportId: report.id,
+        rovReportId: rov?.id ?? 0,
+        takenToDesign: rov?.takenToDesign ?? 0,
+        sentToProduction: rov?.sentToProduction ?? 0,
+      };
+    });
+
+    for (const report of rovReports) {
+      const key = `${report.groupId}__${report.date}`;
+      if (ropKeys.has(key)) {
+        continue;
+      }
+
+      combinedReports.push({
+        ...report,
+        reportKind: 'rov',
+        ropReportId: 0,
+        rovReportId: report.id,
+        period: '',
+        calls: 0,
+        makets: 0,
+        maketsDayToDay: 0,
+        redirectToMSG: 0,
+        takenToDesign: report.takenToDesign,
+        sentToProduction: report.sentToProduction,
+      });
+    }
+
+    combinedReports.sort((a, b) => b.date.localeCompare(a.date));
+
     const deliveries = await this.prisma.delivery.findMany({
       where: {
         date: {
@@ -783,8 +965,15 @@ export class ReportsService {
       },
     });
 
-    const reportsData = reports.map((r) => {
-      const { date, makets, maketsDayToDay, redirectToMSG } = r;
+    const reportsData = combinedReports.map((r) => {
+      const {
+        date,
+        makets,
+        maketsDayToDay,
+        redirectToMSG,
+        takenToDesign,
+        sentToProduction,
+      } = r;
       const dateDeliveries = deliveries
         .filter((d) => d.date === date)
         .filter((d) => d.deal.groupId === r.groupId);
@@ -802,7 +991,7 @@ export class ReportsService {
         (e) => e.date === date && e.groupId === r.groupId,
       );
       //собираем все заявки
-      const dateCalls = reports.filter(
+      const dateCalls = combinedReports.filter(
         (e) => e.date === date && e.groupId === r.groupId,
       );
       //количество этих заявок
@@ -819,14 +1008,16 @@ export class ReportsService {
         const bookProjectExpenses = adExpenses
           .filter(
             (ex) =>
-              ex.date === date && (ex.groupId === 19 || ex.groupId === 17),
+              ex.date === date &&
+              (ex.groupId === 19 || ex.groupId === 17 || ex.groupId === 26),
           )
           .reduce((a, b) => a + b.price, 0);
         //заявок на обе группы
-        const bookProjectCalls = reports
+        const bookProjectCalls = combinedReports
           .filter(
             (rep) =>
-              rep.date === date && (rep.groupId === 19 || rep.groupId === 17),
+              rep.date === date &&
+              (rep.groupId === 19 || rep.groupId === 17 || rep.groupId === 26),
           )
           .reduce((a, b) => a + b.calls, 0);
         //стоимость заявки
@@ -887,11 +1078,15 @@ export class ReportsService {
       // console.log(callCost);
 
       return {
-        id: r.id,
+        id: r.reportKind === 'rov' ? -(r.rovReportId ?? r.id) : (r.ropReportId ?? r.id),
         date: formatDate(date), //дата
         workSpaceId: r.workSpaceId,
         workSpace: r.workSpace.title,
+        groupId: r.groupId,
         group: r.group?.title || 'Нет группы',
+        reportKind: r.reportKind,
+        ropReportId: r.ropReportId,
+        rovReportId: r.rovReportId,
         calls, // количество заявок
         dealSales, //сумма сделок
         regularSales, //сумма сделок постоянников
@@ -905,6 +1100,11 @@ export class ReportsService {
         maketsDayToDay, //количество макетов день в день
         conversionMaketDayToDay, //количество макетов день в день
         redirectToMSG, //количество редиректов
+        takenToDesign, //взяли в дизайн
+        sentToProduction, //передали на производство
+        transitionToDesignPercent: 0, //% перехода в дизайн
+        transitionToProductionPercent: 0, //% перехода в производство
+        transitionFromDesignToProductionPercent: 0, //% перехода из дизайна в производство
         conversion, //конверсия
         conversionMaket, //конверсия в макет (количество макетов/колво сделок)
         conversionToSale, //конверсия из макета в продажу(колво сделок/колво макетов)
@@ -916,8 +1116,47 @@ export class ReportsService {
         dateDeliveriesSales, //сумма отправленных
       };
     });
-    // console.log(range,reportsData.reduce((a, b) => a + b.dateDeliveriesSales, 0));
-    // console.log(deliveries.map(d=>({date: d.date, deal: d.deal})));
-    return reportsData;
+
+    const deals17And19ByDate = reportsData.reduce<Record<string, number>>(
+      (acc, item) => {
+        if (![17, 19].includes(item.groupId ?? 0)) {
+          return acc;
+        }
+
+        const dateKey = item.date;
+        acc[dateKey] = (acc[dateKey] ?? 0) + (item.dealsAmount ?? 0);
+        return acc;
+      },
+      {},
+    );
+
+    const calculatedReportsData = reportsData.map((item) => {
+      if ((item.groupId ?? 0) !== 26) {
+        return item;
+      }
+
+      const dateKey = item.date;
+      const base = (deals17And19ByDate[dateKey] ?? 0) + (item.regularDealsCount ?? 0);
+      const takenToDesign = item.takenToDesign ?? 0;
+      const sentToProduction = item.sentToProduction ?? 0;
+
+      const transitionToDesignPercent =
+        base > 0 ? +((takenToDesign / base) * 100).toFixed(2) : 0;
+      const transitionToProductionPercent =
+        base > 0 ? +((sentToProduction / base) * 100).toFixed(2) : 0;
+      const transitionFromDesignToProductionPercent =
+        takenToDesign > 0
+          ? +((sentToProduction / takenToDesign) * 100).toFixed(2)
+          : 0;
+
+      return {
+        ...item,
+        transitionToDesignPercent,
+        transitionToProductionPercent,
+        transitionFromDesignToProductionPercent,
+      };
+    });
+
+    return calculatedReportsData;
   }
 }

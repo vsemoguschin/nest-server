@@ -255,7 +255,7 @@ export class CommercialDatasService {
       dopsPercentage = 0.07;
     }
     if (
-      (groupId === 19 || groupId === 17) &&
+      (groupId === 19 || groupId === 17 || groupId === 26) &&
       role === 'MOV' &&
       period >= '2025-10'
     ) {
@@ -946,12 +946,14 @@ export class CommercialDatasService {
     const totalSales = dealSales + dopSales;
     /**Факт для ведения */
     const fact =
-      (m.groupId === 19 || m.groupId === 17) && m.role.shortName === 'MOV'
+      (m.groupId === 19 || m.groupId === 17 || m.groupId === 26) &&
+      m.role.shortName === 'MOV'
         ? m.payments.reduce((a, b) => a + b.price, 0)
         : 0;
     const factAmount = m.payments.length;
     const factPercentage =
-      (m.groupId === 19 || m.groupId === 17) && m.role.shortName === 'MOV'
+      (m.groupId === 19 || m.groupId === 17 || m.groupId === 26) &&
+      m.role.shortName === 'MOV'
         ? 0.01
         : 0;
     const factBonus = +(fact * factPercentage).toFixed(2);
@@ -1464,10 +1466,10 @@ export class CommercialDatasService {
         b2bTop: [],
       };
     }
-    if (groupId === 19 || groupId === 17) {
+    if (groupId === 19 || groupId === 17 || groupId === 26) {
       const groups = await this.prisma.group.findMany({
         where: {
-          id: { in: [17, 19] },
+          id: { in: [17, 19, 26] },
           users: {
             some: {},
           },
@@ -2162,7 +2164,7 @@ export class CommercialDatasService {
         : user.workSpaceId;
 
     const isSelfOnlyRole = ['MOP', 'MOV'].includes(user.role.shortName);
-    const groupsSearch = ['MOP', 'MOV', 'ROP'].includes(user.role.shortName)
+    const groupsSearch = ['MOP', 'MOV', 'ROP','ROV'].includes(user.role.shortName)
       ? user.groupId
       : { gt: 0 };
     const where: any = {
@@ -2266,11 +2268,11 @@ export class CommercialDatasService {
       adExpenseWhere.groupId = groupId;
     }
 
-    if (groupId === 19 || groupId === 17) {
+    if (groupId === 19 || groupId === 17 || groupId === 26) {
       adExpenseWhere.groupId = {
-        in: [19, 17],
+        in: [19, 17, 26],
       };
-      managersReportsWhere.user.groupId = { in: [19, 17] };
+      managersReportsWhere.user.groupId = { in: [19, 17, 26] };
     }
 
     const groupAdExpenses = await this.prisma.adExpense.findMany({

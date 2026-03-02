@@ -839,13 +839,6 @@ export class TasksService {
       }));
     }
 
-    const warnings = collectTaskWarnings(
-      task.orders,
-      task.deal?.deliveries ?? [],
-      task.chatLink,
-      task.deal?.payments,
-    );
-
     let remainder: null | number = null;
     if (task.deal) {
       const dopsPrice = task.deal.dops.reduce((acc, dop) => acc + dop.price, 0);
@@ -857,7 +850,14 @@ export class TasksService {
           0,
         );
     }
-    
+
+    const warnings = collectTaskWarnings(
+      task.orders,
+      task.deal?.deliveries ?? [],
+      task.chatLink,
+      task.deal?.payments,
+      remainder,
+    );
 
     const deal = task.deal
       ? {

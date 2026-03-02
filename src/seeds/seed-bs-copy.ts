@@ -4,7 +4,7 @@ import axios from 'axios';
 
 const prisma = new PrismaClient();
 
-const BLUESALES_URL = process.env.BLUESALES_URL;
+const BLUESALES_URL = process.env.BLUESALES_URL || '';
 const BLUESALES_LOGIN = process.env.BLUESALES_LOGIN;
 const BLUESALES_PASSWORD = process.env.BLUESALES_PASSWORD;
 const BLUESALES_PAGE_SIZE = parseInt(

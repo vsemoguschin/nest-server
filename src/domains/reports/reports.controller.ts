@@ -19,6 +19,7 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateRopReportDto } from './dto/create-rop-report.dto';
+import { CreateRovReportDto } from './dto/create-rov-report.dto';
 
 @UseGuards(RolesGuard)
 @ApiTags('reports')
@@ -33,7 +34,7 @@ export class ReportsController {
   }
 
   @Get('groups-list')
-  @Roles('ADMIN', 'G', 'KD', 'DO','ROP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP', 'ROV')
   async getGroups(@CurrentUser() user: UserDto) {
     return this.reportService.getGroups(user);
   }
@@ -55,7 +56,7 @@ export class ReportsController {
   }
 
   @Post('rop')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV')
   @ApiOperation({ summary: 'Создать отчет менеджера' })
   @ApiResponse({ status: 201, description: 'Отчет успешно создан' })
   @ApiResponse({ status: 400, description: 'Неверные данные' })
@@ -64,8 +65,18 @@ export class ReportsController {
     return report;
   }
 
+  @Post('rov')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV')
+  @ApiOperation({ summary: 'Создать отчет ROV' })
+  @ApiResponse({ status: 201, description: 'Отчет успешно создан' })
+  @ApiResponse({ status: 400, description: 'Неверные данные' })
+  async createRovReport(@Body() createRovReportDto: CreateRovReportDto) {
+    const report = await this.reportService.createRovReport(createRovReportDto);
+    return report;
+  }
+
   @Get('managers')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP','MOV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'MOV')
   async getManagersReports(
     @CurrentUser() user: UserDto,
     @Query('period') period: string,
@@ -79,7 +90,7 @@ export class ReportsController {
   }
 
   @Get('managers/range')
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP','MOV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'MOV', 'ROV')
   async getManagersReportsFromRange(
     @CurrentUser() user: UserDto,
     @Query('from') from: string,
@@ -113,7 +124,7 @@ export class ReportsController {
   // }
 
   @Get('rops/range')
-  @Roles('ADMIN', 'G', 'KD', 'DO','ROP')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP', 'ROV')
   async getRopsReportsFromRange(
     @CurrentUser() user: UserDto,
     @Query('from') from: string,
@@ -209,6 +220,15 @@ export class ReportsController {
   @ApiResponse({ status: 404, description: 'Отчет не найден' })
   async deleteRopReport(@Param('id', ParseIntPipe) id: number) {
     return this.reportService.deleteRopReport(id);
+  }
+
+  @Delete('rov/:id')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP', 'ROV')
+  @ApiOperation({ summary: 'Удалить отчет ROV' })
+  @ApiResponse({ status: 200, description: 'Отчет успешно удален' })
+  @ApiResponse({ status: 404, description: 'Отчет не найден' })
+  async deleteRovReport(@Param('id', ParseIntPipe) id: number) {
+    return this.reportService.deleteRovReport(id);
   }
 
   @Delete('manager/:id')

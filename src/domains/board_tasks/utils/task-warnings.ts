@@ -54,6 +54,7 @@ export function collectTaskWarnings(
   deliveries: DeliveryLikeForWarnings[] | null | undefined,
   chatLink: string | null | undefined,
   payments?: PaymentLikeForWarnings[] | null | undefined,
+  remainder?: number | null,
 ): string[] {
   const warnings = new Set<string>();
 
@@ -155,6 +156,10 @@ export function collectTaskWarnings(
     if (hasNalojka) {
       warnings.add('НАЛОЖЕННЫЙ ПЛАТЁЖ');
     }
+  }
+
+  if (remainder === 0) {
+    warnings.add('Оплачено');
   }
 
   return Array.from(warnings);

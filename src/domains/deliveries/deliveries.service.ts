@@ -263,7 +263,7 @@ export class DeliveriesService {
     to: string,
     take: number,
     page: number,
-    groupId?: number,
+    groupIds?: number[],
   ) {
     const sanitizedTake = Math.max(1, take);
     const sanitizedPage = Math.max(1, page);
@@ -285,7 +285,7 @@ export class DeliveriesService {
       deal: {
         reservation: false,
         deletedAt: null,
-        ...(groupId !== undefined ? { groupId: groupId } : gSearch),
+        ...(groupIds?.length ? { groupId: { in: groupIds } } : gSearch),
       },
     };
 

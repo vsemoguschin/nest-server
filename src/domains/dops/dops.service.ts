@@ -14,7 +14,7 @@ export class DopsService {
     to: string,
     take: number,
     page: number,
-    groupId?: number,
+    groupIds?: number[],
     managersIds?: number[],
   ) {
     const sanitizedTake = Math.max(1, take);
@@ -34,16 +34,16 @@ export class DopsService {
       },
     };
 
-    if (groupId !== undefined) {
-      where.groupId = groupId;
+    if (groupIds?.length) {
+      where.groupId = { in: groupIds };
       where.deal = {
-        groupId: groupId,
+        groupId: { in: groupIds },
       };
       where.user = {
         workSpace: {
           groups: {
             some: {
-              id: groupId,
+              id: { in: groupIds },
             },
           },
         },
@@ -54,9 +54,11 @@ export class DopsService {
       where.userId = { in: managersIds };
     }
 
+    const finalWhere = groupIds?.length ? where : { ...where, ...gSearch };
+
     const [dops, total] = await this.prisma.$transaction([
       this.prisma.dop.findMany({
-        where: groupId !== undefined ? where : { ...where, ...gSearch },
+        where: finalWhere,
         skip,
         take: sanitizedTake,
         include: {
@@ -79,8 +81,9 @@ export class DopsService {
       }),
       this.prisma.dop.aggregate({
         where: {
-          ...(groupId !== undefined ? where : { ...where, ...gSearch }),
+          ...finalWhere,
           deal: {
+            ...(groupIds?.length ? { groupId: { in: groupIds } } : {}),
             reservation: false,
             deletedAt: null,
           },

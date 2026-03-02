@@ -62,6 +62,7 @@ export class BoardsService {
                 chatLink: true,
                 deal: {
                   select: {
+                    price: true,
                     deliveries: {
                       select: {
                         method: true,
@@ -71,8 +72,14 @@ export class BoardsService {
                       },
                     },
                     payments: {
-                      where: {
-                        method: 'Наложка',
+                      select: {
+                        method: true,
+                        price: true,
+                      },
+                    },
+                    dops: {
+                      select: {
+                        price: true,
                       },
                     },
                   },
@@ -164,12 +171,27 @@ export class BoardsService {
             })
             .map((t) => {
               const previewPath = t.attachments[0]?.file.path ?? '';
+              let remainder: number | null = null;
+              if (t.deal) {
+                const dopsPrice = (t.deal.dops ?? []).reduce(
+                  (acc, dop) => acc + Number(dop.price ?? 0),
+                  0,
+                );
+                const totalPrice = Number(t.deal.price ?? 0) + dopsPrice;
+                remainder =
+                  totalPrice -
+                  (t.deal.payments ?? []).reduce(
+                    (acc, payment) => acc + Number(payment.price ?? 0),
+                    0,
+                  );
+              }
 
               const warnings = collectTaskWarnings(
                 t.orders,
                 t.deal?.deliveries ?? [],
                 t.chatLink,
                 t.deal?.payments,
+                remainder,
               );
               for (const w of warnings) warningsSet.add(w);
               return {

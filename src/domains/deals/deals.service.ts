@@ -863,7 +863,7 @@ export class DealsService {
     user: UserDto,
     from: string,
     to: string,
-    groupId?: number,
+    groupIds?: number[],
     page?: number,
     limit?: number,
     sortKey?: string,
@@ -891,7 +891,7 @@ export class DealsService {
         lte: to,
       },
       deletedAt: null,
-      groupId: groupId ? groupId : { gt: 0 },
+      groupId: groupIds?.length ? { in: groupIds } : { gt: 0 },
       group: groupsSearch,
     };
 
@@ -969,14 +969,14 @@ export class DealsService {
     {
       from,
       to,
-      groupId,
+      groupIds,
       sortBy,
       sortOrder,
       filters,
     }: {
       from: string;
       to: string;
-      groupId?: number;
+      groupIds?: number[];
       sortBy?: string;
       sortOrder?: string;
       filters?: DealListFilters;
@@ -994,7 +994,7 @@ export class DealsService {
         gte: from,
         lte: to,
       },
-      groupId: groupId ? groupId : { gt: 0 },
+      groupId: groupIds?.length ? { in: groupIds } : { gt: 0 },
       group: groupsSearch,
     };
 
