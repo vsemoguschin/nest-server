@@ -795,6 +795,7 @@ export class ReportsService {
               },
               include: {
                 client: true,
+                dops: true,
               },
             },
             dops: {
@@ -857,6 +858,7 @@ export class ReportsService {
               },
               include: {
                 client: true,
+                dops: true,
               },
             },
             dops: {
@@ -1030,7 +1032,10 @@ export class ReportsService {
 
       const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
       const regularDeals = dateDeals.filter((d) => d.client?.isRegular);
-      const regularSales = regularDeals.reduce((a, b) => a + b.price, 0);
+      const regularSales = regularDeals.reduce(
+        (a, b) => a + b.price + b.dops.reduce((a, b) => a + b.price, 0),
+        0,
+      );
       const regularDealsCount = regularDeals.length;
       const dateDops = r.group!.dops.filter((d) => d.saleDate === date);
 
@@ -1078,7 +1083,10 @@ export class ReportsService {
       // console.log(callCost);
 
       return {
-        id: r.reportKind === 'rov' ? -(r.rovReportId ?? r.id) : (r.ropReportId ?? r.id),
+        id:
+          r.reportKind === 'rov'
+            ? -(r.rovReportId ?? r.id)
+            : (r.ropReportId ?? r.id),
         date: formatDate(date), //дата
         workSpaceId: r.workSpaceId,
         workSpace: r.workSpace.title,
@@ -1136,7 +1144,8 @@ export class ReportsService {
       }
 
       const dateKey = item.date;
-      const base = (deals17And19ByDate[dateKey] ?? 0) + (item.regularDealsCount ?? 0);
+      const base =
+        (deals17And19ByDate[dateKey] ?? 0) + (item.regularDealsCount ?? 0);
       const takenToDesign = item.takenToDesign ?? 0;
       const sentToProduction = item.sentToProduction ?? 0;
 

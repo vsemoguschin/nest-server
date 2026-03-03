@@ -1309,9 +1309,34 @@ model ProdReport {
 }
 
 // ===== CRM Customers (from external API) =====
+model CrmAccount {
+  id            Int              @id @default(autoincrement())
+  code          String           @unique
+  name          String
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  customers     CrmCustomer[]
+  countries     CrmCountry[]
+  cities        CrmCity[]
+  statuses      CrmStatus[]
+  sources       CrmSource[]
+  salesChannels CrmSalesChannel[]
+  managers      CrmManager[]
+  vks           CrmVk[]
+  avitos        CrmAvito[]
+  tags          CrmTag[]
+  customerTags  CrmCustomerTag[]
+  syncStates    CrmSyncState[]
+}
+
 model CrmCustomer {
   id               Int                @id @default(autoincrement())
   externalId       String             @unique // ID from external system
+
+  accountId        Int?
+  account          CrmAccount?        @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   fullName         String
   photoUrl         String             @default("")
@@ -1362,55 +1387,84 @@ model CrmCustomer {
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
+  @@unique([accountId, externalId])
+  @@index([accountId])
   @@index([externalId])
 }
 
 model CrmCountry {
   id         Int           @id @default(autoincrement())
   externalId String?       @unique // e.g., 272680 (as string)
+  accountId  Int?
+  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
 
   customers  CrmCustomer[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
 }
 
 model CrmCity {
   id         Int           @id @default(autoincrement())
   externalId String?       @unique // e.g., 5401585 (as string)
+  accountId  Int?
+  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
 
   customers  CrmCustomer[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
 }
 
 model CrmStatus {
   id         Int           @id @default(autoincrement())
   externalId String?       @unique // e.g., 289750
+  accountId  Int?
+  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
   color      String         @default("")
   type       Int            @default(0)
 
   customers  CrmCustomer[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
 }
 
 model CrmSource {
   id         Int           @id @default(autoincrement())
   externalId String?       @unique // e.g., 157642
+  accountId  Int?
+  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
 
   customers  CrmCustomer[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
 }
 
 model CrmSalesChannel {
   id         Int           @id @default(autoincrement())
   externalId String?       @unique // e.g., 194494
+  accountId  Int?
+  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   code       Int           @default(0)
   name       String
 
   customers  CrmCustomer[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
 }
 
 model CrmManager {
   id                Int       @id @default(autoincrement())
   externalId        String?   @unique // e.g., 58841
+  accountId         Int?
+  account           CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   fullName          String
   email             String    @default("")
   login             String    @default("")
@@ -1423,56 +1477,83 @@ model CrmManager {
   permissions       Json?
 
   customers         CrmCustomer[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
 }
 
 model CrmVk {
   id               Int       @id @default(autoincrement())
   externalId       String    @unique // e.g., "213329253"
+  accountId        Int?
+  account          CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name             String
   messagesGroupId  String    @default("")
 
   customers        CrmCustomer[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
 }
 
 model CrmAvito {
   id        Int     @id @default(autoincrement())
   externalId String @unique // e.g., "33680330"
+  accountId  Int?
+  account    CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name      String
   chatId    String  @default("")
 
   customers CrmCustomer[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
 }
 
 model CrmTag {
   id         Int      @id @default(autoincrement())
   externalId String?  @unique // e.g., 377570
+  accountId  Int?
+  account    CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
   color      String   @default("")
   textColor  String   @default("")
 
   customers  CrmCustomerTag[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId])
 }
 
 // Join table for many-to-many: Customer ↔ Tag
 model CrmCustomerTag {
   id          Int          @id @default(autoincrement())
+  accountId   Int?
   customerId  Int
   tagId       Int
 
+  account     CrmAccount?  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   customer    CrmCustomer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   tag         CrmTag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@unique([customerId, tagId])
+  @@index([accountId])
   @@index([tagId])
 }
 
 // Состояние синхронизаций (для надёжного ежедневного импорта)
 model CrmSyncState {
   id                  Int      @id @default(autoincrement())
+  accountId           Int?
   key                 String   @unique
   lastDailyImportDate String   @default("") // формат YYYY-MM-DD (Europe/Moscow)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  account             CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, key])
+  @@index([accountId])
 }
 
 

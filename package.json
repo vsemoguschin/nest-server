@@ -21,7 +21,8 @@
     "doc": "npx typedoc --out docs src",
     "git-push": "git add . && read -p 'Commit message: ' msg && git commit -m \"$msg\" && git push origin main",
     "prisma:deploy": "prisma db push && prisma generate",
-    "export:book-editor-backfill-users": "ts-node --transpile-only src/scripts/export-book-editor-backfill-users.ts"
+    "export:book-editor-backfill-users": "ts-node --transpile-only src/scripts/export-book-editor-backfill-users.ts",
+    "smoke:crm-customers": "ts-node --transpile-only -r tsconfig-paths/register src/scripts/smoke-crm-customers.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",

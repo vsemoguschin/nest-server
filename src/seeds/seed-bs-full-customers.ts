@@ -8,6 +8,8 @@ const BLUESALES_URL =
   'https://bluesales.ru/app/Customers/WebServer.aspx';
 const BLUESALES_LOGIN = process.env.BLUESALES_LOGIN;
 const BLUESALES_PASSWORD = process.env.BLUESALES_PASSWORD;
+const BLUESALES_ACCOUNT_CODE = process.env.BLUESALES_ACCOUNT_CODE || 'main';
+const BLUESALES_ACCOUNT_NAME = process.env.BLUESALES_ACCOUNT_NAME || 'Изибук';
 
 const BLUESALES_PAGE_SIZE = parseInt(
   process.env.BLUESALES_PAGE_SIZE || '500',
@@ -25,6 +27,31 @@ const BLUESALES_MAX_RETRIES = parseInt(
   process.env.BLUESALES_MAX_RETRIES || '6',
   10,
 );
+const SCRIPT_STARTED_AT_MS = Date.now();
+
+const CRM_TRUNCATE_TABLES = [
+  'CrmCustomer',
+  'CrmCountry',
+  'CrmCity',
+  'CrmStatus',
+  'CrmSource',
+  'CrmSalesChannel',
+  'CrmManager',
+  'CrmVk',
+  'CrmAvito',
+  'CrmTag',
+  'CrmCustomerTag',
+  'CrmSyncState',
+] as const;
+
+function parseBooleanFlag(v?: string): boolean {
+  if (!v) return false;
+  return ['1', 'true', 'yes', 'y', 'on'].includes(v.trim().toLowerCase());
+}
+
+const SHOULD_DROP_BEFORE_IMPORT =
+  parseBooleanFlag(process.env.BLUESALES_DROP_BEFORE_IMPORT) ||
+  process.argv.includes('--drop');
 
 function ymdInMoscow(d: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -39,48 +66,155 @@ const BLUESALES_FULL_FROM = process.env.BLUESALES_FULL_FROM || '2023-01-01';
 const BLUESALES_FULL_TILL =
   process.env.BLUESALES_FULL_TILL || ymdInMoscow(new Date());
 
+let cachedAccountId: number | null = null;
+
 type ApiCustomer = {
-  id: number;
-  fullName: string;
-  photoUrl: string;
-  country: { id: number; name: string } | null;
-  city: { id: number; name: string } | null;
-  birthday: string;
-  sex: string;
-  vk: { id: string; name: string; messagesGroupId: string } | null;
+  id: number | string;
+  fullName?: string | null;
+  photoUrl?: string | null;
+  country?: { id: number | string; name: string | null } | null;
+  city?: { id: number | string; name: string | null } | null;
+  birthday?: string | null;
+  sex?: string | null;
+  vk:
+    | {
+        id: string | number;
+        name: string | null;
+        messagesGroupId?: string | number | null;
+        groupId?: string | number | null;
+      }
+    | null;
   ok: unknown;
   facebook: unknown;
   instagram: unknown;
   whatsApp: unknown;
   telegram: unknown;
-  avito: { id: string; name: string; chatId: string } | null;
-  phone: string;
-  email: string;
-  address: string;
-  otherContacts: string;
-  crmStatus: { id: number; name: string; color: string; type: number } | null;
-  tags: { id: number; name: string; color: string; textColor: string }[];
-  firstContactDate: string;
-  lastContactDate: string;
-  nextContactDate: string;
-  source: { id: number; name: string } | null;
-  salesChannel: { id: number; code: number; name: string } | null;
-  manager: {
-    id: number;
-    fullName: string;
-    email: string;
-    login: string;
-    phone: string;
+  avito?:
+    | { id: string | number; name: string | null; chatId: string | null }
+    | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  otherContacts?: string | null;
+  crmStatus?:
+    | {
+        id: number | string;
+        name: string | null;
+        color: string | null;
+        type?: number | string | null;
+      }
+    | null;
+  crmStatusChangedDate?: string | null;
+  tags?:
+    | {
+        id: number | string;
+        name: string | null;
+        color: string | null;
+        textColor: string | null;
+      }[]
+    | null;
+  firstContactDate?: string | null;
+  lastContactDate?: string | null;
+  nextContactDate?: string | null;
+  source?: { id: number | string; name: string | null } | null;
+  salesChannel?:
+    | { id: number | string; code?: number | string | null; name: string | null }
+    | null;
+  manager?: {
+    id: number | string;
+    fullName: string | null;
+    email: string | null;
+    login: string | null;
+    phone: string | null;
     vk: string | null;
-    lastLoginDate: string;
-    lastActivityDate: string;
-    isActive: boolean;
+    lastLoginDate: string | null;
+    lastActivityDate: string | null;
+    isActive: boolean | null;
     permissionsSettings: any;
+    permissions?: any;
   } | null;
-  shortNotes: string;
-  comments: string;
-  customFields: unknown[];
+  shortNotes?: string | null;
+  comments?: string | null;
+  customFields?: unknown[] | null;
 };
+
+function toStringOrEmpty(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+function toIntOrDefault(value: unknown, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.trunc(n);
+}
+
+function toExternalId(value: unknown): string | null {
+  const v = toStringOrEmpty(value);
+  return v ? v : null;
+}
+
+function formatDuration(durationMs: number): string {
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function normalizeApiResponse(data: any): {
+  count: number;
+  notReturnedCount: number;
+  customers: ApiCustomer[];
+} {
+  const customersRaw =
+    (Array.isArray(data?.customers) ? data.customers : null) ||
+    (Array.isArray(data?.items) ? data.items : null) ||
+    (Array.isArray(data?.result?.customers) ? data.result.customers : null) ||
+    (Array.isArray(data?.result?.items) ? data.result.items : null) ||
+    [];
+
+  const count = toIntOrDefault(
+    data?.count ?? data?.totalCount ?? data?.result?.count ?? customersRaw.length,
+    customersRaw.length,
+  );
+
+  const notReturnedCount = toIntOrDefault(
+    data?.notReturnedCount ??
+      data?.remainingCount ??
+      data?.result?.notReturnedCount ??
+      Math.max(count - customersRaw.length, 0),
+    0,
+  );
+
+  return {
+    count,
+    notReturnedCount,
+    customers: customersRaw as ApiCustomer[],
+  };
+}
+
+async function resolveAccountId(): Promise<number> {
+  if (Number.isInteger(cachedAccountId) && cachedAccountId! > 0) {
+    return cachedAccountId!;
+  }
+
+  const account = await prisma.crmAccount.upsert({
+    where: { code: BLUESALES_ACCOUNT_CODE },
+    update: {
+      isActive: true,
+    },
+    create: {
+      code: BLUESALES_ACCOUNT_CODE,
+      name: BLUESALES_ACCOUNT_NAME,
+      isActive: true,
+    },
+    select: { id: true },
+  });
+
+  cachedAccountId = account.id;
+  return account.id;
+}
 
 function normalizeDotDateToIso(s?: string | null): string {
   if (!s) return '';
@@ -145,134 +279,172 @@ async function getCustomersPage(
     timeout: 60_000,
   });
 
-  return resp.data as {
-    count: number;
-    notReturnedCount: number;
-    customers: ApiCustomer[];
-  };
+  return normalizeApiResponse(resp.data);
 }
 
-async function upsertReferenceData(c: ApiCustomer) {
-  const countryId = c.country
+async function upsertReferenceData(c: ApiCustomer, accountId: number) {
+  const countryExternalId = toExternalId(c.country?.id);
+  const countryId = countryExternalId
     ? (
         await prisma.crmCountry.upsert({
-          where: { externalId: String(c.country.id) },
-          update: { name: c.country.name },
-          create: { externalId: String(c.country.id), name: c.country.name },
+          where: { externalId: countryExternalId },
+          update: { name: toStringOrEmpty(c.country?.name), accountId },
+          create: {
+            accountId,
+            externalId: countryExternalId,
+            name: toStringOrEmpty(c.country?.name),
+          },
         })
       ).id
     : null;
 
-  const cityId = c.city
+  const cityExternalId = toExternalId(c.city?.id);
+  const cityId = cityExternalId
     ? (
         await prisma.crmCity.upsert({
-          where: { externalId: String(c.city.id) },
-          update: { name: c.city.name },
-          create: { externalId: String(c.city.id), name: c.city.name },
+          where: { externalId: cityExternalId },
+          update: { name: toStringOrEmpty(c.city?.name), accountId },
+          create: {
+            accountId,
+            externalId: cityExternalId,
+            name: toStringOrEmpty(c.city?.name),
+          },
         })
       ).id
     : null;
 
-  const crmStatusId = c.crmStatus
+  const crmStatusExternalId = toExternalId(c.crmStatus?.id);
+  const crmStatusId = crmStatusExternalId
     ? (
         await prisma.crmStatus.upsert({
-          where: { externalId: String(c.crmStatus.id) },
+          where: { externalId: crmStatusExternalId },
           update: {
-            name: c.crmStatus.name,
-            color: c.crmStatus.color,
-            type: c.crmStatus.type,
+            name: toStringOrEmpty(c.crmStatus?.name),
+            color: toStringOrEmpty(c.crmStatus?.color),
+            type: toIntOrDefault(c.crmStatus?.type, 0),
+            accountId,
           },
           create: {
-            externalId: String(c.crmStatus.id),
-            name: c.crmStatus.name,
-            color: c.crmStatus.color,
-            type: c.crmStatus.type,
+            accountId,
+            externalId: crmStatusExternalId,
+            name: toStringOrEmpty(c.crmStatus?.name),
+            color: toStringOrEmpty(c.crmStatus?.color),
+            type: toIntOrDefault(c.crmStatus?.type, 0),
           },
         })
       ).id
     : null;
 
-  const sourceId = c.source
+  const sourceExternalId = toExternalId(c.source?.id);
+  const sourceId = sourceExternalId
     ? (
         await prisma.crmSource.upsert({
-          where: { externalId: String(c.source.id) },
-          update: { name: c.source.name },
-          create: { externalId: String(c.source.id), name: c.source.name },
+          where: { externalId: sourceExternalId },
+          update: { name: toStringOrEmpty(c.source?.name), accountId },
+          create: {
+            accountId,
+            externalId: sourceExternalId,
+            name: toStringOrEmpty(c.source?.name),
+          },
         })
       ).id
     : null;
 
-  const salesChannelId = c.salesChannel
+  const salesChannelExternalId = toExternalId(c.salesChannel?.id);
+  const salesChannelId = salesChannelExternalId
     ? (
         await prisma.crmSalesChannel.upsert({
-          where: { externalId: String(c.salesChannel.id) },
-          update: { name: c.salesChannel.name, code: c.salesChannel.code },
+          where: { externalId: salesChannelExternalId },
+          update: {
+            name: toStringOrEmpty(c.salesChannel?.name),
+            code: toIntOrDefault(c.salesChannel?.code, 0),
+            accountId,
+          },
           create: {
-            externalId: String(c.salesChannel.id),
-            name: c.salesChannel.name,
-            code: c.salesChannel.code,
+            accountId,
+            externalId: salesChannelExternalId,
+            name: toStringOrEmpty(c.salesChannel?.name),
+            code: toIntOrDefault(c.salesChannel?.code, 0),
           },
         })
       ).id
     : null;
 
-  const managerId = c.manager
+  const managerExternalId = toExternalId(c.manager?.id);
+  const managerId = managerExternalId
     ? (
         await prisma.crmManager.upsert({
-          where: { externalId: String(c.manager.id) },
+          where: { externalId: managerExternalId },
           update: {
-            fullName: c.manager.fullName,
-            email: c.manager.email || '',
-            login: c.manager.login || '',
-            phone: c.manager.phone || '',
-            vk: c.manager.vk || null,
-            lastLoginDate: c.manager.lastLoginDate || '',
-            lastActivityDate: c.manager.lastActivityDate || '',
-            isActive: Boolean(c.manager.isActive),
-            permissions: c.manager.permissionsSettings ?? undefined,
+            fullName: toStringOrEmpty(c.manager?.fullName),
+            email: toStringOrEmpty(c.manager?.email),
+            login: toStringOrEmpty(c.manager?.login),
+            phone: toStringOrEmpty(c.manager?.phone),
+            vk: c.manager?.vk || null,
+            lastLoginDate: toStringOrEmpty(c.manager?.lastLoginDate),
+            lastActivityDate: toStringOrEmpty(c.manager?.lastActivityDate),
+            isActive: Boolean(c.manager?.isActive),
+            permissions:
+              c.manager?.permissionsSettings ?? c.manager?.permissions ?? undefined,
+            accountId,
           },
           create: {
-            externalId: String(c.manager.id),
-            fullName: c.manager.fullName,
-            email: c.manager.email || '',
-            login: c.manager.login || '',
-            phone: c.manager.phone || '',
-            vk: c.manager.vk || null,
-            lastLoginDate: c.manager.lastLoginDate || '',
-            lastActivityDate: c.manager.lastActivityDate || '',
-            isActive: Boolean(c.manager.isActive),
-            permissions: c.manager.permissionsSettings ?? undefined,
+            accountId,
+            externalId: managerExternalId,
+            fullName: toStringOrEmpty(c.manager?.fullName),
+            email: toStringOrEmpty(c.manager?.email),
+            login: toStringOrEmpty(c.manager?.login),
+            phone: toStringOrEmpty(c.manager?.phone),
+            vk: c.manager?.vk || null,
+            lastLoginDate: toStringOrEmpty(c.manager?.lastLoginDate),
+            lastActivityDate: toStringOrEmpty(c.manager?.lastActivityDate),
+            isActive: Boolean(c.manager?.isActive),
+            permissions:
+              c.manager?.permissionsSettings ?? c.manager?.permissions ?? undefined,
           },
         })
       ).id
     : null;
 
-  const vkId = c.vk
+  const vkExternalId = toExternalId(c.vk?.id);
+  const vkId = vkExternalId
     ? (
         await prisma.crmVk.upsert({
-          where: { externalId: String(c.vk.id) },
+          where: { externalId: vkExternalId },
           update: {
-            name: c.vk.name,
-            messagesGroupId: c.vk.messagesGroupId || '',
+            name: toStringOrEmpty(c.vk?.name),
+            messagesGroupId: toStringOrEmpty(
+              c.vk?.messagesGroupId ?? c.vk?.groupId,
+            ),
+            accountId,
           },
           create: {
-            externalId: String(c.vk.id),
-            name: c.vk.name,
-            messagesGroupId: c.vk.messagesGroupId || '',
+            accountId,
+            externalId: vkExternalId,
+            name: toStringOrEmpty(c.vk?.name),
+            messagesGroupId: toStringOrEmpty(
+              c.vk?.messagesGroupId ?? c.vk?.groupId,
+            ),
           },
         })
       ).id
     : null;
 
-  const avitoId = c.avito
+  const avitoExternalId = toExternalId(c.avito?.id);
+  const avitoId = avitoExternalId
     ? (
         await prisma.crmAvito.upsert({
-          where: { externalId: String(c.avito.id) },
-          update: { name: c.avito.name, chatId: c.avito.chatId || '' },
+          where: { externalId: avitoExternalId },
+          update: {
+            name: toStringOrEmpty(c.avito?.name),
+            chatId: toStringOrEmpty(c.avito?.chatId),
+            accountId,
+          },
           create: {
-            externalId: String(c.avito.id),
-            name: c.avito.name,
-            chatId: c.avito.chatId || '',
+            accountId,
+            externalId: avitoExternalId,
+            name: toStringOrEmpty(c.avito?.name),
+            chatId: toStringOrEmpty(c.avito?.chatId),
           },
         })
       ).id
@@ -290,27 +462,36 @@ async function upsertReferenceData(c: ApiCustomer) {
   };
 }
 
-async function syncCustomerTags(customerId: number, tags: ApiCustomer['tags']) {
+async function syncCustomerTags(
+  customerId: number,
+  tags: ApiCustomer['tags'],
+  accountId: number,
+) {
   if (!Array.isArray(tags) || tags.length === 0) {
-    await prisma.crmCustomerTag.deleteMany({ where: { customerId } });
+    await prisma.crmCustomerTag.deleteMany({ where: { customerId, accountId } });
     return;
   }
 
   const desiredTagIds = new Set<number>();
 
   for (const t of tags) {
+    const tagExternalId = toExternalId(t?.id);
+    if (!tagExternalId) continue;
+
     const tag = await prisma.crmTag.upsert({
-      where: { externalId: String(t.id) },
+      where: { externalId: tagExternalId },
       update: {
-        name: t.name,
-        color: t.color || '',
-        textColor: t.textColor || '',
+        name: toStringOrEmpty(t?.name),
+        color: toStringOrEmpty(t?.color),
+        textColor: toStringOrEmpty(t?.textColor),
+        accountId,
       },
       create: {
-        externalId: String(t.id),
-        name: t.name,
-        color: t.color || '',
-        textColor: t.textColor || '',
+        accountId,
+        externalId: tagExternalId,
+        name: toStringOrEmpty(t?.name),
+        color: toStringOrEmpty(t?.color),
+        textColor: toStringOrEmpty(t?.textColor),
       },
       select: { id: true },
     });
@@ -320,41 +501,52 @@ async function syncCustomerTags(customerId: number, tags: ApiCustomer['tags']) {
     await prisma.crmCustomerTag.upsert({
       where: { customerId_tagId: { customerId, tagId: tag.id } },
       update: {},
-      create: { customerId, tagId: tag.id },
+      create: { accountId, customerId, tagId: tag.id },
     });
   }
 
   await prisma.crmCustomerTag.deleteMany({
     where: {
+      accountId,
       customerId,
       tagId: { notIn: Array.from(desiredTagIds) },
     },
   });
 }
 
-async function upsertCustomer(c: ApiCustomer) {
-  const refs = await upsertReferenceData(c);
+async function upsertCustomer(c: ApiCustomer, accountId: number) {
+  const customerExternalId = toExternalId(c?.id);
+  if (!customerExternalId) {
+    console.warn(
+      '[seed-bs-full-customers] Skip customer without external id',
+      c,
+    );
+    return;
+  }
+
+  const refs = await upsertReferenceData(c, accountId);
 
   const firstContact = normalizeDotDateToIso(c.firstContactDate);
   const lastContact = normalizeDotDateToIso(c.lastContactDate);
   const nextContact = normalizeDotDateToIso(c.nextContactDate);
 
   const customer = await prisma.crmCustomer.upsert({
-    where: { externalId: String(c.id) },
+    where: { externalId: customerExternalId },
     update: {
-      fullName: c.fullName,
-      photoUrl: c.photoUrl || '',
-      birthday: c.birthday || '',
-      sex: c.sex || '',
-      phone: c.phone || '',
-      email: c.email || '',
-      address: c.address || '',
-      otherContacts: c.otherContacts || '',
+      accountId,
+      fullName: toStringOrEmpty(c.fullName),
+      photoUrl: toStringOrEmpty(c.photoUrl),
+      birthday: toStringOrEmpty(c.birthday),
+      sex: toStringOrEmpty(c.sex),
+      phone: toStringOrEmpty(c.phone),
+      email: toStringOrEmpty(c.email),
+      address: toStringOrEmpty(c.address),
+      otherContacts: toStringOrEmpty(c.otherContacts),
       firstContactDate: firstContact,
       lastContactDate: lastContact,
       nextContactDate: nextContact,
-      shortNotes: c.shortNotes || '',
-      comments: c.comments || '',
+      shortNotes: toStringOrEmpty(c.shortNotes),
+      comments: toStringOrEmpty(c.comments),
       countryId: refs.countryId,
       cityId: refs.cityId,
       crmStatusId: refs.crmStatusId,
@@ -365,20 +557,21 @@ async function upsertCustomer(c: ApiCustomer) {
       avitoId: refs.avitoId,
     },
     create: {
-      externalId: String(c.id),
-      fullName: c.fullName,
-      photoUrl: c.photoUrl || '',
-      birthday: c.birthday || '',
-      sex: c.sex || '',
-      phone: c.phone || '',
-      email: c.email || '',
-      address: c.address || '',
-      otherContacts: c.otherContacts || '',
+      accountId,
+      externalId: customerExternalId,
+      fullName: toStringOrEmpty(c.fullName),
+      photoUrl: toStringOrEmpty(c.photoUrl),
+      birthday: toStringOrEmpty(c.birthday),
+      sex: toStringOrEmpty(c.sex),
+      phone: toStringOrEmpty(c.phone),
+      email: toStringOrEmpty(c.email),
+      address: toStringOrEmpty(c.address),
+      otherContacts: toStringOrEmpty(c.otherContacts),
       firstContactDate: firstContact,
       lastContactDate: lastContact,
       nextContactDate: nextContact,
-      shortNotes: c.shortNotes || '',
-      comments: c.comments || '',
+      shortNotes: toStringOrEmpty(c.shortNotes),
+      comments: toStringOrEmpty(c.comments),
       countryId: refs.countryId ?? undefined,
       cityId: refs.cityId ?? undefined,
       crmStatusId: refs.crmStatusId ?? undefined,
@@ -391,10 +584,10 @@ async function upsertCustomer(c: ApiCustomer) {
     select: { id: true },
   });
 
-  await syncCustomerTags(customer.id, c.tags);
+  await syncCustomerTags(customer.id, c.tags, accountId);
 }
 
-async function importMonth(fromYmd: string, tillYmd: string) {
+async function importMonth(fromYmd: string, tillYmd: string, accountId: number) {
   let start = BLUESALES_START_OFFSET;
   const pageSize = BLUESALES_PAGE_SIZE;
   let pages = 0;
@@ -419,7 +612,7 @@ async function importMonth(fromYmd: string, tillYmd: string) {
       }
 
       for (const c of customers) {
-        await upsertCustomer(c);
+        await upsertCustomer(c, accountId);
       }
 
       totalImported += customers.length;
@@ -474,7 +667,7 @@ async function importMonth(fromYmd: string, tillYmd: string) {
   }
 }
 
-async function importAllCustomers() {
+async function importAllCustomers(accountId: number) {
   let cur = BLUESALES_FULL_FROM.slice(0, 7) + '-01';
 
   while (cur <= BLUESALES_FULL_TILL) {
@@ -482,7 +675,7 @@ async function importAllCustomers() {
     const rangeEnd = monthEnd < BLUESALES_FULL_TILL ? monthEnd : BLUESALES_FULL_TILL;
 
     console.log(`\n=== Import range ${cur}..${rangeEnd} ===`);
-    await importMonth(cur, rangeEnd);
+    await importMonth(cur, rangeEnd, accountId);
 
     cur = addDaysYmd(cur, 32).slice(0, 7) + '-01';
 
@@ -492,22 +685,49 @@ async function importAllCustomers() {
   }
 }
 
+async function truncateCrmTablesBeforeImport() {
+  const tablesSql = CRM_TRUNCATE_TABLES.map((t) => `"${t}"`).join(', ');
+
+  console.warn(
+    `[seed-bs-full-customers] Drop flag enabled. Truncating tables: ${CRM_TRUNCATE_TABLES.join(', ')}`,
+  );
+
+  await prisma.$executeRawUnsafe(
+    `TRUNCATE TABLE ${tablesSql} RESTART IDENTITY CASCADE;`,
+  );
+
+  console.warn('[seed-bs-full-customers] Tables truncated');
+}
+
 async function main() {
   if (!BLUESALES_LOGIN || !BLUESALES_PASSWORD) {
     throw new Error('BLUESALES_LOGIN and BLUESALES_PASSWORD are required');
   }
 
+  if (SHOULD_DROP_BEFORE_IMPORT) {
+    await truncateCrmTablesBeforeImport();
+  }
+
+  const accountId = await resolveAccountId();
+
   console.log(
-    `Start full customers import: ${BLUESALES_FULL_FROM}..${BLUESALES_FULL_TILL}, pageSize=${BLUESALES_PAGE_SIZE}`,
+    `Start full customers import: ${BLUESALES_FULL_FROM}..${BLUESALES_FULL_TILL}, pageSize=${BLUESALES_PAGE_SIZE}, dropBeforeImport=${SHOULD_DROP_BEFORE_IMPORT}, account=${BLUESALES_ACCOUNT_CODE}#${accountId}`,
   );
 
-  await importAllCustomers();
+  await importAllCustomers(accountId);
 
-  console.log('Full customers import completed');
+  const durationMs = Date.now() - SCRIPT_STARTED_AT_MS;
+  console.log(
+    `Full customers import completed. Duration: ${formatDuration(durationMs)} (${durationMs} ms)`,
+  );
 }
 
 main()
   .catch((e) => {
+    const durationMs = Date.now() - SCRIPT_STARTED_AT_MS;
+    console.error(
+      `Full customers import failed after ${formatDuration(durationMs)} (${durationMs} ms)`,
+    );
     console.error('Seed failed:', e);
     process.exit(1);
   })

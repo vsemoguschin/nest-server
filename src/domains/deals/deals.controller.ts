@@ -52,7 +52,7 @@ export class DealsController {
     summary: 'Создать сделку',
     description: 'Endpoint: POST /deals. Создает новое сделку.',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'MOV')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   async create(
     @Body() createDealDto: CreateDealDto,
     @CurrentUser() user: UserDto,
@@ -129,7 +129,8 @@ export class DealsController {
         .filter((item) => Number.isFinite(item));
 
     const groupIds = numberArray(groupId);
-    const rawGroupIds = toArray(groupId)?.filter((item) => item !== 'all') ?? [];
+    const rawGroupIds =
+      toArray(groupId)?.filter((item) => item !== 'all') ?? [];
     if (rawGroupIds.length && (!groupIds || !groupIds.length)) {
       throw new BadRequestException('Параметр groupId должен быть числом.');
     }
@@ -248,7 +249,8 @@ export class DealsController {
         .filter((item) => Number.isFinite(item));
 
     const groupIds = numberArray(groupId);
-    const rawGroupIds = toArray(groupId)?.filter((item) => item !== 'all') ?? [];
+    const rawGroupIds =
+      toArray(groupId)?.filter((item) => item !== 'all') ?? [];
     if (rawGroupIds.length && (!groupIds || !groupIds.length)) {
       throw new BadRequestException('Параметр groupId должен быть числом.');
     }
@@ -354,7 +356,8 @@ export class DealsController {
   @Patch(':id/group')
   @ApiOperation({
     summary: 'Изменить проект сделки',
-    description: 'Endpoint: PATCH /deals/:id/group. Изменяет project(groupId) сделки.',
+    description:
+      'Endpoint: PATCH /deals/:id/group. Изменяет project(groupId) сделки.',
   })
   @Roles('ADMIN', 'G', 'KD', 'DO', 'ROP')
   async updateGroup(
@@ -379,6 +382,7 @@ export class DealsController {
   }
 
   @Patch(':dealId/dealers')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'MOP', 'ROP', 'ROV', 'MOV')
   @ApiOperation({
     summary: 'Обновить список дилеров сделки',
     description: 'Обновляет список дилеров для указанной сделки.',

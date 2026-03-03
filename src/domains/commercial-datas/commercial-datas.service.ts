@@ -2164,7 +2164,9 @@ export class CommercialDatasService {
         : user.workSpaceId;
 
     const isSelfOnlyRole = ['MOP', 'MOV'].includes(user.role.shortName);
-    const groupsSearch = ['MOP', 'MOV', 'ROP','ROV'].includes(user.role.shortName)
+    const groupsSearch = ['MOP', 'MOV', 'ROP', 'ROV'].includes(
+      user.role.shortName,
+    )
       ? user.groupId
       : { gt: 0 };
     const where: any = {
@@ -2175,7 +2177,9 @@ export class CommercialDatasService {
               ? ['MOP']
               : user.role.shortName === 'ROP'
                 ? ['MOP', 'ROP']
-                : ['DO', 'MOP', 'ROP', 'MOV'],
+                : user.role.shortName === 'ROV'
+                  ? ['MOV', 'ROV']
+                  : ['DO', 'MOP', 'ROP', 'MOV', 'ROV'],
         },
       },
       workSpaceId: workspacesSearch,
@@ -2322,7 +2326,7 @@ export class CommercialDatasService {
           groupId: m.groupId,
           fired: m.deletedAt ? true : false,
           fact:
-            m.role.shortName === 'MOV'
+            m.role.shortName === 'MOV' || m.role.shortName === 'ROV'
               ? m.payments.reduce((a, b) => a + b.price, 0)
               : 0,
         };

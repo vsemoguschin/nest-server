@@ -48,6 +48,7 @@ import { YandexDiskModule } from './integrations/yandex-disk/yandex-disk.module'
 import { PnlModule } from './domains/pnl/pnl.module';
 import { CdekModule } from './domains/cdek/cdek.module';
 import { VkMessagesModule } from './domains/vk-messages/vk-messages.module';
+import { CrmCustomersModule } from './domains/crm-customers/crm-customers.module';
 
 @Module({
   imports: [
@@ -96,6 +97,7 @@ import { VkMessagesModule } from './domains/vk-messages/vk-messages.module';
     PnlModule,
     CdekModule,
     VkMessagesModule,
+    CrmCustomersModule,
 
     // другие модули
   ],
