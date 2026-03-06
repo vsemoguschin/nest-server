@@ -25,13 +25,22 @@ export class PaymentsService {
       );
     }
 
+    const managerExists = await this.prisma.user.findUnique({
+      where: { id: createPaymentDto.userId, deletedAt: null },
+    });
+    if (!managerExists) {
+      throw new NotFoundException(
+        `Менеджера с ID ${createPaymentDto.userId} не найден`,
+      );
+    }
+
     const newPayment = await this.prisma.payment.create({
       data: {
         ...createPaymentDto,
         userId: createPaymentDto.userId,
         period: createPaymentDto.date.slice(0, 7),
         workSpaceId: existingDeal.workSpaceId,
-        groupId: existingDeal.groupId,
+        groupId: managerExists.groupId,
       },
     });
     // console.log(newPayment);
@@ -430,9 +439,25 @@ export class PaymentsService {
       deal: {
         reservation: false,
         deletedAt: null,
-        ...(groupIds?.length && { groupId: { in: groupIds } }),
+        // ...(groupIds?.length && { groupId: { in: groupIds } }),
       },
     };
+
+    if (groupIds?.length) {
+      where.groupId = { in: groupIds };
+      // where.deal = {
+      //   groupId: { in: groupIds },
+      // };
+      where.user = {
+        workSpace: {
+          groups: {
+            some: {
+              id: { in: groupIds },
+            },
+          },
+        },
+      };
+    }
 
     if (managersIds?.length) {
       where.userId = { in: managersIds };

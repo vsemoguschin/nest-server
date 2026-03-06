@@ -6,9 +6,10 @@ import * as FormData from 'form-data';
 import { Observable, Subject, filter, interval, map, merge } from 'rxjs';
 
 const VK_API_VERSION = '5.199';
-const VK_POLL_INTERVAL_MS = 3000;
+const VK_POLL_INTERVAL_MS = 5000;
 const VK_STREAM_PING_MS = 15000;
 const VK_DEFAULT_POLL_SOURCES = ['easybook', 'easyneon'];
+const VK_CONVERSATIONS_POLL_COUNT = 20;
 
 type VkRealtimeReason = 'poll' | 'send';
 
@@ -157,7 +158,7 @@ export class VkMessagesProxyService {
     const result = await this.post('/api/vk/messages/get-conversations', {
       source,
       v: VK_API_VERSION,
-      count: 40,
+      count: VK_CONVERSATIONS_POLL_COUNT,
       filter: 'all',
       extended: 0,
     });
@@ -188,7 +189,7 @@ export class VkMessagesProxyService {
     const itemsRaw = responseRaw.items;
     const items = Array.isArray(itemsRaw) ? itemsRaw : [];
 
-    const digest = items.slice(0, 40).map((rawItem) => {
+    const digest = items.slice(0, VK_CONVERSATIONS_POLL_COUNT).map((rawItem) => {
       if (!this.isRecord(rawItem)) return {};
       const conversation = this.isRecord(rawItem.conversation)
         ? rawItem.conversation

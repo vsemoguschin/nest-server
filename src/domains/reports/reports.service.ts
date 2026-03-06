@@ -422,7 +422,9 @@ export class ReportsService {
         ? { gt: 0 }
         : user.workSpaceId;
     const groupsSearch =
-      user.role.department === 'administration' || user.role.shortName === 'KD'
+      user.role.department === 'administration' ||
+      user.role.shortName === 'KD' ||
+      user.role.shortName === 'DO'
         ? { gt: 0 }
         : user.groupId;
     const reports = await this.prisma.managerReport.findMany({

@@ -22,7 +22,10 @@
     "git-push": "git add . && read -p 'Commit message: ' msg && git commit -m \"$msg\" && git push origin main",
     "prisma:deploy": "prisma db push && prisma generate",
     "export:book-editor-backfill-users": "ts-node --transpile-only src/scripts/export-book-editor-backfill-users.ts",
-    "smoke:crm-customers": "ts-node --transpile-only -r tsconfig-paths/register src/scripts/smoke-crm-customers.ts"
+    "smoke:crm-customers": "ts-node --transpile-only -r tsconfig-paths/register src/scripts/smoke-crm-customers.ts",
+    "seed:bs-full-customers": "ts-node --transpile-only src/seeds/seed-bs-full-customers.ts",
+    "seed:check-crm-customer-transition": "ts-node --transpile-only src/seeds/seed-check-crm-customer-transition.ts",
+    "seed:print-crm-accounts": "ts-node --transpile-only src/seeds/seed-print-crm-accounts.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",

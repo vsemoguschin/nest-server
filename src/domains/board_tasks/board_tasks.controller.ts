@@ -45,9 +45,56 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { DeliveryForTaskCreateDto } from '../deliveries/dto/delivery-for-task-create.dto';
+import { AuditService } from '../../common/audit/audit.service';
 
 const ONE_GB = 1024 * 1024 * 1024;
 const TMP_DIR = path.join(os.tmpdir(), 'easycrm-uploads');
+const ORDER_AUDIT_FIELD_LABELS: Record<string, string> = {
+  title: 'Название',
+  deadline: 'Дедлайн',
+  material: 'Материал',
+  boardWidth: 'Ширина',
+  boardHeight: 'Высота',
+  holeType: 'Тип отверстия',
+  holeInfo: 'Инфо по отверстию',
+  stand: 'Подставка',
+  laminate: 'Ламинация',
+  print: 'Печать',
+  printQuality: 'Качество печати',
+  isAcrylic: 'Акрил',
+  acrylic: 'Акрил (описание)',
+  type: 'Тип',
+  wireInfo: 'Инфо по проводу',
+  wireType: 'Тип провода',
+  wireLength: 'Длина провода',
+  elements: 'Элементы',
+  gift: 'Подарок',
+  adapter: 'Адаптер',
+  adapterInfo: 'Инфо по адаптеру',
+  adapterModel: 'Модель адаптера',
+  plug: 'Вилка',
+  plugColor: 'Цвет вилки',
+  plugLength: 'Длина вилки',
+  fitting: 'Крепёж',
+  dimmer: 'Диммер',
+  dimmerType: 'Тип диммера',
+  switch: 'Выключатель',
+  screen: 'Экран',
+  giftPack: 'Подарочная упаковка',
+  docs: 'Документы',
+  description: 'Описание',
+  dealId: 'Сделка',
+  neons: 'Неон',
+  lightings: 'Подсветка',
+  packageItems: 'Комплектующие упаковки',
+};
+
+type OrderAuditChange = {
+  field: string;
+  label: string;
+  from: unknown;
+  to: unknown;
+};
 
 class UpdateCoverDto {
   @IsString()
@@ -68,10 +115,204 @@ export class TasksController {
     private readonly attachmentsService: AttachmentsService,
     private readonly membersService: TaskMembersService,
     private readonly audit: TaskAuditService,
+    private readonly dealAudit: AuditService,
     private readonly comments: TaskCommentsService,
     private readonly notify: TaskNotifyService,
     private readonly filesService: TaskFilesService,
   ) {}
+
+  private toPlainJson(value: unknown): unknown {
+    if (value === undefined) return null;
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  private resolveOrderTitle(orderLike: { title?: unknown } | null | undefined) {
+    const title = String(orderLike?.title ?? '').trim();
+    return title.length ? title : null;
+  }
+
+  private resolveOrderDealId(
+    orderLike:
+      | { dealId?: unknown; task?: { dealId?: unknown } | null }
+      | null
+      | undefined,
+  ): number | null {
+    const direct = Number(orderLike?.dealId);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    const fromTask = Number(orderLike?.task?.dealId);
+    if (Number.isFinite(fromTask) && fromTask > 0) return fromTask;
+    return null;
+  }
+
+  private normalizeOrderForAudit(order: any) {
+    const neons = (order?.neons ?? [])
+      .map((n) => ({
+        width: n?.width ?? '',
+        length: n?.length ?? 0,
+        color: n?.color ?? '',
+      }))
+      .sort((a, b) =>
+        `${a.width}|${a.length}|${a.color}`.localeCompare(
+          `${b.width}|${b.length}|${b.color}`,
+        ),
+      );
+
+    const lightings = (order?.lightings ?? [])
+      .map((l) => ({
+        length: l?.length ?? 0,
+        color: l?.color ?? '',
+        elements: l?.elements ?? 0,
+      }))
+      .sort((a, b) =>
+        `${a.length}|${a.color}|${a.elements}`.localeCompare(
+          `${b.length}|${b.color}|${b.elements}`,
+        ),
+      );
+
+    const packageItems = (order?.package?.items ?? [])
+      .map((item) => ({
+        name: item?.name ?? '',
+        category: item?.category ?? '',
+        quantity: item?.quantity ?? 0,
+        cost: item?.cost ?? 0,
+      }))
+      .sort((a, b) =>
+        `${a.category}|${a.name}|${a.quantity}|${a.cost}`.localeCompare(
+          `${b.category}|${b.name}|${b.quantity}|${b.cost}`,
+        ),
+      );
+
+    return {
+      title: order?.title ?? '',
+      deadline: order?.deadline ?? '',
+      material: order?.material ?? '',
+      boardWidth: order?.boardWidth ?? null,
+      boardHeight: order?.boardHeight ?? null,
+      holeType: order?.holeType ?? '',
+      holeInfo: order?.holeInfo ?? '',
+      stand: order?.stand ?? false,
+      laminate: order?.laminate ?? '',
+      print: order?.print ?? false,
+      printQuality: order?.printQuality ?? false,
+      isAcrylic: order?.isAcrylic ?? false,
+      acrylic: order?.acrylic ?? '',
+      type: order?.type ?? '',
+      wireInfo: order?.wireInfo ?? '',
+      wireType: order?.wireType ?? '',
+      wireLength: order?.wireLength ?? 0,
+      elements: order?.elements ?? 0,
+      gift: order?.gift ?? false,
+      adapter: order?.adapter ?? '',
+      adapterInfo: order?.adapterInfo ?? '',
+      adapterModel: order?.adapterModel ?? '',
+      plug: order?.plug ?? '',
+      plugColor: order?.plugColor ?? '',
+      plugLength: order?.plugLength ?? 0,
+      fitting: order?.fitting ?? '',
+      dimmer: order?.dimmer ?? false,
+      dimmerType: order?.dimmerType ?? '',
+      switch: order?.switch ?? false,
+      screen: order?.screen ?? false,
+      giftPack: order?.giftPack ?? false,
+      docs: order?.docs ?? false,
+      description: order?.description ?? '',
+      dealId: order?.dealId ?? null,
+      neons,
+      lightings,
+      packageItems,
+    };
+  }
+
+  private buildOrderChanges(
+    before: Record<string, unknown>,
+    after: Record<string, unknown>,
+  ): OrderAuditChange[] {
+    const keys = Array.from(
+      new Set([...Object.keys(before), ...Object.keys(after)]),
+    ).sort();
+    const changes: OrderAuditChange[] = [];
+
+    for (const key of keys) {
+      const from = before[key] ?? null;
+      const to = after[key] ?? null;
+      if (JSON.stringify(from) === JSON.stringify(to)) continue;
+      changes.push({
+        field: key,
+        label: ORDER_AUDIT_FIELD_LABELS[key] ?? key,
+        from,
+        to,
+      });
+    }
+
+    return changes;
+  }
+
+  private buildOrderChangesFromDto(
+    dto: UpdateTaskOrderDto,
+    before: Record<string, unknown>,
+    after: Record<string, unknown>,
+    includeUnchanged = false,
+  ): OrderAuditChange[] {
+    const dtoObj = (dto ?? {}) as Record<string, unknown>;
+    const dtoPayload = this.toPlainJson(dtoObj) as Record<string, unknown> | null;
+    if (!dtoPayload || typeof dtoPayload !== 'object') {
+      return [];
+    }
+
+    const keySet = new Set<string>([
+      ...Object.keys(dtoObj),
+      ...Object.keys(dtoPayload),
+    ]);
+
+    const changes: OrderAuditChange[] = [];
+    for (const key of keySet) {
+      const field = key === 'packageItems' ? 'packageItems' : key;
+      const from = before[field] ?? null;
+      const to = after[field] ?? dtoPayload[key] ?? null;
+      const changed = JSON.stringify(from) !== JSON.stringify(to);
+
+      if (!changed && !includeUnchanged) continue;
+      changes.push({
+        field,
+        label: ORDER_AUDIT_FIELD_LABELS[field] ?? field,
+        from,
+        to,
+      });
+    }
+
+    return changes;
+  }
+
+  private formatOrderAuditValue(value: unknown): string {
+    if (
+      value === null ||
+      value === undefined ||
+      (typeof value === 'string' && value.trim() === '')
+    ) {
+      return 'пусто';
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'Да' : 'Нет';
+    }
+    if (Array.isArray(value) || typeof value === 'object') {
+      return JSON.stringify(value);
+    }
+    return String(value);
+  }
+
+  private buildOrderUpdateComment(orderLabel: string, changes: OrderAuditChange[]) {
+    if (!changes.length) {
+      return `Обновлён заказ ${orderLabel} (без изменений)`;
+    }
+
+    return [
+      `Обновлён заказ ${orderLabel}`,
+      ...changes.map(
+        (change) =>
+          `${change.label}: "${this.formatOrderAuditValue(change.from)}" -> "${this.formatOrderAuditValue(change.to)}"`,
+      ),
+    ].join('\n');
+  }
 
   @Get('search')
   async search(
@@ -706,11 +947,38 @@ export class TasksController {
     'RP',
     'GUEST',
   )
-  createOrderForTask(
+  async createOrderForTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: CreateTaskOrderDto,
+    @CurrentUser() user: UserDto,
   ) {
-    return this.tasksService.createOrderForTask(taskId, dto);
+    const created = await this.tasksService.createOrderForTask(taskId, dto);
+    const orderTitle = this.resolveOrderTitle(created) ?? this.resolveOrderTitle(dto);
+    const orderLabel = orderTitle ?? `#${created.id}`;
+    const createdData = this.toPlainJson(dto);
+    await this.audit.log({
+      userId: user.id,
+      taskId,
+      action: 'ORDER_CREATED',
+      description: `Создан заказ ${orderLabel}`,
+      payload: this.toPlainJson({
+        orderId: created.id,
+        title: orderTitle,
+        createdData,
+      }) as any,
+    });
+
+    const dealId = this.resolveOrderDealId(created);
+    if (dealId) {
+      await this.dealAudit.createDealAudit(
+        dealId,
+        'Создание заказа',
+        user.id,
+        `Создан заказ ${orderLabel}`,
+      );
+    }
+
+    return created;
   }
 
   /** Получить один заказ */
@@ -739,21 +1007,100 @@ export class TasksController {
     'MASTER',
     'PACKER',
   )
-  updateOrder(
+  async updateOrder(
     @Param('orderId', ParseIntPipe) orderId: number,
     @Body() dto: UpdateTaskOrderDto,
     @CurrentUser() user: UserDto,
   ) {
+    const current = await this.tasksService.getOneOrder(orderId);
+    const before = this.normalizeOrderForAudit(this.toPlainJson(current));
+
     if (['MASTER', 'PACKER'].includes(user.role.shortName)) {
       dto = { adapterModel: dto.adapterModel };
     }
-    return this.tasksService.updateOrder(orderId, dto);
+
+    const updated = await this.tasksService.updateOrder(orderId, dto);
+    if (updated) {
+      const after = this.normalizeOrderForAudit(this.toPlainJson(updated));
+      let changes = this.buildOrderChanges(before, after);
+      if (!changes.length) {
+        changes = this.buildOrderChangesFromDto(dto, before, after, true);
+      }
+      const orderTitle =
+        this.resolveOrderTitle(updated) ?? this.resolveOrderTitle(current);
+      const orderLabel = orderTitle ?? `#${orderId}`;
+      await this.audit.log({
+        userId: user.id,
+        taskId: current.taskId,
+        action: 'ORDER_UPDATED',
+        description: `Обновлён заказ ${orderLabel}`,
+        payload: this.toPlainJson({
+          orderId,
+          title: orderTitle,
+          changes,
+          changedFields: changes.map((change) => change.field),
+        }) as any,
+      });
+
+      const dealId = this.resolveOrderDealId(updated) ?? this.resolveOrderDealId(current);
+      if (dealId) {
+        const summaryComment = this.buildOrderUpdateComment(orderLabel, changes);
+        await this.dealAudit.createDealAudit(
+          dealId,
+          'Обновление заказа',
+          user.id,
+          summaryComment,
+        );
+
+        if (changes.length) {
+          for (const change of changes) {
+            await this.dealAudit.createDealAudit(
+              dealId,
+              'Обновление заказа',
+              user.id,
+              `Изменение в заказе ${orderLabel}: ${change.label}: "${this.formatOrderAuditValue(change.from)}" -> "${this.formatOrderAuditValue(change.to)}"`,
+            );
+          }
+        }
+      }
+    }
+    return updated;
   }
 
   /** Мягкое удаление заказа */
   @Delete('orders/:orderId')
-  removeOrder(@Param('orderId', ParseIntPipe) orderId: number) {
-    return this.tasksService.removeOrder(orderId);
+  async removeOrder(
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @CurrentUser() user: UserDto,
+  ) {
+    const current = await this.tasksService.getOneOrder(orderId);
+    const snapshot = this.toPlainJson(current);
+    const orderTitle = this.resolveOrderTitle(current);
+    const orderLabel = orderTitle ?? `#${orderId}`;
+    const result = await this.tasksService.removeOrder(orderId);
+    await this.audit.log({
+      userId: user.id,
+      taskId: current.taskId,
+      action: 'ORDER_DELETED',
+      description: `Удалён заказ ${orderLabel}`,
+      payload: this.toPlainJson({
+        orderId,
+        title: orderTitle,
+        snapshot,
+      }) as any,
+    });
+
+    const dealId = this.resolveOrderDealId(current);
+    if (dealId) {
+      await this.dealAudit.createDealAudit(
+        dealId,
+        'Удаление заказа',
+        user.id,
+        `Удалён заказ ${orderLabel}`,
+      );
+    }
+
+    return result;
   }
 
   @Get(':taskId/members')

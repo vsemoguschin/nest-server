@@ -1,30 +1,77 @@
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 
+/*
+ * Запуск через .env:
+ * npm run seed:bs-full-customers
+ *
+ * Запуск с явными параметрами:
+ * npm run seed:bs-full-customers -- --account-code easybook --login YOUR_LOGIN --password YOUR_PASSWORD
+ *
+ * Дополнительные параметры:
+ * --account-name "ИзиБук"
+ * --url https://bluesales.ru/app/Customers/WebServer.aspx
+ * --from 2023-01-01
+ * --till 2026-03-06
+ * --page-size 500
+ * --throttle-ms 500
+ * --start-offset 0
+ * --max-retries 6
+ * --drop
+ *
+ * Если параметр не передан, используется значение из переменных окружения.
+ */
 const prisma = new PrismaClient();
 
+function getCliArg(name: string): string | undefined {
+  const prefix = `--${name}=`;
+  const arg = process.argv.find(
+    (item) => item === `--${name}` || item.startsWith(prefix),
+  );
+
+  if (!arg) return undefined;
+  if (arg === `--${name}`) {
+    const index = process.argv.indexOf(arg);
+    const nextValue = process.argv[index + 1];
+    if (!nextValue || nextValue.startsWith('--')) return undefined;
+    return nextValue;
+  }
+
+  return arg.slice(prefix.length);
+}
+
 const BLUESALES_URL =
+  getCliArg('url') ||
   process.env.BLUESALES_URL ||
   'https://bluesales.ru/app/Customers/WebServer.aspx';
-const BLUESALES_LOGIN = process.env.BLUESALES_LOGIN;
-const BLUESALES_PASSWORD = process.env.BLUESALES_PASSWORD;
-const BLUESALES_ACCOUNT_CODE = process.env.BLUESALES_ACCOUNT_CODE || 'main';
-const BLUESALES_ACCOUNT_NAME = process.env.BLUESALES_ACCOUNT_NAME || 'Изибук';
+const BLUESALES_LOGIN = getCliArg('login') || process.env.BLUESALES_LOGIN;
+const BLUESALES_PASSWORD =
+  getCliArg('password') || process.env.BLUESALES_PASSWORD;
+const BLUESALES_ACCOUNT_CODE =
+  getCliArg('account-code') || process.env.BLUESALES_ACCOUNT_CODE || 'main';
+const BLUESALES_ACCOUNT_NAME =
+  getCliArg('account-name') ||
+  process.env.BLUESALES_ACCOUNT_NAME ||
+  (BLUESALES_ACCOUNT_CODE === 'easybook'
+    ? 'ИзиБук'
+    : BLUESALES_ACCOUNT_CODE === 'easyneon'
+      ? 'ИзиНеон'
+      : `BlueSales ${BLUESALES_ACCOUNT_CODE}`);
 
 const BLUESALES_PAGE_SIZE = parseInt(
-  process.env.BLUESALES_PAGE_SIZE || '500',
+  getCliArg('page-size') || process.env.BLUESALES_PAGE_SIZE || '500',
   10,
 );
 const BLUESALES_THROTTLE_MS = parseInt(
-  process.env.BLUESALES_THROTTLE_MS || '500',
+  getCliArg('throttle-ms') || process.env.BLUESALES_THROTTLE_MS || '500',
   10,
 );
 const BLUESALES_START_OFFSET = parseInt(
-  process.env.BLUESALES_START_OFFSET || '0',
+  getCliArg('start-offset') || process.env.BLUESALES_START_OFFSET || '0',
   10,
 );
 const BLUESALES_MAX_RETRIES = parseInt(
-  process.env.BLUESALES_MAX_RETRIES || '6',
+  getCliArg('max-retries') || process.env.BLUESALES_MAX_RETRIES || '6',
   10,
 );
 const SCRIPT_STARTED_AT_MS = Date.now();
@@ -62,10 +109,10 @@ function ymdInMoscow(d: Date): string {
   }).format(d);
 }
 
-const BLUESALES_FULL_FROM = process.env.BLUESALES_FULL_FROM || '2023-01-01';
+const BLUESALES_FULL_FROM =
+  getCliArg('from') || process.env.BLUESALES_FULL_FROM || '2023-01-01';
 const BLUESALES_FULL_TILL =
-  process.env.BLUESALES_FULL_TILL || ymdInMoscow(new Date());
-
+  getCliArg('till') || process.env.BLUESALES_FULL_TILL || ymdInMoscow(new Date());
 let cachedAccountId: number | null = null;
 
 type ApiCustomer = {

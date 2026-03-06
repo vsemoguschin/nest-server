@@ -1,14 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
-  Max,
-  MaxLength,
   Min,
+  MaxLength,
 } from 'class-validator';
 
 function toNumberArray(value: unknown): number[] | undefined {
@@ -26,7 +27,7 @@ function toNumberArray(value: unknown): number[] | undefined {
     .flatMap((item) =>
       String(item)
         .split(',')
-        .map((chunk) => chunk.trim())
+        .map((chunk) => chunk.trim()),
     )
     .filter(Boolean)
     .map((item) => Number(item))
@@ -39,50 +40,27 @@ function toNumberArray(value: unknown): number[] | undefined {
   return Array.from(new Set(result));
 }
 
-export class ListCrmCustomersQueryDto {
+export class ListCrmVkDialogsQueryDto {
   @ApiPropertyOptional({
-    description: 'Фильтр по CRM-аккаунту',
-    example: 1,
+    description: 'Источник VK-диалогов, совпадает с CrmAccount.code',
+    example: 'easybook',
   })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  accountId?: number;
-
-  @ApiPropertyOptional({
-    description: 'Максимальное количество элементов на страницу',
-    default: 30,
-    minimum: 1,
-    maximum: 100,
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number;
-
-  @ApiPropertyOptional({
-    description: 'Cursor следующей страницы (base64 payload)',
-    example: 'eyJ1cGRhdGVkQXQiOiIyMDI2LTAzLTAzVDEwOjAwOjAwLjAwMFoiLCJpZCI6MTIzfQ==',
-  })
-  @IsOptional()
   @IsString()
-  @MaxLength(1024)
-  cursor?: string;
-
-  @ApiPropertyOptional({
-    description: 'Поиск по fullName',
-    example: 'иван',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
+  @MaxLength(100)
   @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
-  q?: string;
+  source!: string;
+
+  @ApiPropertyOptional({
+    description: 'Фильтр списка диалогов',
+    enum: ['all', 'unread', 'unanswered'],
+    default: 'all',
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['all', 'unread', 'unanswered'])
+  filter?: 'all' | 'unread' | 'unanswered';
 
   @ApiPropertyOptional({
     description: 'Фильтр по CRM-статусам (мультивыбор)',
@@ -119,4 +97,28 @@ export class ListCrmCustomersQueryDto {
   @ArrayMaxSize(100)
   @IsInt({ each: true })
   managerIds?: number[];
+
+  @ApiPropertyOptional({
+    description: 'Номер страницы для CRM-фильтрации списка диалогов',
+    example: 1,
+    default: 1,
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === undefined || value === null || value === '' ? undefined : Number(value)))
+  @IsNumber()
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({
+    description: 'Размер страницы для CRM-фильтрации списка диалогов',
+    example: 20,
+    default: 20,
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === undefined || value === null || value === '' ? undefined : Number(value)))
+  @IsNumber()
+  @IsInt()
+  @Min(1)
+  limit?: number;
 }

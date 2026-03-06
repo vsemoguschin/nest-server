@@ -36,9 +36,9 @@ export class DopsService {
 
     if (groupIds?.length) {
       where.groupId = { in: groupIds };
-      where.deal = {
-        groupId: { in: groupIds },
-      };
+      // where.deal = {
+      //   groupId: { in: groupIds },
+      // };
       where.user = {
         workSpace: {
           groups: {
@@ -83,7 +83,7 @@ export class DopsService {
         where: {
           ...finalWhere,
           deal: {
-            ...(groupIds?.length ? { groupId: { in: groupIds } } : {}),
+            // ...(groupIds?.length ? { groupId: { in: groupIds } } : {}),
             reservation: false,
             deletedAt: null,
           },
@@ -146,7 +146,7 @@ export class DopsService {
         userId: createDopDto.userId, // Берем из текущего пользователя
         dealId: createDopDto.dealId,
         workSpaceId: dealExists.workSpaceId,
-        groupId: dealExists.groupId,
+        groupId: managerExists.groupId,
       },
     });
 

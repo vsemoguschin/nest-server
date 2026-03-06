@@ -10,6 +10,7 @@ import { TaskCommentsService } from 'src/services/boards/task-comments.service';
 import { TaskFilesService } from 'src/services/boards/task-files.service';
 import { AttachmentsService } from '../kanban/attachments/attachments.service';
 import { TaskMembersService } from '../kanban/members/members.service';
+import { AuditService } from '../../common/audit/audit.service';
 
 @Module({
   imports: [KanbanFilesModule],
@@ -24,6 +25,7 @@ import { TaskMembersService } from '../kanban/members/members.service';
     TaskMembersService,
     TaskCommentsService,
     TaskFilesService,
+    AuditService,
   ],
   exports: [TasksService],
 })

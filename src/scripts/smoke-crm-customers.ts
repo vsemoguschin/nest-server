@@ -33,8 +33,14 @@ function parseOptions(): SmokeOptions {
 
 async function resolveAccountId(prisma: PrismaService): Promise<number> {
   const accountCode =
-    process.env.CRM_ACCOUNT_CODE || process.env.BLUESALES_ACCOUNT_CODE || 'main';
-  const accountName = process.env.CRM_ACCOUNT_NAME || `BlueSales ${accountCode}`;
+    process.env.CRM_ACCOUNT_CODE || process.env.BLUESALES_ACCOUNT_CODE || 'easybook';
+  const accountName =
+    process.env.CRM_ACCOUNT_NAME ||
+    (accountCode === 'easybook'
+      ? 'ИзиБук'
+      : accountCode === 'easyneon'
+        ? 'ИзиНеон'
+        : `BlueSales ${accountCode}`);
 
   const account = await prisma.crmAccount.upsert({
     where: { code: accountCode },

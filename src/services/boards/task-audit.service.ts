@@ -16,7 +16,10 @@ type Action =
   | 'MOVE_TO_BOARD'
   | 'TASK_ARCHIVED'
   | 'TASK_DELETED'
-  | 'TASK_CREATED';
+  | 'TASK_CREATED'
+  | 'ORDER_CREATED'
+  | 'ORDER_UPDATED'
+  | 'ORDER_DELETED';
 
 export type AuditLogParams = {
   userId: number;

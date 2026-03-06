@@ -41,7 +41,10 @@ export class VkMessagesController {
     @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.vk.post('/api/vk/messages/get-conversations', query);
+    const result = await this.vk.post('/api/vk/messages/get-conversations', {
+      ...query,
+      source: this.pickQueryString(query.source, 'easybook'),
+    });
     res.status(result.status);
     return result.data;
   }
@@ -51,7 +54,10 @@ export class VkMessagesController {
     @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.vk.post('/api/vk/messages/get-history', query);
+    const result = await this.vk.post('/api/vk/messages/get-history', {
+      ...query,
+      source: this.pickQueryString(query.source, 'easybook'),
+    });
     res.status(result.status);
     return result.data;
   }
@@ -103,11 +109,15 @@ export class VkMessagesController {
     @UploadedFiles() files: Express.Multer.File[],
     @Res({ passthrough: true }) res: Response,
   ) {
+    const normalizedBody = {
+      ...body,
+      source: this.pickQueryString(body.source, 'easybook'),
+    };
     const hasFiles = Array.isArray(files) && files.length > 0;
     const result = hasFiles
-      ? await this.vk.postMultipart('/api/vk/messages/send-with-files', body, files)
-      : await this.vk.post('/api/vk/messages/send', body);
-    const source = typeof body.source === 'string' ? body.source : '';
+      ? await this.vk.postMultipart('/api/vk/messages/send-with-files', normalizedBody, files)
+      : await this.vk.post('/api/vk/messages/send', normalizedBody);
+    const source = normalizedBody.source;
 
     if (result.status < 400 && source) {
       this.vk.notifySourceUpdated(source, 'send');
