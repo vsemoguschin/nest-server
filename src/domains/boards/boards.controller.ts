@@ -18,13 +18,19 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateBoardTagDto } from './dto/create-board-tag.dto';
 import { BoardIdDto } from './dto/board-id.dto';
+import { KanbanFiltersService } from './kanban-filters.service';
+import { KanbanColumnsService } from './kanban-columns.service';
 
 @ApiTags('Boards')
 @ApiBearerAuth()
 @UseGuards(RolesGuard)
 @Controller('boards')
 export class BoardsController {
-  constructor(private readonly boardsService: BoardsService) {}
+  constructor(
+    private readonly boardsService: BoardsService,
+    private readonly kanbanFiltersService: KanbanFiltersService,
+    private readonly kanbanColumnsService: KanbanColumnsService,
+  ) {}
 
   /** Список всех активных пользователей (для добавления) */
   @Get('users')
@@ -75,6 +81,156 @@ export class BoardsController {
       boardId,
       hiddenIds,
       visibleMemberIds,
+    );
+  }
+
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'ASSISTANT',
+    'LOGIST',
+    'MASTER',
+    'RP',
+    'FRZ',
+    'PACKER',
+    'GUEST',
+  )
+  @Get(':id/kanban-filters')
+  async getKanbanFilters(
+    @CurrentUser() user: UserDto,
+    @Param('id', ParseIntPipe) boardId: number,
+    @Query('hidden') hidden?: string,
+    @Query('visibleMembers') visibleMembers?: string,
+  ) {
+    const parseCsvNumbers = (value: string | undefined) =>
+      (value ?? '')
+        .split(',')
+        .map((s) => parseInt(s, 10))
+        .filter((n) => Number.isFinite(n));
+
+    const hiddenIds = parseCsvNumbers(hidden);
+    const visibleMemberIds =
+      typeof visibleMembers === 'string'
+        ? parseCsvNumbers(visibleMembers)
+        : undefined;
+
+    return this.kanbanFiltersService.getKanbanFilters(
+      user,
+      boardId,
+      hiddenIds,
+      visibleMemberIds,
+    );
+  }
+
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'ASSISTANT',
+    'LOGIST',
+    'MASTER',
+    'RP',
+    'FRZ',
+    'PACKER',
+    'GUEST',
+  )
+  @Get(':id/kanban-columns')
+  async getKanbanColumns(
+    @CurrentUser() user: UserDto,
+    @Param('id', ParseIntPipe) boardId: number,
+    @Query('hidden') hidden?: string,
+    @Query('visibleMembers') visibleMembers?: string,
+  ) {
+    const parseCsvNumbers = (value: string | undefined) =>
+      (value ?? '')
+        .split(',')
+        .map((s) => parseInt(s, 10))
+        .filter((n) => Number.isFinite(n));
+
+    const hiddenIds = parseCsvNumbers(hidden);
+    const visibleMemberIds =
+      typeof visibleMembers === 'string'
+        ? parseCsvNumbers(visibleMembers)
+        : undefined;
+
+    return this.kanbanColumnsService.getKanbanColumns(
+      user,
+      boardId,
+      hiddenIds,
+      visibleMemberIds,
+    );
+  }
+
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'ASSISTANT',
+    'LOGIST',
+    'MASTER',
+    'RP',
+    'FRZ',
+    'PACKER',
+    'GUEST',
+  )
+  @Get(':boardId/kanban/columns/:columnId')
+  async getKanbanColumn(
+    @CurrentUser() user: UserDto,
+    @Param('boardId', ParseIntPipe) boardId: number,
+    @Param('columnId', ParseIntPipe) columnId: number,
+    @Query('visibleMembers') visibleMembers?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parseCsvNumbers = (value: string | undefined) =>
+      (value ?? '')
+        .split(',')
+        .map((s) => parseInt(s, 10))
+        .filter((n) => Number.isFinite(n));
+
+    const visibleMemberIds =
+      typeof visibleMembers === 'string'
+        ? parseCsvNumbers(visibleMembers)
+        : undefined;
+    const page = {
+      cursor:
+        typeof cursor === 'string' && Number.isFinite(parseInt(cursor, 10))
+          ? parseInt(cursor, 10)
+          : undefined,
+      limit:
+        typeof limit === 'string' && Number.isFinite(parseInt(limit, 10))
+          ? Math.min(Math.max(parseInt(limit, 10), 1), 2000)
+          : undefined,
+    };
+
+    return this.kanbanColumnsService.getKanbanColumn(
+      user,
+      boardId,
+      columnId,
+      visibleMemberIds,
+      page,
     );
   }
 

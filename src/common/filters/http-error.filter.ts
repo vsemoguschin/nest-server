@@ -12,6 +12,7 @@ import { TelegramService } from '../../services/telegram.service';
 export class HttpErrorFilter implements ExceptionFilter {
   private readonly criticalChatIds: string[];
   private readonly environmentLabel: string;
+  private readonly shouldNotifyCriticalErrors: boolean;
 
   constructor(private readonly telegramService?: TelegramService) {
     this.criticalChatIds = (
@@ -21,6 +22,7 @@ export class HttpErrorFilter implements ExceptionFilter {
       .map((id) => id.trim())
       .filter(Boolean);
     this.environmentLabel = process.env.NODE_ENV ?? 'development';
+    this.shouldNotifyCriticalErrors = this.environmentLabel === 'production';
   }
 
   catch(exception: HttpException, host: ArgumentsHost) {
@@ -99,6 +101,7 @@ export class HttpErrorFilter implements ExceptionFilter {
 
     if (
       status >= HttpStatus.INTERNAL_SERVER_ERROR &&
+      this.shouldNotifyCriticalErrors &&
       this.telegramService &&
       this.criticalChatIds.length
     ) {

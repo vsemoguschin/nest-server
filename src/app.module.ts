@@ -49,6 +49,7 @@ import { PnlModule } from './domains/pnl/pnl.module';
 import { CdekModule } from './domains/cdek/cdek.module';
 import { VkMessagesModule } from './domains/vk-messages/vk-messages.module';
 import { CrmCustomersModule } from './domains/crm-customers/crm-customers.module';
+import { AiAssistantModule } from './domains/ai-assistant/ai-assistant.module';
 
 @Module({
   imports: [
@@ -98,6 +99,7 @@ import { CrmCustomersModule } from './domains/crm-customers/crm-customers.module
     CdekModule,
     VkMessagesModule,
     CrmCustomersModule,
+    AiAssistantModule,
 
     // другие модули
   ],

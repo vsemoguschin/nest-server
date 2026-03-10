@@ -1,28 +1,30 @@
 // Запуск: cd crm/nest && npx ts-node src/seeds/seed-find-kanban-tasks-board-10.ts
 import { PrismaClient } from '@prisma/client';
-import { title } from 'process';
 
 const prisma = new PrismaClient();
 
-const BOARD_ID = Number(process.env.BOARD_ID ?? 10);
+const BOARD_ID = Number(process.env.BOARD_ID ?? 3);
+const USER_ID = Number(process.env.USER_ID ?? 75);
 
 async function findKanbanTasks() {
-  if (Number.isNaN(BOARD_ID)) {
-    throw new Error('BOARD_ID должен быть числом.');
+  if (Number.isNaN(BOARD_ID) || Number.isNaN(USER_ID)) {
+    throw new Error('BOARD_ID и USER_ID должны быть числами.');
   }
+
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
+
   const tasks = await prisma.kanbanTask.findMany({
     where: {
       boardId: BOARD_ID,
-      columnId: 68,
       deletedAt: null,
       archived: false,
       audits: {
         some: {
           action: 'MOVE_TASK',
+          userId: USER_ID,
           createdAt: {
             gte: start,
             lt: end,
@@ -36,18 +38,26 @@ async function findKanbanTasks() {
       title: true,
       columnId: true,
       audits: {
-        where: { action: 'MOVE_TASK' },
+        where: {
+          action: 'MOVE_TASK',
+          userId: USER_ID,
+          createdAt: {
+            gte: start,
+            lt: end,
+          },
+        },
       },
     },
   });
 
   console.log(
-    `KanbanTask: найдено ${tasks.length} карточек для boardId=${BOARD_ID}`,
+    `KanbanTask: найдено ${tasks.length} карточек за сегодня для boardId=${BOARD_ID}, перемещённых пользователем userId=${USER_ID}`,
   );
   if (!tasks.length) return;
 
-  console.log(tasks.map((t) => 'https://easy-crm.pro/boards/10/task/' + t.id));
-  // console.log(tasks.map((t) => ({ audits: t.audits, title: t.title })));
+  console.log(
+    tasks.map((t) => `https://easy-crm.pro/boards/${BOARD_ID}/task/${t.id}`),
+  );
 }
 
 async function main() {

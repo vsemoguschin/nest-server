@@ -9,7 +9,7 @@ import { KanbanFilesService } from '../kanban-files/kanban-files.service';
 import axios from 'axios';
 import { UserDto } from '../users/dto/user.dto';
 import { CreateBoardTagDto } from './dto/create-board-tag.dto';
-import { collectTaskWarnings } from '../board_tasks/utils/task-warnings';
+import { buildKanbanColumn, kanbanTaskSelect } from './kanban-column.shared';
 
 @Injectable()
 export class BoardsService {
@@ -26,8 +26,12 @@ export class BoardsService {
   ) {
     const userId = user.id;
     const columnsWhere: any = { deletedAt: null };
+    const tasksWhere: any = { deletedAt: null, archived: false };
     if (hiddenIds?.length) {
       columnsWhere.id = { notIn: hiddenIds };
+    }
+    if (visibleMemberIds !== undefined) {
+      tasksWhere.members = { some: { id: { in: visibleMemberIds } } };
     }
     const board = await this.prisma.board.findFirst({
       where: {
@@ -50,189 +54,20 @@ export class BoardsService {
             title: true,
             position: true,
             tasks: {
-              where: { deletedAt: null, archived: false },
+              where: tasksWhere,
               orderBy: { position: 'asc' },
-              select: {
-                id: true,
-                title: true,
-                position: true,
-                columnId: true,
-                cover: true,
-                boardId: true,
-                chatLink: true,
-                deal: {
-                  select: {
-                    price: true,
-                    deliveries: {
-                      select: {
-                        method: true,
-                        type: true,
-                        track: true,
-                        cdekStatus: true
-                      },
-                    },
-                    payments: {
-                      select: {
-                        method: true,
-                        price: true,
-                      },
-                    },
-                    dops: {
-                      select: {
-                        price: true,
-                      },
-                    },
-                  },
-                },
-
-                // только имена тегов
-                tags: { select: { name: true } },
-
-                // ⬇️ берём ТОЛЬКО одно превью-изображение (jpeg/png/webp)
-                attachments: {
-                  where: {
-                    file: {
-                      mimeType: {
-                        in: ['image/jpeg', 'image/png', 'image/webp'],
-                      },
-                    },
-                  },
-                  select: {
-                    file: {
-                      select: {
-                        path: true, // если будет thumbnailPath — добавим его здесь
-                        mimeType: true,
-                      },
-                    },
-                  },
-                  orderBy: {
-                    createdAt: 'desc',
-                  },
-                  take: 1,
-                },
-
-                // ⬇️ общее количество вложений без тащения их данных
-                _count: { select: { attachments: true } },
-
-                // ⬇️ "узкий" набор полей участников (ровно то, что нужно в карточке)
-                members: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    avatarUrl: true,
-                    role: { select: { fullName: true } },
-                    tg: true,
-                  },
-                },
-                orders: {
-                  select: {
-                    deadline: true,
-                    material: true,
-                    boardHeight: true,
-                    boardWidth: true,
-                    type: true,
-                    holeType: true,
-                    fitting: true,
-                    laminate: true,
-                    acrylic: true,
-                    dimmer: true,
-                    docs: true,
-                    print: true,
-                    neons: { select: { color: true, width: true } },
-                    lightings: { select: { color: true } },
-                  },
-                },
-              },
+              select: kanbanTaskSelect,
             },
           },
         },
-        tags: true,
       },
     });
     if (!board) throw new NotFoundException('Board not found or access denied');
-    const warningsSet = new Set<string>();
-    const visibleMemberSet =
-      visibleMemberIds === undefined ? null : new Set(visibleMemberIds);
 
     return {
       id: board.id,
       title: board.title,
-      columns: await Promise.all(
-        board.columns.map(async (c) => {
-          const tasks = c.tasks
-            .filter((t) => {
-              if (!visibleMemberSet) return true;
-              const members = t.members ?? [];
-              if (!members.length) return false;
-              for (const m of members) {
-                if (visibleMemberSet.has(m.id)) return true;
-              }
-              return false;
-            })
-            .map((t) => {
-              const previewPath = t.attachments[0]?.file.path ?? '';
-              let remainder: number | null = null;
-              if (t.deal) {
-                const dopsPrice = (t.deal.dops ?? []).reduce(
-                  (acc, dop) => acc + Number(dop.price ?? 0),
-                  0,
-                );
-                const totalPrice = Number(t.deal.price ?? 0) + dopsPrice;
-                remainder =
-                  totalPrice -
-                  (t.deal.payments ?? []).reduce(
-                    (acc, payment) => acc + Number(payment.price ?? 0),
-                    0,
-                  );
-              }
-
-              const warnings = collectTaskWarnings(
-                t.orders,
-                t.deal?.deliveries ?? [],
-                t.chatLink,
-                t.deal?.payments,
-                remainder,
-              );
-              for (const w of warnings) warningsSet.add(w);
-              return {
-                id: t.id,
-                title: t.title,
-                preview: t.cover ?? previewPath,
-                path: previewPath,
-                columnId: t.columnId,
-                attachmentsLength: t._count.attachments,
-                tags: t.tags.map((x) => x.name),
-                members: t.members,
-                boardId: t.boardId,
-                // берем самую позднюю дату дедлайна среди заказов (если есть)
-                deadline: (t.orders ?? []).reduce((max, o) => {
-                  const d = o?.deadline || '';
-                  if (!d) return max;
-                  if (!max) return d;
-                  return d.localeCompare(max) > 0 ? d : max;
-                }, ''),
-                warnings,
-                tracks: t.deal?.deliveries.map((d) => ({track: d.track, cdekStatus: d.cdekStatus})) ?? [],
-              };
-            })
-            .sort((a, b) => {
-              const aHas = !!a.deadline;
-              const bHas = !!b.deadline;
-              if (aHas && bHas) return a.deadline.localeCompare(b.deadline);
-              if (aHas !== bHas) return aHas ? -1 : 1; // с дедлайном раньше
-              return 0; // оба без дедлайна — сохраняем позицию
-            });
-
-          return {
-            id: c.id,
-            title: c.title,
-            position: c.position,
-            tasks,
-          };
-        }),
-      ),
-      tags: board.tags.map((t) => t.name),
-      warnings: Array.from(warningsSet),
+      columns: board.columns.map((column) => buildKanbanColumn(column)),
     };
   }
 
@@ -253,10 +88,28 @@ export class BoardsService {
       },
     });
 
+    const columnIds = avalCol.map((column) => column.id);
+    const taskCounts = columnIds.length
+      ? await this.prisma.kanbanTask.groupBy({
+          by: ['columnId'],
+          where: {
+            boardId,
+            columnId: { in: columnIds },
+            deletedAt: null,
+            archived: false,
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const totalByColumnId = new Map(
+      taskCounts.map((item) => [Number(item.columnId), Number(item._count._all)]),
+    );
+
     // нормализуем ответ в плоский массив
     return (avalCol ?? []).map((c) => ({
       id: c.id,
       title: c.title,
+      tasksTotal: totalByColumnId.get(Number(c.id)) ?? 0,
       isSubs: c.subscriptions.length > 0,
       subType: c.subscriptions[0]?.noticeType,
     }));

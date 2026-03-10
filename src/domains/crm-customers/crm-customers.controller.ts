@@ -10,6 +10,8 @@ import {
   UploadedFiles,
   UseGuards,
   UseInterceptors,
+  Patch,
+  Delete,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -22,11 +24,19 @@ import { Response } from 'express';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { CrmCustomerCommunicationsService } from './crm-customer-communications.service';
+import { CrmCustomerAiAssistantService } from './crm-customer-ai-assistant.service';
+import { CrmCustomerBlueSalesService } from './crm-customer-bluesales.service';
 import { CrmCustomerRibbonEventsService } from './crm-customer-ribbon-events.service';
 import { CrmVkDialogsService } from './crm-vk-dialogs.service';
+import { AnalyzeCrmCustomerDialogDto } from './dto/analyze-crm-customer-dialog.dto';
+import { CreateCrmStatusDto } from './dto/create-crm-status.dto';
+import { CreateCrmTagDto } from './dto/create-crm-tag.dto';
 import { CrmCustomersService } from './crm-customers.service';
 import { ListCrmVkDialogsQueryDto } from './dto/list-crm-vk-dialogs.query.dto';
 import { ListCrmCustomersQueryDto } from './dto/list-crm-customers.query.dto';
+import { UpdateCrmStatusDto } from './dto/update-crm-status.dto';
+import { UpdateCrmTagDto } from './dto/update-crm-tag.dto';
+import { UpdateCrmCustomerDto } from './dto/update-crm-customer.dto';
 
 @ApiTags('crm-customers')
 @ApiBearerAuth()
@@ -37,7 +47,9 @@ export class CrmCustomersController {
     private readonly crmCustomersService: CrmCustomersService,
     private readonly crmCustomerCommunicationsService: CrmCustomerCommunicationsService,
     private readonly crmCustomerRibbonEventsService: CrmCustomerRibbonEventsService,
+    private readonly crmCustomerBlueSalesService: CrmCustomerBlueSalesService,
     private readonly crmVkDialogsService: CrmVkDialogsService,
+    private readonly crmCustomerAiAssistantService: CrmCustomerAiAssistantService,
   ) {}
 
   private pickOptionalQueryString(value: unknown): string | undefined {
@@ -105,6 +117,135 @@ export class CrmCustomersController {
     accountId?: number,
   ) {
     return this.crmCustomersService.listFilters(accountId);
+  }
+
+  @Get('dictionaries/accounts')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Список CRM-аккаунтов для справочников',
+  })
+  async listDictionaryAccounts() {
+    return this.crmCustomersService.listFilterAccounts();
+  }
+
+  @Get('dictionaries/statuses')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Список CRM-статусов для справочников',
+  })
+  async listDictionaryStatuses(
+    @Query('accountId', new ParseIntPipe({ optional: true }))
+    accountId?: number,
+  ) {
+    return this.crmCustomersService.listDictionaryStatuses(accountId);
+  }
+
+  @Post('dictionaries/statuses')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Создать CRM-статус',
+  })
+  async createDictionaryStatus(@Body() dto: CreateCrmStatusDto) {
+    return this.crmCustomersService.createDictionaryStatus(dto);
+  }
+
+  @Patch('dictionaries/statuses/:id')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Обновить CRM-статус',
+  })
+  async updateDictionaryStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCrmStatusDto,
+  ) {
+    return this.crmCustomersService.updateDictionaryStatus(id, dto);
+  }
+
+  @Delete('dictionaries/statuses/:id')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Удалить CRM-статус',
+  })
+  async deleteDictionaryStatus(@Param('id', ParseIntPipe) id: number) {
+    return this.crmCustomersService.deleteDictionaryStatus(id);
+  }
+
+  @Get('dictionaries/tags')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Список CRM-тегов для справочников',
+  })
+  async listDictionaryTags(
+    @Query('accountId', new ParseIntPipe({ optional: true }))
+    accountId?: number,
+  ) {
+    return this.crmCustomersService.listDictionaryTags(accountId);
+  }
+
+  @Post('dictionaries/tags')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Создать CRM-тег',
+  })
+  async createDictionaryTag(@Body() dto: CreateCrmTagDto) {
+    return this.crmCustomersService.createDictionaryTag(dto);
+  }
+
+  @Patch('dictionaries/tags/:id')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Обновить CRM-тег',
+  })
+  async updateDictionaryTag(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCrmTagDto,
+  ) {
+    return this.crmCustomersService.updateDictionaryTag(id, dto);
+  }
+
+  @Delete('dictionaries/tags/:id')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Удалить CRM-тег',
+  })
+  async deleteDictionaryTag(@Param('id', ParseIntPipe) id: number) {
+    return this.crmCustomersService.deleteDictionaryTag(id);
+  }
+
+  @Get('dictionaries/countries')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Список CRM-стран для справочников',
+  })
+  async listDictionaryCountries(
+    @Query('accountId', new ParseIntPipe({ optional: true }))
+    accountId?: number,
+  ) {
+    return this.crmCustomersService.listDictionaryCountries(accountId);
+  }
+
+  @Get('dictionaries/cities')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Список CRM-городов для справочников',
+  })
+  async listDictionaryCities(
+    @Query('accountId', new ParseIntPipe({ optional: true }))
+    accountId?: number,
+  ) {
+    return this.crmCustomersService.listDictionaryCities(accountId);
+  }
+
+  @Get('dictionaries/totals')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Сводные количества CRM-справочников',
+  })
+  async getDictionaryTotals(
+    @Query('accountId', new ParseIntPipe({ optional: true }))
+    accountId?: number,
+  ) {
+    return this.crmCustomersService.getDictionaryTotals(accountId);
   }
 
   @Get()
@@ -230,6 +371,31 @@ export class CrmCustomersController {
     return this.crmCustomersService.getOne(id);
   }
 
+  @Get(':id/bluesales')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Получить одного CRM-клиента из BlueSales WebServer.aspx',
+    description:
+      'Находит CRM-клиента по внутреннему id, берёт его accountCode и externalId и вызывает BlueSales customers.get через WebServer.aspx.',
+  })
+  async getBlueSalesCustomer(@Param('id', ParseIntPipe) id: number) {
+    return this.crmCustomerBlueSalesService.getCustomerByCrmId(id);
+  }
+
+  @Patch(':id')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Обновить CRM-клиента',
+    description:
+      'Обновляет основные поля карточки клиента и CRM-связи по справочникам.',
+  })
+  async updateCustomer(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCrmCustomerDto,
+  ) {
+    return this.crmCustomersService.updateCustomer(id, dto);
+  }
+
   @Get(':id/ribbon-events')
   @Roles('ADMIN', 'G', 'KD')
   @ApiOperation({
@@ -316,5 +482,33 @@ export class CrmCustomersController {
 
     res.status(result.status);
     return result.data;
+  }
+
+  @Post(':id/assistant/analyze-vk-dialog')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'AI-анализ VK-диалога CRM-клиента',
+    description:
+      'Забирает VK-диалог клиента по customerId и отправляет его в assistant-service для анализа ответа, статуса, тегов и handoff.',
+  })
+  async analyzeVkDialogWithAssistant(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: AnalyzeCrmCustomerDialogDto,
+  ) {
+    return this.crmCustomerAiAssistantService.analyzeVkDialog(id, body);
+  }
+
+  @Post(':id/assistant/suggest-vk-reply')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Быстрая AI-подсказка ответа по VK-диалогу CRM-клиента',
+    description:
+      'Забирает последние сообщения VK-диалога клиента по customerId и возвращает короткое предложение следующего ответа менеджера.',
+  })
+  async suggestVkReplyWithAssistant(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: AnalyzeCrmCustomerDialogDto,
+  ) {
+    return this.crmCustomerAiAssistantService.suggestVkReply(id, body);
   }
 }
