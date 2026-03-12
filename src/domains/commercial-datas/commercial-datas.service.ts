@@ -437,8 +437,9 @@ export class CommercialDatasService {
         date: {
           startsWith: period,
         },
-        groupId: groupId,
+        // groupId: groupId,
         deal: {
+          groupId: groupId,
           reservation: false,
           deletedAt: null,
           status: { not: 'Возврат' },
