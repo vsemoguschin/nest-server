@@ -8,8 +8,41 @@ export type CrmCustomerRibbonEvent = {
   contentText: string;
 };
 
+export type ParsedCrmCustomerRibbonEvent = {
+  id: string;
+  dateLabel: string;
+  occurredAt: string | null;
+  rawHtml: string;
+  contentHtml: string;
+  contentText: string;
+};
+
+export type NormalizedCrmEventType =
+  | 'status_changed'
+  | 'handoff_started'
+  | 'manager_assigned'
+  | 'tag_added'
+  | 'waiting_photos_set'
+  | 'order_created'
+  | 'manager_message'
+  | 'system_note';
+
+export type NormalizedCrmEvent = {
+  id: string;
+  sourceEventId: string;
+  type: NormalizedCrmEventType;
+  timestamp: string | null;
+  actor: 'manager' | 'assistant' | 'client' | 'system';
+  payload: Record<string, unknown>;
+  source: 'bluesales_ribbon';
+  sourceHtmlFragment: string;
+  sourceText: string;
+};
+
 export type CrmCustomerRibbonEventsResponse = {
   items: CrmCustomerRibbonEvent[];
+  parsedEvents: ParsedCrmCustomerRibbonEvent[];
+  normalizedEvents: NormalizedCrmEvent[];
   requestedCount: number;
   nextCount: number | null;
   hasMore: boolean;
@@ -32,6 +65,8 @@ export class BlueSalesRibbonEventsParser {
     if (!tableHtml || !tableBody) {
       return {
         items: [],
+        parsedEvents: [],
+        normalizedEvents: [],
         requestedCount,
         nextCount: null,
         hasMore: false,
@@ -40,12 +75,24 @@ export class BlueSalesRibbonEventsParser {
 
     const rowMatches = tableBody.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
     const dataRows = rowMatches.filter((row) => /<td\b/i.test(row));
-    const items = dataRows
+    const parsedEvents = dataRows
       .map((row, index) => this.parseRow(row, index))
-      .filter((item): item is CrmCustomerRibbonEvent => Boolean(item));
+      .filter((item): item is ParsedCrmCustomerRibbonEvent => Boolean(item));
+    const items = parsedEvents.map<CrmCustomerRibbonEvent>((item) => ({
+      id: item.id,
+      dateLabel: item.dateLabel,
+      occurredAt: item.occurredAt,
+      contentHtml: item.contentHtml,
+      contentText: item.contentText,
+    }));
+    const normalizedEvents = parsedEvents.map((item) =>
+      this.normalizeParsedEvent(item),
+    );
 
     return {
       items,
+      parsedEvents,
+      normalizedEvents,
       requestedCount,
       nextCount: hasMore ? requestedCount + 30 : null,
       hasMore,
@@ -55,7 +102,7 @@ export class BlueSalesRibbonEventsParser {
   private parseRow(
     rowHtml: string,
     index: number,
-  ): CrmCustomerRibbonEvent | null {
+  ): ParsedCrmCustomerRibbonEvent | null {
     const cells = Array.from(
       rowHtml.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi),
       (match) => match[1] ?? '',
@@ -77,8 +124,161 @@ export class BlueSalesRibbonEventsParser {
       id: this.buildEventId(dateLabel, contentText, index),
       dateLabel,
       occurredAt: this.parseOccurredAt(dateLabel),
+      rawHtml: cells[1].trim(),
       contentHtml,
       contentText,
+    };
+  }
+
+  private normalizeParsedEvent(
+    event: ParsedCrmCustomerRibbonEvent,
+  ): NormalizedCrmEvent {
+    const text = event.contentText;
+    const lower = text.toLowerCase();
+    const statusMatch = text.match(/сменил статус с\s+(.+?)\s+на\s+(.+)$/i);
+    const managerAssignedMatch = text.match(
+      /(?:назнач|ответственн(?:ым|ого)|менеджер(?:ом)?)[^.,\n]*?([А-ЯA-Z][^.,\n]+)$/i,
+    );
+    const tagMatch = text.match(/(?:добавил|добавлена|присвоен)\s+тег\s+(.+)$/i);
+
+    if (statusMatch) {
+      return {
+        id: `${event.id}:status_changed`,
+        sourceEventId: event.id,
+        type: 'status_changed',
+        timestamp: event.occurredAt,
+        actor: 'system',
+        payload: {
+          fromStatus: this.normalizeWhitespace(statusMatch[1]),
+          toStatus: this.normalizeWhitespace(statusMatch[2]),
+        },
+        source: 'bluesales_ribbon',
+        sourceHtmlFragment: event.contentHtml,
+        sourceText: event.contentText,
+      };
+    }
+
+    if (
+      /передал[аи]? менеджер|передача менеджер|handoff|передан менеджеру/i.test(
+        lower,
+      )
+    ) {
+      return {
+        id: `${event.id}:handoff_started`,
+        sourceEventId: event.id,
+        type: 'handoff_started',
+        timestamp: event.occurredAt,
+        actor: 'system',
+        payload: {
+          summary: event.contentText,
+        },
+        source: 'bluesales_ribbon',
+        sourceHtmlFragment: event.contentHtml,
+        sourceText: event.contentText,
+      };
+    }
+
+    if (
+      /назначен менеджер|назначили менеджера|ответственный менеджер/i.test(lower)
+    ) {
+      return {
+        id: `${event.id}:manager_assigned`,
+        sourceEventId: event.id,
+        type: 'manager_assigned',
+        timestamp: event.occurredAt,
+        actor: 'system',
+        payload: {
+          managerName: managerAssignedMatch
+            ? this.normalizeWhitespace(managerAssignedMatch[1])
+            : null,
+          summary: event.contentText,
+        },
+        source: 'bluesales_ribbon',
+        sourceHtmlFragment: event.contentHtml,
+        sourceText: event.contentText,
+      };
+    }
+
+    if (/жд[её]м фото|ожидаем фото|ждем фотографии|ожидаем фотографии/i.test(lower)) {
+      return {
+        id: `${event.id}:waiting_photos_set`,
+        sourceEventId: event.id,
+        type: 'waiting_photos_set',
+        timestamp: event.occurredAt,
+        actor: 'system',
+        payload: {
+          summary: event.contentText,
+        },
+        source: 'bluesales_ribbon',
+        sourceHtmlFragment: event.contentHtml,
+        sourceText: event.contentText,
+      };
+    }
+
+    if (/создан заказ|создала заказ|оформил заказ|готов оформить/i.test(lower)) {
+      return {
+        id: `${event.id}:order_created`,
+        sourceEventId: event.id,
+        type: 'order_created',
+        timestamp: event.occurredAt,
+        actor: 'system',
+        payload: {
+          summary: event.contentText,
+        },
+        source: 'bluesales_ribbon',
+        sourceHtmlFragment: event.contentHtml,
+        sourceText: event.contentText,
+      };
+    }
+
+    if (tagMatch || /тег|ярлык|label/i.test(lower)) {
+      return {
+        id: `${event.id}:tag_added`,
+        sourceEventId: event.id,
+        type: 'tag_added',
+        timestamp: event.occurredAt,
+        actor: 'system',
+        payload: {
+          tag: tagMatch ? this.normalizeWhitespace(tagMatch[1]) : null,
+          summary: event.contentText,
+        },
+        source: 'bluesales_ribbon',
+        sourceHtmlFragment: event.contentHtml,
+        sourceText: event.contentText,
+      };
+    }
+
+    if (
+      /написал|ответил|сообщение|message-quote-in-ribbon-event/i.test(lower) ||
+      /message-quote-in-ribbon-event/i.test(event.contentHtml)
+    ) {
+      return {
+        id: `${event.id}:manager_message`,
+        sourceEventId: event.id,
+        type: 'manager_message',
+        timestamp: event.occurredAt,
+        actor: 'manager',
+        payload: {
+          summary: event.contentText,
+        },
+        source: 'bluesales_ribbon',
+        sourceHtmlFragment: event.contentHtml,
+        sourceText: event.contentText,
+      };
+    }
+
+    return {
+      id: `${event.id}:system_note`,
+      sourceEventId: event.id,
+      type: 'system_note',
+      timestamp: event.occurredAt,
+      actor: 'system',
+      payload: {
+        summary: event.contentText,
+      },
+      source: 'bluesales_ribbon',
+      sourceHtmlFragment: event.contentHtml,
+      sourceText: event.contentText,
     };
   }
 

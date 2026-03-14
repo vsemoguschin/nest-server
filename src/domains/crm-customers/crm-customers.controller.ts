@@ -418,6 +418,37 @@ export class CrmCustomersController {
               'Ведение 4 сменил статус с Вторая оплата на На производстве',
           },
         ],
+        parsedEvents: [
+          {
+            id: 'ribbon-deadbeef',
+            dateLabel: '06.03.2026 в 11:12',
+            occurredAt: '2026-03-06T11:12:00+03:00',
+            rawHtml:
+              '<a href="/app/Administration/ClientDetails.aspx?Id=60936">Ведение 4</a> сменил статус с <strong><span style="color: #0165B0">Вторая оплата</span></strong> на <strong><span style="color: #FF9900">На производстве</span></strong>',
+            contentHtml:
+              '<a href="https://bluesales.ru/app/Administration/ClientDetails.aspx?Id=60936" target="_blank" rel="noopener noreferrer">Ведение 4</a> сменил статус с <strong><span style="color: #0165B0">Вторая оплата</span></strong> на <strong><span style="color: #FF9900">На производстве</span></strong>',
+            contentText:
+              'Ведение 4 сменил статус с Вторая оплата на На производстве',
+          },
+        ],
+        normalizedEvents: [
+          {
+            id: 'ribbon-deadbeef:status_changed',
+            sourceEventId: 'ribbon-deadbeef',
+            type: 'status_changed',
+            timestamp: '2026-03-06T11:12:00+03:00',
+            actor: 'system',
+            payload: {
+              fromStatus: 'Вторая оплата',
+              toStatus: 'На производстве',
+            },
+            source: 'bluesales_ribbon',
+            sourceHtmlFragment:
+              '<a href="https://bluesales.ru/app/Administration/ClientDetails.aspx?Id=60936" target="_blank" rel="noopener noreferrer">Ведение 4</a> сменил статус с <strong><span style="color: #0165B0">Вторая оплата</span></strong> на <strong><span style="color: #FF9900">На производстве</span></strong>',
+            sourceText:
+              'Ведение 4 сменил статус с Вторая оплата на На производстве',
+          },
+        ],
         requestedCount: 30,
         nextCount: 60,
         hasMore: true,

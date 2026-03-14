@@ -86,6 +86,8 @@ export class CrmCustomerRibbonEventsService {
 
       return {
         items: [],
+        parsedEvents: [],
+        normalizedEvents: [],
         requestedCount,
         nextCount: null,
         hasMore: false,
