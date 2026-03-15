@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AiAssistantController } from './ai-assistant.controller';
 import { AiAssistantService } from './ai-assistant.service';
+import { AssistantServiceCodexRuntime } from './assistant-service-codex-runtime';
 import { CodexStreamController } from './codex-stream.controller';
 import { CodexEventMapper } from './codex-event.mapper';
 import { CliSpawnCodexRuntime } from './cli-spawn-codex-runtime';
@@ -25,12 +27,25 @@ import { CURATOR_SESSION_STORAGE } from './curator-session.storage';
     CuratorAssistantService,
     CodexEventMapper,
     CliSpawnCodexRuntime,
+    AssistantServiceCodexRuntime,
     CuratorDecisionMemoryStorage,
     CuratorProposalMemoryStorage,
     CuratorSessionMemoryStorage,
     {
       provide: CODEX_RUNTIME,
-      useExisting: CliSpawnCodexRuntime,
+      inject: [ConfigService, CliSpawnCodexRuntime, AssistantServiceCodexRuntime],
+      useFactory: (
+        config: ConfigService,
+        cliRuntime: CliSpawnCodexRuntime,
+        assistantServiceRuntime: AssistantServiceCodexRuntime,
+      ) => {
+        const transport =
+          config.get<string>('CODEX_RUNTIME_TRANSPORT') || 'local_cli';
+
+        return transport === 'assistant_service'
+          ? assistantServiceRuntime
+          : cliRuntime;
+      },
     },
     {
       provide: CURATOR_DECISION_STORAGE,
