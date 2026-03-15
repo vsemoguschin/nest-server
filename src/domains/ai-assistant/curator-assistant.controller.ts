@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
   Req,
@@ -17,10 +18,16 @@ import { Roles } from 'src/common/decorators/roles.decorator';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { CuratorAssistantService } from './curator-assistant.service';
 import { CuratorAnalyzeDto } from './dto/curator-analyze.dto';
+import { CuratorDecisionCreateDto } from './dto/curator-decision.dto';
 import {
   CuratorProposalCreateDto,
   CuratorProposalListQueryDto,
 } from './dto/curator-proposal.dto';
+import {
+  CuratorSessionMessageDto,
+  CuratorSessionReanalyzeDto,
+  CuratorSessionStartDto,
+} from './dto/curator-session.dto';
 
 @ApiTags('crm-curator-assistant')
 @ApiBearerAuth()
@@ -46,6 +53,91 @@ export class CuratorAssistantController {
       id: req.user?.id ?? null,
       fullName: req.user?.fullName ?? null,
     });
+  }
+
+  @Post('session/start')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Start a curator analysis session for an assistant conversation',
+  })
+  async startSession(
+    @Body() body: CuratorSessionStartDto,
+    @Req()
+    req: Request & { user?: { id?: string | number; fullName?: string } },
+  ) {
+    return this.curatorAssistantService.startSession(body, {
+      id: req.user?.id ?? null,
+      fullName: req.user?.fullName ?? null,
+    });
+  }
+
+  @Post('session/:id/message')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Send a follow-up question into an existing curator session',
+  })
+  async sendSessionMessage(
+    @Param('id') id: string,
+    @Body() body: CuratorSessionMessageDto,
+    @Req()
+    req: Request & { user?: { id?: string | number; fullName?: string } },
+  ) {
+    return this.curatorAssistantService.sendSessionMessage(id, body, {
+      id: req.user?.id ?? null,
+      fullName: req.user?.fullName ?? null,
+    });
+  }
+
+  @Get('session/:id')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Get compact curator session state',
+  })
+  async getSession(@Param('id') id: string) {
+    return this.curatorAssistantService.getSession(id);
+  }
+
+  @Post('session/:id/reanalyze')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Re-run curator analysis for an existing session',
+  })
+  async reanalyzeSession(
+    @Param('id') id: string,
+    @Body() body: CuratorSessionReanalyzeDto,
+    @Req()
+    req: Request & { user?: { id?: string | number; fullName?: string } },
+  ) {
+    return this.curatorAssistantService.reanalyzeSession(id, body, {
+      id: req.user?.id ?? null,
+      fullName: req.user?.fullName ?? null,
+    });
+  }
+
+  @Post('session/:id/decision')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'Store a curator decision for the current session',
+  })
+  async createSessionDecision(
+    @Param('id') id: string,
+    @Body() body: CuratorDecisionCreateDto,
+    @Req()
+    req: Request & { user?: { id?: string | number; fullName?: string } },
+  ) {
+    return this.curatorAssistantService.createSessionDecision(id, body, {
+      id: req.user?.id ?? null,
+      fullName: req.user?.fullName ?? null,
+    });
+  }
+
+  @Get('session/:id/decisions')
+  @Roles('ADMIN', 'G', 'KD')
+  @ApiOperation({
+    summary: 'List decisions for the current curator session',
+  })
+  async listSessionDecisions(@Param('id') id: string) {
+    return this.curatorAssistantService.listSessionDecisions(id);
   }
 
   @Post('proposals')
