@@ -25,5 +25,6 @@ import { CrmCustomersService } from './crm-customers.service';
     BlueSalesCustomerPageService,
     BlueSalesRibbonEventsParser,
   ],
+  exports: [CrmCustomerCommunicationsService],
 })
 export class CrmCustomersModule {}

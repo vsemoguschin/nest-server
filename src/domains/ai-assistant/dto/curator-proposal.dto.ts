@@ -28,6 +28,8 @@ export const CURATOR_CHANGE_TYPES = [
 export const CURATOR_PROPOSAL_STATUSES = [
   'draft',
   'ready_for_review',
+  'approved',
+  'rejected',
 ] as const;
 
 export type CuratorArtifactType = (typeof CURATOR_ARTIFACT_TYPES)[number];
@@ -74,7 +76,20 @@ export class CuratorProposalCreateDto {
 
   @IsOptional()
   @IsString()
+  @IsIn(['primary', 'secondary'])
+  priority?: 'primary' | 'secondary';
+
+  @IsOptional()
+  @IsString()
   sourceAnalysisId?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceLearningRunId?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceFindingId?: string;
 }
 
 export type CuratorProposalRecord = {
@@ -88,19 +103,51 @@ export type CuratorProposalRecord = {
   changeType: CuratorChangeType;
   reason: string;
   proposedContent: string;
+  priority?: 'primary' | 'secondary';
   status: CuratorProposalStatus;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  reviewedBy: {
+    id: string | number | null;
+    fullName: string | null;
+  } | null;
   createdAt: string;
   createdBy: {
     id: string | number | null;
     fullName: string | null;
   };
   sourceAnalysisId: string | null;
+  sourceLearningRunId: string | null;
+  sourceFindingId: string | null;
+  applyStatus: 'not_applied' | 'applied' | 'failed' | 'unsupported';
+  applySummary: string | null;
+  appliedAt: string | null;
+  appliedBy: {
+    id: string | number | null;
+    fullName: string | null;
+  } | null;
+  applyTargetPath: string | null;
+  applyStrategy: string | null;
+  metadataUpdated: boolean;
+  metadataCreated: boolean;
+  applyValidationErrors: string[];
 };
 
 export class CuratorProposalListQueryDto {
   @IsOptional()
   @IsString()
   conversationId?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(CURATOR_PROPOSAL_STATUSES)
+  status?: CuratorProposalStatus;
+}
+
+export class CuratorProposalReviewDto {
+  @IsOptional()
+  @IsString()
+  reviewNote?: string;
 }
 
 export type CuratorStructuredProposalDraft = {
@@ -111,6 +158,7 @@ export type CuratorStructuredProposalDraft = {
   changeType: CuratorChangeType;
   reason: string;
   proposedContent: string;
+  priority?: 'primary' | 'secondary';
 };
 
 export type CuratorStructuredRecommendation = {

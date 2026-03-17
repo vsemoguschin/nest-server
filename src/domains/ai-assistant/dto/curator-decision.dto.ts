@@ -53,6 +53,11 @@ export class CuratorDecisionDraftPayloadDto {
   @IsString()
   @IsNotEmpty()
   proposedContent!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['primary', 'secondary'])
+  priority?: 'primary' | 'secondary';
 }
 
 export class CuratorDecisionCreateDto {

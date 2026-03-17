@@ -19,9 +19,11 @@ import {
   CuratorProposalCreateDto,
   CuratorProposalListQueryDto,
   CuratorProposalRecord,
+  CuratorProposalReviewDto,
   CuratorStructuredProposalDraft,
   CuratorStructuredRecommendation,
 } from './dto/curator-proposal.dto';
+import { CuratorProposalApplyResult } from './dto/curator-proposal-apply.dto';
 import {
   CuratorSessionClassification,
   CuratorSessionExecutionResponse,
@@ -259,7 +261,99 @@ export class CuratorAssistantService {
   ): Promise<CuratorProposalRecord[]> {
     return this.proposalStorage.list({
       conversationId: query.conversationId,
+      status: query.status,
     });
+  }
+
+  async getProposalDraft(proposalId: string): Promise<CuratorProposalRecord> {
+    const proposal = await this.proposalStorage.getById(proposalId);
+    if (!proposal) {
+      throw new NotFoundException({
+        message: 'Curator proposal draft not found',
+        proposalId,
+      });
+    }
+
+    return proposal;
+  }
+
+  async approveProposalDraft(
+    proposalId: string,
+    dto: CuratorProposalReviewDto,
+    actor: { id: string | number | null; fullName: string | null },
+  ): Promise<CuratorProposalRecord> {
+    return this.proposalStorage.review(proposalId, {
+      status: 'approved',
+      reviewNote: dto.reviewNote ?? null,
+      reviewedBy: actor,
+    });
+  }
+
+  async rejectProposalDraft(
+    proposalId: string,
+    dto: CuratorProposalReviewDto,
+    actor: { id: string | number | null; fullName: string | null },
+  ): Promise<CuratorProposalRecord> {
+    return this.proposalStorage.review(proposalId, {
+      status: 'rejected',
+      reviewNote: dto.reviewNote ?? null,
+      reviewedBy: actor,
+    });
+  }
+
+  async applyProposalDraft(
+    proposalId: string,
+    actor: { id: string | number | null; fullName: string | null },
+  ): Promise<{
+    proposal: CuratorProposalRecord;
+    applyResult: CuratorProposalApplyResult;
+  }> {
+    const proposal = await this.getProposalDraft(proposalId);
+
+    if (proposal.status !== 'approved') {
+      throw new BadGatewayException({
+        message: 'Only approved proposals can be applied',
+        proposalId,
+        status: proposal.status,
+      });
+    }
+
+    if (proposal.targetWorkspace !== 'assistant-dev') {
+      throw new BadGatewayException({
+        message: 'Controlled apply is allowed only for assistant-dev',
+        proposalId,
+        targetWorkspace: proposal.targetWorkspace,
+      });
+    }
+
+    if (proposal.applyStatus === 'applied') {
+      throw new BadGatewayException({
+        message: 'Proposal is already applied',
+        proposalId,
+        targetPath: proposal.applyTargetPath,
+      });
+    }
+
+    const applyResult = await this.runApplyProposal(proposal, actor);
+    const updatedProposal = await this.proposalStorage.recordApplyResult(
+      proposal.id,
+      {
+        applyStatus: applyResult.applyStatus,
+        applySummary: applyResult.summary,
+        appliedAt: applyResult.appliedAt,
+        appliedBy: actor,
+        applyTargetPath: applyResult.targetPath,
+        applyStrategy: applyResult.strategyUsed,
+        metadataUpdated: applyResult.metadataUpdated,
+        metadataCreated: applyResult.metadataCreated,
+        applyValidationErrors: applyResult.validationErrors,
+      },
+    );
+
+    return {
+      proposal: updatedProposal,
+      applyResult,
+    };
   }
 
   async createSessionDecision(
@@ -269,6 +363,8 @@ export class CuratorAssistantService {
   ): Promise<CuratorDecisionExecutionResponse> {
     const session = await this.getSessionOrThrow(sessionId);
     let createdProposal: CuratorProposalRecord | null = null;
+    const targetDraftKey =
+      dto.targetDraftKey ?? this.buildDraftKey(dto.proposalDraft ?? null);
 
     if (dto.decisionType === 'CREATE_DRAFT') {
       if (!dto.proposalDraft) {
@@ -277,6 +373,48 @@ export class CuratorAssistantService {
             'CREATE_DRAFT decision requires proposalDraft payload',
           sessionId,
         });
+      }
+
+      const existingDecision =
+        await this.decisionStorage.findCreateDraftDecision(
+          session.id,
+          targetDraftKey,
+        );
+
+      if (existingDecision?.createdProposalId) {
+        const existingProposal = await this.proposalStorage.getById(
+          existingDecision.createdProposalId,
+        );
+
+        if (existingProposal) {
+          return {
+            decision: existingDecision,
+            createdProposal: existingProposal,
+          };
+        }
+      }
+
+      const existingProposal = await this.findExistingProposalForDraft(
+        session.conversationId,
+        dto.sourceAnalysisId ?? null,
+        dto.proposalDraft,
+      );
+
+      if (existingProposal) {
+        const linkedDecision = await this.decisionStorage.create({
+          sessionId: session.id,
+          conversationId: session.conversationId,
+          decisionType: dto.decisionType,
+          targetDraftKey,
+          reason: dto.reason,
+          createdProposalId: existingProposal.id,
+          createdBy: actor,
+        });
+
+        return {
+          decision: linkedDecision,
+          createdProposal: existingProposal,
+        };
       }
 
       createdProposal = await this.createProposalDraft(
@@ -300,9 +438,7 @@ export class CuratorAssistantService {
       sessionId: session.id,
       conversationId: session.conversationId,
       decisionType: dto.decisionType,
-      targetDraftKey:
-        dto.targetDraftKey ??
-        this.buildDraftKey(dto.proposalDraft ?? null),
+      targetDraftKey,
       reason: dto.reason,
       createdProposalId: createdProposal?.id ?? null,
       createdBy: actor,
@@ -324,6 +460,36 @@ export class CuratorAssistantService {
       decision,
       createdProposal,
     };
+  }
+
+  private async findExistingProposalForDraft(
+    conversationId: string,
+    sourceAnalysisId: string | null,
+    draft: CuratorDecisionCreateDto['proposalDraft'],
+  ): Promise<CuratorProposalRecord | null> {
+    if (!draft) {
+      return null;
+    }
+
+    const proposals = await this.proposalStorage.list({ conversationId });
+
+    return (
+      proposals.find((proposal) => {
+        if (sourceAnalysisId && proposal.sourceAnalysisId !== sourceAnalysisId) {
+          return false;
+        }
+
+        return (
+          proposal.targetWorkspace === 'assistant-dev' &&
+          proposal.artifactType === draft.artifactType &&
+          proposal.changeType === draft.changeType &&
+          proposal.targetKey === (draft.targetKey ?? null) &&
+          proposal.targetPath === (draft.targetPath ?? null) &&
+          proposal.reason === draft.reason &&
+          proposal.proposedContent === draft.proposedContent
+        );
+      }) ?? null
+    );
   }
 
   async listSessionDecisions(
@@ -408,8 +574,8 @@ export class CuratorAssistantService {
     );
 
     const runtimeResponse = await this.runCuratorRuntime(input.prompt, input.analysisId);
-    const structuredRecommendation = this.parseStructuredRecommendation(
-      runtimeResponse.text,
+    const structuredRecommendation = this.limitStructuredRecommendationDrafts(
+      this.parseStructuredRecommendation(runtimeResponse.text),
     );
 
     return {
@@ -758,6 +924,51 @@ export class CuratorAssistantService {
     }
   }
 
+  private async runApplyProposal(
+    proposal: CuratorProposalRecord,
+    actor: { id: string | number | null; fullName: string | null },
+  ): Promise<CuratorProposalApplyResult> {
+    try {
+      const response = await this.assistantHttp.post<CuratorProposalApplyResult>(
+        '/api/brain/apply-proposal',
+        {
+          proposalId: proposal.id,
+          proposalStatus: 'approved',
+          targetWorkspace: 'assistant-dev',
+          artifactType: proposal.artifactType,
+          targetKey: proposal.targetKey ?? undefined,
+          targetPath: proposal.targetPath ?? undefined,
+          changeType: proposal.changeType,
+          reason: proposal.reason,
+          proposedContent: proposal.proposedContent,
+          appliedBy: {
+            id: actor.id === null ? undefined : String(actor.id),
+            fullName: actor.fullName ?? undefined,
+          },
+        },
+      );
+
+      return response.data;
+    } catch (error: any) {
+      if (error?.response) {
+        throw new BadGatewayException({
+          message: 'assistant-service proposal apply returned an error',
+          assistantUrl: this.assistantBaseUrl,
+          assistantStatus: error.response.status,
+          assistantData: error.response.data,
+          proposalId: proposal.id,
+        });
+      }
+
+      throw new BadGatewayException({
+        message: 'assistant-service proposal apply is unavailable',
+        assistantUrl: this.assistantBaseUrl,
+        assistantErrorCode: error?.code ?? null,
+        assistantErrorMessage: error?.message ?? 'Unknown assistant error',
+      });
+    }
+  }
+
   private buildCuratorPrompt(dto: CuratorAnalyzeDto): string {
     const preamble = [
       'Ты работаешь как curator assistant для улучшения assistant brain.',
@@ -766,6 +977,16 @@ export class CuratorAssistantService {
       'Не предлагай изменения CRM business logic или инфраструктуры.',
       'Не предлагай прямые изменения assistant-live.',
       'Если контекст был сокращён, учитывай только переданные фрагменты и не придумывай недостающие детали.',
+      'Учитывай operatorIntent из conversationContext.crmContext.operatorIntent, если он передан.',
+      'При генерации proposalDrafts ты ОБЯЗАН приоритизировать предложения, которые напрямую соответствуют operatorIntent.',
+      'Верни ровно 1 primary proposal и не более 1 secondary proposal, только если он тесно связан с primary.',
+      'Никогда не возвращай больше 2 proposalDrafts.',
+      'Если видишь дополнительные улучшения, опиши их только в summary или improvementFocus, но НЕ добавляй их в proposalDrafts.',
+      'Предпочитай минимальные и высокоэффективные изменения вместо нескольких мелких правок.',
+      'При reinforce_positive: primary должен быть script или template; secondary возможен только как rule/instruction для защиты паттерна.',
+      'При fix_issue: primary должен быть rule или instruction; secondary возможен как script correction.',
+      'При find_gap: primary должен быть faq или pricing; secondary возможен как script.',
+      'При analyze: верни один самый impactful draft и максимум один тесно связанный дополнительный.',
       'Верни ТОЛЬКО JSON без markdown и без пояснений вне JSON.',
     ].join('\n\n');
 
@@ -989,6 +1210,7 @@ export class CuratorAssistantService {
             changeType: 'add | update | clarify | remove',
             reason: 'string',
             proposedContent: 'string',
+            priority: 'primary | secondary | null',
           },
         ],
       },
@@ -1033,6 +1255,66 @@ export class CuratorAssistantService {
         502,
       );
     }
+  }
+
+  private limitStructuredRecommendationDrafts(
+    recommendation: CuratorStructuredRecommendation,
+  ): CuratorStructuredRecommendation {
+    const limitedDrafts: CuratorStructuredProposalDraft[] = [];
+    const seenBuckets = new Set<string>();
+
+    for (const draft of recommendation.proposalDrafts ?? []) {
+      if (
+        !draft ||
+        draft.targetWorkspace !== 'assistant-dev' ||
+        !draft.reason?.trim() ||
+        !draft.proposedContent?.trim()
+      ) {
+        continue;
+      }
+
+      const bucket = this.getStructuredDraftBucket(draft);
+      if (bucket !== 'other' && seenBuckets.has(bucket)) {
+        continue;
+      }
+
+      limitedDrafts.push({
+        ...draft,
+        priority: limitedDrafts.length === 0 ? 'primary' : 'secondary',
+      });
+
+      if (bucket !== 'other') {
+        seenBuckets.add(bucket);
+      }
+
+      if (limitedDrafts.length >= 2) {
+        break;
+      }
+    }
+
+    return {
+      ...recommendation,
+      proposalDrafts: limitedDrafts,
+    };
+  }
+
+  private getStructuredDraftBucket(
+    draft: CuratorStructuredProposalDraft,
+  ): 'pattern' | 'support' | 'other' {
+    if (draft.artifactType === 'script' || draft.artifactType === 'template') {
+      return 'pattern';
+    }
+
+    if (
+      draft.artifactType === 'rule' ||
+      draft.artifactType === 'instruction' ||
+      draft.artifactType === 'faq' ||
+      draft.artifactType === 'pricing'
+    ) {
+      return 'support';
+    }
+
+    return 'other';
   }
 
   private extractJsonObject(rawText: string): string {

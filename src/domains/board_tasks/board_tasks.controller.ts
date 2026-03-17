@@ -633,7 +633,14 @@ export class TasksController {
         columnTitle: targetColumn.title,
       });
     }
-    return updated;
+    return {
+      taskId: updated.id,
+      fromColumnId: fromColumn?.id ?? null,
+      fromColumnTitle: fromColumn?.title ?? null,
+      toColumnId: targetColumn.id,
+      toColumnTitle: targetColumn.title,
+      updatedTask: updated,
+    };
   }
 
   // Архивировать/разархивировать карточку

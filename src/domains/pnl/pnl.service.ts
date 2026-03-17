@@ -1212,14 +1212,14 @@ export class PnlService {
     const interestExpensesTotal = resolveNumber(
       interestExpenses?.[0]?.value ?? 0,
     );
-    console.log('[PNL] Deposit interest totals (new-my)', {
-      period,
-      depositInterestTotal,
-    });
-    console.log('[PNL] Deposit interest totals (new)', {
-      period,
-      depositInterestTotal,
-    });
+    // console.log('[PNL] Deposit interest totals (new-my)', {
+    //   period,
+    //   depositInterestTotal,
+    // });
+    // console.log('[PNL] Deposit interest totals (new)', {
+    //   period,
+    //   depositInterestTotal,
+    // });
     const programmersTotal = resolveNumber(
       programmersExpenses?.[0]?.value ?? 0,
     );

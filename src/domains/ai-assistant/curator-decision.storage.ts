@@ -13,4 +13,8 @@ export interface CuratorDecisionStorage {
     createdBy: { id: string | number | null; fullName: string | null };
   }): Promise<CuratorDecisionRecord>;
   listBySession(sessionId: string): Promise<CuratorDecisionRecord[]>;
+  findCreateDraftDecision(
+    sessionId: string,
+    targetDraftKey: string | null,
+  ): Promise<CuratorDecisionRecord | null>;
 }

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserDto } from '../users/dto/user.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 interface ChartDataItem {
@@ -2188,7 +2192,7 @@ export class CommercialDatasService {
     };
 
     if (isSelfOnlyRole) {
-      where.id = user.id;
+      // where.id = user.id;
       where.role = {
         shortName: user.role.shortName,
       };
@@ -2352,6 +2356,11 @@ export class CommercialDatasService {
     });
     if (!m) {
       throw new NotFoundException('Manager not found');
+    }
+    if (['MOP', 'MOV'].includes(user.role.shortName) && managerId !== user.id) {
+      throw new ForbiddenException(
+        'У вас нет доступа к данным этого менеджера',
+      );
     }
     return await this.getMopDatas(period, managerId);
   }

@@ -37,4 +37,20 @@ export class CuratorDecisionMemoryStorage implements CuratorDecisionStorage {
       .filter((record) => record.sessionId === sessionId)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
+
+  async findCreateDraftDecision(
+    sessionId: string,
+    targetDraftKey: string | null,
+  ): Promise<CuratorDecisionRecord | null> {
+    return (
+      [...this.records.values()]
+        .filter(
+          (record) =>
+            record.sessionId === sessionId &&
+            record.decisionType === 'CREATE_DRAFT' &&
+            record.targetDraftKey === targetDraftKey,
+        )
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] ?? null
+    );
+  }
 }

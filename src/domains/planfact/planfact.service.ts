@@ -2171,8 +2171,8 @@ export class PlanfactService {
           'https://business.tbank.ru/openapi/api/v1/statement',
           {
             proxy: false,
-            // httpAgent: tbankProxyAgent,
-            // httpsAgent: tbankProxyAgent,
+            httpAgent: tbankProxyAgent,
+            httpsAgent: tbankProxyAgent,
             headers: {
               Authorization: 'Bearer ' + tToken,
               'Content-Type': 'application/json',
@@ -2189,14 +2189,14 @@ export class PlanfactService {
           },
         );
 
-        console.log('T-Bank statement balances:', {
-          account: account.name,
-          accountNumber: account.accountNumber,
-          period,
-          from: fromDate.toISOString(),
-          to: toDate.toISOString(),
-          response: response.data,
-        });
+        // console.log('T-Bank statement balances:', {
+        //   account: account.name,
+        //   accountNumber: account.accountNumber,
+        //   period,
+        //   from: fromDate.toISOString(),
+        //   to: toDate.toISOString(),
+        //   response: response.data,
+        // });
 
         return {
           account: account.name,
