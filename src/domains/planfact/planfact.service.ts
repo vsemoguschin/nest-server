@@ -2216,8 +2216,8 @@ export class PlanfactService {
           'https://business.tbank.ru/openapi/api/v1/statement',
           {
             proxy: false,
-            httpAgent: tbankProxyAgent,
-            httpsAgent: tbankProxyAgent,
+            // httpAgent: tbankProxyAgent,
+            // httpsAgent: tbankProxyAgent,
             headers: {
               Authorization: 'Bearer ' + tToken,
               'Content-Type': 'application/json',
