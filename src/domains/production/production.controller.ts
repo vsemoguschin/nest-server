@@ -48,9 +48,10 @@ export class ProductionController {
     if (!orderId || orderId <= 0) return 0;
     const order = await this.prisma.taskOrder.findUnique({
       where: { id: orderId },
-      select: { adapter: true, dimmer: true },
+      select: { material: true, adapter: true, dimmer: true },
     });
     if (!order) return 0;
+    if (order.material !== 'ПВХ') return 0;
     let surcharge = 0;
     if (order.adapter && order.adapter !== 'Нет') surcharge += 60;
     if (order.dimmer) surcharge += 60;

@@ -3205,7 +3205,7 @@ export class CommercialDatasService {
       role: {
         shortName: 'MOV',
       },
-      groupId: { in: [19, 17] },
+      groupId: { in: [19, 17, 26] },
     };
     //для расчета зп от
     const movPayments = await this.prisma.payment.findMany({
@@ -3363,7 +3363,7 @@ export class CommercialDatasService {
       const managerDops = dops.filter(
         (d) =>
           d.user.role.shortName === 'MOV' &&
-          (d.user.groupId === 19 || d.user.groupId === 17),
+          (d.user.groupId === 19 || d.user.groupId === 17 || d.user.groupId === 26),
       );
       if (managerDops.length) {
         const dealDopsPrice = dops.reduce((a, b) => a + b.price, 0);

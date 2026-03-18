@@ -55,6 +55,35 @@ const parseOptionalProjectId = (value?: string): number | undefined => {
   return parsed;
 };
 
+const parseOptionalPeriod = (value?: string): string | undefined => {
+  if (!value) return undefined;
+  if (!/^\d{4}-\d{2}$/.test(value)) {
+    throw new BadRequestException(
+      'Параметр period должен быть в формате YYYY-MM (например, 2025-01)',
+    );
+  }
+  return value;
+};
+
+const validateRangeOrPeriod = (
+  from: string | undefined,
+  to: string | undefined,
+  period: string | undefined,
+) => {
+  if (period) return;
+
+  if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    throw new BadRequestException(
+      'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+    );
+  }
+  if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    throw new BadRequestException(
+      'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+    );
+  }
+};
+
 const parseIdList = (
   value: string | string[] | undefined,
   options: { field: string; allowZero: boolean },
@@ -129,18 +158,10 @@ export class PlanfactController {
     expenseCategoryId?: number[],
     @Query('typeOfOperation') typeOfOperation?: string,
     @Query('searchText') searchText?: string,
+    @Query('period') period?: string,
   ) {
     // Убрана обязательность accountId
-    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
-      throw new BadRequestException(
-        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
-      );
-    }
-    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-      throw new BadRequestException(
-        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
-      );
-    }
+    validateRangeOrPeriod(from, to, period);
     if (page < 1) {
       throw new BadRequestException('Параметр page должен быть больше 0');
     }
@@ -182,12 +203,14 @@ export class PlanfactController {
 
     const parsedAccountId = parseOptionalAccountId(accountId);
     const parsedProjectId = parseOptionalProjectId(projectId);
+    const parsedPeriod = parseOptionalPeriod(period);
 
     return this.planfactService.getOriginalOperations({
       from,
       to,
       page,
       limit,
+      period: parsedPeriod,
       accountId: parsedAccountId,
       projectId: parsedProjectId,
       distributionFilter,
@@ -203,6 +226,7 @@ export class PlanfactController {
   async exportOriginalOperations(
     @Query('from') from: string,
     @Query('to') to: string,
+    @Query('period') period: string | undefined,
     @Res({ passthrough: true }) res: Response,
     @Query('accountId') accountId?: string,
     @Query('projectId') projectId?: string,
@@ -212,16 +236,7 @@ export class PlanfactController {
     @Query('typeOfOperation') typeOfOperation?: string,
     @Query('searchText') searchText?: string,
   ) {
-    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
-      throw new BadRequestException(
-        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
-      );
-    }
-    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-      throw new BadRequestException(
-        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
-      );
-    }
+    validateRangeOrPeriod(from, to, period);
     if (
       distributionFilter &&
       !['all', 'hasCat', 'hasntCat'].includes(distributionFilter)
@@ -241,6 +256,7 @@ export class PlanfactController {
 
     const parsedAccountId = parseOptionalAccountId(accountId);
     const parsedProjectId = parseOptionalProjectId(projectId);
+    const parsedPeriod = parseOptionalPeriod(period);
     const parsedCounterPartyId = parseIdList(counterPartyId, {
       field: 'counterPartyId',
       allowZero: false,
@@ -255,6 +271,7 @@ export class PlanfactController {
     const buffer = await this.planfactService.exportOriginalOperations({
       from,
       to,
+      period: parsedPeriod,
       accountId: parsedAccountId,
       projectId: parsedProjectId,
       distributionFilter,
@@ -264,7 +281,9 @@ export class PlanfactController {
       searchText,
     });
 
-    const filename = `operations_${from}_${to}.xlsx`;
+    const filename = parsedPeriod
+      ? `operations_${parsedPeriod}.xlsx`
+      : `operations_${from}_${to}.xlsx`;
     res.set({
       'Content-Type':
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -279,7 +298,7 @@ export class PlanfactController {
   async getOriginalOperationsTotals(
     @Query('from') from: string,
     @Query('to') to: string,
-    @Query('accountId') accountId?: number,
+    @Query('accountId') accountId?: string,
     @Query('projectId') projectId?: string,
     @Query(
       'counterPartyId',
@@ -292,17 +311,9 @@ export class PlanfactController {
     )
     expenseCategoryId?: number[],
     @Query('typeOfOperation') typeOfOperation?: string,
+    @Query('period') period?: string,
   ) {
-    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
-      throw new BadRequestException(
-        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
-      );
-    }
-    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-      throw new BadRequestException(
-        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
-      );
-    }
+    validateRangeOrPeriod(from, to, period);
     if (
       counterPartyId &&
       counterPartyId.some((id) => !Number.isInteger(id) || id < 1)
@@ -328,13 +339,16 @@ export class PlanfactController {
       );
     }
 
+    const parsedAccountId = parseOptionalAccountId(accountId);
     const parsedProjectId = parseOptionalProjectId(projectId);
+    const parsedPeriod = parseOptionalPeriod(period);
 
     return this.planfactService.getOriginalOperationsTotals({
       from,
       to,
-      accountId,
+      accountId: parsedAccountId,
       projectId: parsedProjectId,
+      period: parsedPeriod,
       // counterPartyId,
       // expenseCategoryId,
       // typeOfOperation,

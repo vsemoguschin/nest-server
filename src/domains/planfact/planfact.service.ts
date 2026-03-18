@@ -114,8 +114,9 @@ export class PlanfactService {
       if (position.expenseCategoryId) {
         const category = await this.prisma.expenseCategory.findUnique({
           where: { id: position.expenseCategoryId },
+          select: { id: true, deletedAt: true },
         });
-        if (!category) {
+        if (!category || category.deletedAt) {
           throw new NotFoundException(
             `Категория с ID ${position.expenseCategoryId} не найдена`,
           );
@@ -189,8 +190,9 @@ export class PlanfactService {
     if (dto.incomeExpenseCategoryId) {
       const incomeCategory = await this.prisma.expenseCategory.findUnique({
         where: { id: dto.incomeExpenseCategoryId },
+        select: { id: true, deletedAt: true },
       });
-      if (!incomeCategory) {
+      if (!incomeCategory || incomeCategory.deletedAt) {
         throw new BadRequestException(
           'Указанная категория для входящих операций не найдена',
         );
@@ -200,8 +202,9 @@ export class PlanfactService {
     if (dto.outcomeExpenseCategoryId) {
       const outcomeCategory = await this.prisma.expenseCategory.findUnique({
         where: { id: dto.outcomeExpenseCategoryId },
+        select: { id: true, deletedAt: true },
       });
-      if (!outcomeCategory) {
+      if (!outcomeCategory || outcomeCategory.deletedAt) {
         throw new BadRequestException(
           'Указанная категория для исходящих операций не найдена',
         );
@@ -284,8 +287,9 @@ export class PlanfactService {
     if (dto.parentId) {
       const parentExists = await this.prisma.expenseCategory.findUnique({
         where: { id: dto.parentId },
+        select: { id: true, type: true, deletedAt: true },
       });
-      if (!parentExists) {
+      if (!parentExists || parentExists.deletedAt) {
         throw new BadRequestException(
           'Указанная родительская категория не найдена',
         );
@@ -316,9 +320,10 @@ export class PlanfactService {
     // Проверяем, существует ли категория
     const category = await this.prisma.expenseCategory.findUnique({
       where: { id },
+      select: { id: true, type: true, deletedAt: true },
     });
 
-    if (!category) {
+    if (!category || category.deletedAt) {
       throw new NotFoundException(`Категория с ID ${id} не найдена`);
     }
 
@@ -330,8 +335,9 @@ export class PlanfactService {
         // Проверяем, что родительская категория существует
         const parentExists = await this.prisma.expenseCategory.findUnique({
           where: { id: dto.parentId },
+          select: { id: true, type: true, parentId: true, deletedAt: true },
         });
-        if (!parentExists) {
+        if (!parentExists || parentExists.deletedAt) {
           throw new BadRequestException(
             'Указанная родительская категория не найдена',
           );
@@ -360,9 +366,9 @@ export class PlanfactService {
         ): Promise<boolean> => {
           const parent = await this.prisma.expenseCategory.findUnique({
             where: { id: parentId },
-            select: { parentId: true },
+            select: { parentId: true, deletedAt: true },
           });
-          if (!parent || !parent.parentId) {
+          if (!parent || parent.deletedAt || !parent.parentId) {
             return false;
           }
           if (parent.parentId === currentId) {
@@ -429,10 +435,10 @@ export class PlanfactService {
   async deleteExpenseCategory(id: number) {
     const category = await this.prisma.expenseCategory.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, deletedAt: true },
     });
 
-    if (!category) {
+    if (!category || category.deletedAt) {
       throw new NotFoundException(`Категория с ID ${id} не найдена`);
     }
 
@@ -457,7 +463,10 @@ export class PlanfactService {
         data: { outcomeExpenseCategoryId: null },
       });
 
-      await prisma.expenseCategory.delete({ where: { id } });
+      await prisma.expenseCategory.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
 
       return {
         childrenUpdated: childrenUpdate.count,
@@ -475,6 +484,7 @@ export class PlanfactService {
     const allCategories = await this.prisma.expenseCategory.findMany({
       where: {
         type,
+        deletedAt: null,
       },
       orderBy: {
         name: 'asc',
@@ -533,6 +543,9 @@ export class PlanfactService {
   async getExpenseCategoriesList() {
     // Получаем все категории без include (более эффективно)
     const allCategories = await this.prisma.expenseCategory.findMany({
+      where: {
+        deletedAt: null,
+      },
       orderBy: {
         name: 'asc',
       },
@@ -692,6 +705,7 @@ export class PlanfactService {
     {
       from,
       to,
+      period,
       accountId,
       projectId,
       counterPartyId,
@@ -699,8 +713,9 @@ export class PlanfactService {
       typeOfOperation,
       searchText,
     }: {
-      from: string;
-      to: string;
+      from?: string;
+      to?: string;
+      period?: string;
       accountId?: number;
       projectId?: number;
       counterPartyId?: number[];
@@ -711,6 +726,7 @@ export class PlanfactService {
     realAccountNumbers: string[],
   ) {
     const conditions: Record<string, unknown>[] = [];
+    const positionConditions: Record<string, unknown>[] = [];
 
     if (searchText) {
       conditions.push({
@@ -747,122 +763,131 @@ export class PlanfactService {
           },
         ],
       });
-    } else {
+    }
+
+    if (!period) {
       conditions.push({
         operationDate: {
           gte: from,
           lte: to + 'T23:59:59.999Z',
         },
       });
-      if (
-        expenseCategoryId &&
-        expenseCategoryId.length > 0 &&
-        expenseCategoryId.includes(0)
-      ) {
-        conditions.push({
-          NOT: {
-            OR: [
-              {
-                payPurpose: {
-                  contains: 'Возврат д/с с депозита "Овернайт"',
-                },
-              },
-              {
-                payPurpose: {
-                  contains: 'Внутренний перевод на депозит "Овернайт"',
-                },
-              },
-            ],
-          },
-        });
-      }
+    }
 
-      if (accountId) {
-        conditions.push({
-          accountId,
-        });
-      }
+    if (
+      expenseCategoryId &&
+      expenseCategoryId.length > 0 &&
+      expenseCategoryId.includes(0)
+    ) {
+      conditions.push({
+        NOT: {
+          OR: [
+            {
+              payPurpose: {
+                contains: 'Возврат д/с с депозита "Овернайт"',
+              },
+            },
+            {
+              payPurpose: {
+                contains: 'Внутренний перевод на депозит "Овернайт"',
+              },
+            },
+          ],
+        },
+      });
+    }
 
-      if (typeOfOperation) {
-        if (typeOfOperation === 'Transfer') {
-          if (realAccountNumbers.length > 0) {
-            conditions.push({
+    if (accountId) {
+      conditions.push({
+        accountId,
+      });
+    }
+
+    if (typeOfOperation) {
+      if (typeOfOperation === 'Transfer') {
+        if (realAccountNumbers.length > 0) {
+          conditions.push({
+            counterPartyAccount: {
+              in: realAccountNumbers,
+            },
+          });
+        } else {
+          conditions.push({
+            id: -1,
+          });
+        }
+      } else {
+        conditions.push({
+          typeOfOperation,
+        });
+        if (realAccountNumbers.length > 0) {
+          conditions.push({
+            NOT: {
               counterPartyAccount: {
                 in: realAccountNumbers,
               },
-            });
-          } else {
-            conditions.push({
-              id: -1,
-            });
-          }
-        } else {
-          conditions.push({
-            typeOfOperation,
-          });
-          if (realAccountNumbers.length > 0) {
-            conditions.push({
-              NOT: {
-                counterPartyAccount: {
-                  in: realAccountNumbers,
-                },
-              },
-            });
-          }
-        }
-      }
-
-      const positionConditions: Record<string, unknown>[] = [];
-
-      if (projectId) {
-        positionConditions.push({
-          projectId,
-        });
-      }
-
-      if (counterPartyId && counterPartyId.length > 0) {
-        positionConditions.push({
-          counterPartyId: {
-            in: counterPartyId,
-          },
-        });
-      }
-
-      if (expenseCategoryId && expenseCategoryId.length > 0) {
-        if (expenseCategoryId.includes(0)) {
-          const categoryIds = expenseCategoryId.filter((id) => id !== 0);
-          if (categoryIds.length > 0) {
-            positionConditions.push({
-              OR: [
-                { expenseCategoryId: null },
-                { expenseCategoryId: { in: categoryIds } },
-              ],
-            });
-          } else {
-            positionConditions.push({
-              expenseCategoryId: null,
-            });
-          }
-        } else {
-          positionConditions.push({
-            expenseCategoryId: {
-              in: expenseCategoryId,
             },
           });
         }
       }
+    }
 
-      if (positionConditions.length > 0) {
-        const positionFilter =
-          positionConditions.length === 1
-            ? positionConditions[0]
-            : { AND: positionConditions };
-        conditions.push({
-          operationPositions: {
-            some: positionFilter,
+    if (period) {
+      positionConditions.push({
+        period: {
+          startsWith: period,
+        },
+      });
+    }
+
+    if (projectId) {
+      positionConditions.push({
+        projectId,
+      });
+    }
+
+    if (counterPartyId && counterPartyId.length > 0) {
+      positionConditions.push({
+        counterPartyId: {
+          in: counterPartyId,
+        },
+      });
+    }
+
+    if (expenseCategoryId && expenseCategoryId.length > 0) {
+      if (expenseCategoryId.includes(0)) {
+        const categoryIds = expenseCategoryId.filter((id) => id !== 0);
+        if (categoryIds.length > 0) {
+          positionConditions.push({
+            OR: [
+              { expenseCategoryId: null },
+              { expenseCategoryId: { in: categoryIds } },
+            ],
+          });
+        } else {
+          positionConditions.push({
+            expenseCategoryId: null,
+          });
+        }
+      } else {
+        positionConditions.push({
+          expenseCategoryId: {
+            in: expenseCategoryId,
           },
         });
       }
+    }
+
+    if (positionConditions.length > 0) {
+      const positionFilter =
+        positionConditions.length === 1
+          ? positionConditions[0]
+          : { AND: positionConditions };
+      conditions.push({
+        operationPositions: {
+          some: positionFilter,
+        },
+      });
     }
 
     return conditions.length === 1 ? conditions[0] : { AND: conditions };
@@ -1034,6 +1059,7 @@ export class PlanfactService {
   async getOriginalOperations({
     from,
     to,
+    period,
     page,
     limit,
     accountId,
@@ -1044,8 +1070,9 @@ export class PlanfactService {
     typeOfOperation,
     searchText,
   }: {
-    from: string;
-    to: string;
+    from?: string;
+    to?: string;
+    period?: string;
     page: number;
     limit: number;
     accountId?: number;
@@ -1062,6 +1089,7 @@ export class PlanfactService {
       {
         from,
         to,
+        period,
         accountId,
         projectId,
         counterPartyId,
@@ -1135,6 +1163,7 @@ export class PlanfactService {
   async exportOriginalOperations({
     from,
     to,
+    period,
     accountId,
     projectId,
     distributionFilter,
@@ -1143,8 +1172,9 @@ export class PlanfactService {
     typeOfOperation,
     searchText,
   }: {
-    from: string;
-    to: string;
+    from?: string;
+    to?: string;
+    period?: string;
     accountId?: number;
     projectId?: number;
     distributionFilter?: string;
@@ -1158,6 +1188,7 @@ export class PlanfactService {
       {
         from,
         to,
+        period,
         accountId,
         projectId,
         counterPartyId,
@@ -1265,26 +1296,30 @@ export class PlanfactService {
   async getOriginalOperationsTotals({
     from,
     to,
+    period,
     accountId,
     projectId,
     // counterPartyId,
     // expenseCategoryId,
     // typeOfOperation,
   }: {
-    from: string;
-    to: string;
+    from?: string;
+    to?: string;
+    period?: string;
     accountId?: number;
     projectId?: number;
     // counterPartyId?: number[];
     // expenseCategoryId?: number[];
     // typeOfOperation?: string;
   }) {
-    const where: Record<string, unknown> = {
-      operationDate: {
+    const where: Record<string, unknown> = {};
+
+    if (!period) {
+      where.operationDate = {
         gte: from,
         lte: to + 'T23:59:59.999Z',
-      },
-    };
+      };
+    }
 
     if (accountId) {
       where.accountId = accountId;
@@ -1302,6 +1337,14 @@ export class PlanfactService {
 
     // Формируем условия для фильтрации по позициям операций
     const positionConditions: Record<string, unknown>[] = [];
+
+    if (period) {
+      positionConditions.push({
+        period: {
+          startsWith: period,
+        },
+      });
+    }
 
     if (projectId) {
       positionConditions.push({
@@ -1412,11 +1455,11 @@ export class PlanfactService {
 
     // Проходим по всем операциям и их позициям
     for (const operation of allOperations) {
-      const relevantPositions = projectId
-        ? operation.operationPositions.filter(
-            (position) => position.projectId === projectId,
-          )
-        : operation.operationPositions;
+      const relevantPositions = operation.operationPositions.filter(
+        (position) =>
+          (!projectId || position.projectId === projectId) &&
+          (!period || position.period?.startsWith(period)),
+      );
 
       if (relevantPositions.length === 0) {
         continue;
@@ -1827,8 +1870,9 @@ export class PlanfactService {
     if (categoriesData.incomeExpenseCategoryId != null) {
       const incomeCategory = await this.prisma.expenseCategory.findUnique({
         where: { id: categoriesData.incomeExpenseCategoryId },
+        select: { id: true, deletedAt: true },
       });
-      if (!incomeCategory) {
+      if (!incomeCategory || incomeCategory.deletedAt) {
         throw new NotFoundException(
           `Категория расходов с ID ${categoriesData.incomeExpenseCategoryId} не найдена`,
         );
@@ -1838,8 +1882,9 @@ export class PlanfactService {
     if (categoriesData.outcomeExpenseCategoryId != null) {
       const outcomeCategory = await this.prisma.expenseCategory.findUnique({
         where: { id: categoriesData.outcomeExpenseCategoryId },
+        select: { id: true, deletedAt: true },
       });
-      if (!outcomeCategory) {
+      if (!outcomeCategory || outcomeCategory.deletedAt) {
         throw new NotFoundException(
           `Категория расходов с ID ${categoriesData.outcomeExpenseCategoryId} не найдена`,
         );

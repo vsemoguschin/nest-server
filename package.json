@@ -26,7 +26,9 @@
     "seed:ad-sources-easybook-easyneon": "ts-node --transpile-only src/seeds/seed-ad-sources-easybook-easyneon.ts",
     "seed:bs-full-customers": "ts-node --transpile-only src/seeds/seed-bs-full-customers.ts",
     "seed:check-crm-customer-transition": "ts-node --transpile-only src/seeds/seed-check-crm-customer-transition.ts",
-    "seed:print-crm-accounts": "ts-node --transpile-only src/seeds/seed-print-crm-accounts.ts"
+    "seed:print-crm-accounts": "ts-node --transpile-only src/seeds/seed-print-crm-accounts.ts",
+    "seed:find-task-order-master-report": "ts-node --transpile-only src/seeds/seed-find-task-order-master-report.ts",
+    "seed:merge-expense-categories-subscriptions": "ts-node --transpile-only src/seeds/seed-merge-expense-categories-subscriptions.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",

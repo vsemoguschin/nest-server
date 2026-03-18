@@ -9,7 +9,7 @@ const CATEGORY_IDS = [
 async function main() {
   try {
     const categories = await prisma.expenseCategory.findMany({
-      where: { id: { in: CATEGORY_IDS } },
+      where: { id: { in: CATEGORY_IDS }, deletedAt: null },
       select: { id: true, name: true },
       orderBy: { id: 'asc' },
     });

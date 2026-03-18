@@ -471,14 +471,11 @@ export class PnlService {
     categoryId: number,
     projectId?: number,
   ): Promise<{ period: string; value: number }[]> {
-    // Один запрос вместо 4-х
     const where: {
       expenseCategoryId: number;
-      period: { in: string[] };
       projectId?: number;
     } = {
       expenseCategoryId: categoryId,
-      period: { in: periods },
     };
     if (typeof projectId === 'number') {
       where.projectId = projectId;
@@ -493,13 +490,37 @@ export class PnlService {
 
     // Группируем по периодам
     const grouped = periods.map((period) => {
-      const periodExpenses = allExpenses.filter((exp) => exp.period === period);
+      const periodExpenses = allExpenses.filter((exp) =>
+        exp.period?.startsWith(period),
+      );
       const value = periodExpenses.reduce((sum, exp) => sum + exp.amount, 0);
 
       return { period, value };
     });
 
     return grouped;
+  }
+
+  private async getNamedExpensesByCategory<
+    T extends Record<
+      string,
+      { periods: string[]; categoryId: number; projectId?: number }
+    >,
+  >(requests: T): Promise<{ [K in keyof T]: { period: string; value: number }[] }> {
+    const entries = await Promise.all(
+      Object.entries(requests).map(async ([key, request]) => [
+        key,
+        await this.getExpensesByCategory(
+          request.periods,
+          request.categoryId,
+          request.projectId,
+        ),
+      ]),
+    );
+
+    return Object.fromEntries(entries) as {
+      [K in keyof T]: { period: string; value: number }[];
+    };
   }
 
   // Приватная функция: сумма по категории за период через originalOperation.operationDate
@@ -558,6 +579,7 @@ export class PnlService {
       { id: 13 },
       { id: 148 },
       { id: 156 },
+      { id: 50 },
       { id: 18, projectId: EASYNEON_PROJECT_ID },
       { id: 17, projectId: EASYNEON_PROJECT_ID },
       { id: 152, projectId: EASYNEON_PROJECT_ID },
@@ -964,42 +986,6 @@ export class PnlService {
       mopBookSalesManagers,
       movBookAccountManagers,
       bookPLDatas,
-      installationExpenses,
-      productionHeadExpenses,
-      easyneonDesignExpenses,
-      easyneonDesignLeadExpenses,
-      easybookDesignLeadExpenses,
-      easyneonSalesDirectorSalary,
-      easybookSalesDirectorSalary,
-      easyneonMarketingTarget,
-      easyneonMarketingAvito,
-      easyneonMarketingSmm,
-      easybookMarketingTarget,
-      easybookMarketingAvito,
-      easybookMarketingSmm,
-      easyneonMarketingAds38,
-      easyneonMarketingAds42,
-      easyneonMarketingAds45,
-      easybookMarketingAds38,
-      easybookMarketingAds42,
-      easybookMarketingAds45,
-      easyneonRentExpenses,
-      easybookRentExpenses,
-      vkCashbackExpensesPrev,
-      accountingExpenses,
-      hrExpenses,
-      dividendsExpenses,
-      rkoExpenses,
-      financeExpenses,
-      depositInterestExpenses,
-      interestExpenses,
-      programmersExpenses,
-      easyneonPackPartsExpenses,
-      easyneonMasterPartsExpenses,
-      easyneonVkAccountManagers,
-      easyneonVkOrderManagers,
-      easybookBookLeadManagers,
-      easybookBookOrderManagers,
     ] = await Promise.all([
       this.prisma.logistShift.findMany({
         where: {
@@ -1045,43 +1031,201 @@ export class PnlService {
       this.commercialDatasService.getMOPBookPNLDatas(period),
       this.commercialDatasService.getMOVBookPNLDatas(period),
       this.getBookPLDatas(period),
-      this.getExpensesByCategory([period], 57, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 52, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 72, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 71, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 71, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 81, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 81, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 83, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 84, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 85, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 83, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 84, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 85, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 38, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 42, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 45, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 38, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 42, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 45, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 36, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 36, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([prevPeriod], 39),
-      this.getExpensesByCategory([period], 68),
-      this.getExpensesByCategory([period], 43),
-      this.getExpensesByCategory([period], 138, GENERAL_PROJECT_ID),
-      this.getExpensesByCategory([period], 48),
-      this.getExpensesByCategory([period], 151),
-      this.getExpensesByCategory([period], 13),
-      this.getExpensesByCategory([period], 63),
-      this.getExpensesByCategory([period], 87),
-      this.getExpensesByCategory([period], 23, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 24, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 79, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 80, EASYNEON_PROJECT_ID),
-      this.getExpensesByCategory([period], 142, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 140, EASYBOOK_PROJECT_ID),
     ]);
+
+    const expenseResults = await this.getNamedExpensesByCategory({
+      installationExpenses: {
+        periods: [period],
+        categoryId: 57,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      productionHeadExpenses: {
+        periods: [period],
+        categoryId: 52,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easyneonDesignExpenses: {
+        periods: [period],
+        categoryId: 72,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easyneonDesignLeadExpenses: {
+        periods: [period],
+        categoryId: 71,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easybookDesignLeadExpenses: {
+        periods: [period],
+        categoryId: 71,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easyneonSalesDirectorSalary: {
+        periods: [period],
+        categoryId: 81,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easybookSalesDirectorSalary: {
+        periods: [period],
+        categoryId: 81,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easyneonSalesDirectorExpenses: {
+        periods: [period],
+        categoryId: 75,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easybookSalesDirectorExpenses: {
+        periods: [period],
+        categoryId: 75,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easyneonMarketingTarget: {
+        periods: [period],
+        categoryId: 84,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easyneonMarketingAvito: {
+        periods: [period],
+        categoryId: 85,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easybookMarketingTarget: {
+        periods: [period],
+        categoryId: 84,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easybookMarketingAvito: {
+        periods: [period],
+        categoryId: 85,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easyneonMarketingSmm: {
+        periods: [period],
+        categoryId: 38,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easybookMarketingSmm: {
+        periods: [period],
+        categoryId: 38,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easyneonRentExpenses: {
+        periods: [period],
+        categoryId: 36,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easybookRentExpenses: {
+        periods: [period],
+        categoryId: 36,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      vkCashbackExpensesPrev: {
+        periods: [prevPeriod],
+        categoryId: 39,
+      },
+      accountingExpenses: {
+        periods: [period],
+        categoryId: 68,
+      },
+      hrExpenses: {
+        periods: [period],
+        categoryId: 43,
+      },
+      dividendsExpenses: {
+        periods: [period],
+        categoryId: 138,
+        projectId: GENERAL_PROJECT_ID,
+      },
+      rkoExpenses: {
+        periods: [period],
+        categoryId: 48,
+      },
+      courtsPenaltiesCommonExpenses: {
+        periods: [period],
+        categoryId: 50,
+      },
+      financeExpenses: {
+        periods: [period],
+        categoryId: 151,
+      },
+      depositInterestExpenses: {
+        periods: [period],
+        categoryId: 13,
+      },
+      interestExpenses: {
+        periods: [period],
+        categoryId: 63,
+      },
+      programmersExpenses: {
+        periods: [period],
+        categoryId: 87,
+      },
+      easyneonPackPartsExpenses: {
+        periods: [period],
+        categoryId: 23,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easyneonMasterPartsExpenses: {
+        periods: [period],
+        categoryId: 24,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easyneonVkAccountManagers: {
+        periods: [period],
+        categoryId: 79,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easyneonVkOrderManagers: {
+        periods: [period],
+        categoryId: 80,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easybookBookLeadManagers: {
+        periods: [period],
+        categoryId: 142,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easybookBookOrderManagers: {
+        periods: [period],
+        categoryId: 140,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+    });
+    const {
+      installationExpenses,
+      productionHeadExpenses,
+      easyneonDesignExpenses,
+      easyneonDesignLeadExpenses,
+      easybookDesignLeadExpenses,
+      easyneonSalesDirectorSalary,
+      easybookSalesDirectorSalary,
+      easyneonSalesDirectorExpenses,
+      easybookSalesDirectorExpenses,
+      easyneonMarketingTarget,
+      easyneonMarketingAvito,
+      easybookMarketingTarget,
+      easybookMarketingAvito,
+      easyneonMarketingSmm,
+      easybookMarketingSmm,
+      easyneonRentExpenses,
+      easybookRentExpenses,
+      vkCashbackExpensesPrev,
+      accountingExpenses,
+      hrExpenses,
+      dividendsExpenses,
+      rkoExpenses,
+      courtsPenaltiesCommonExpenses,
+      financeExpenses,
+      depositInterestExpenses,
+      interestExpenses,
+      programmersExpenses,
+      easyneonPackPartsExpenses,
+      easyneonMasterPartsExpenses,
+      easyneonVkAccountManagers,
+      easyneonVkOrderManagers,
+      easybookBookLeadManagers,
+      easybookBookOrderManagers,
+    } = expenseResults;
 
     const sumCostMinusPenalty = (
       items: Array<{ cost: unknown; penaltyCost?: unknown }>,
@@ -1148,8 +1292,14 @@ export class PnlService {
     const easyneonDesignLeadTotal = resolveNumber(
       easyneonDesignLeadExpenses?.[0]?.value ?? 0,
     );
+    const easyneonSalesDirectorTotal = resolveNumber(
+      easyneonSalesDirectorExpenses?.[0]?.value ?? 0,
+    );
     const easybookDesignLeadTotal = resolveNumber(
       easybookDesignLeadExpenses?.[0]?.value ?? 0,
+    );
+    const easybookSalesDirectorTotal = resolveNumber(
+      easybookSalesDirectorExpenses?.[0]?.value ?? 0,
     );
     const easyneonSalesDirectorSalaryTotal = resolveNumber(
       easyneonSalesDirectorSalary?.[0]?.value ?? 0,
@@ -1175,14 +1325,6 @@ export class PnlService {
     const easybookMarketingSmmTotal = resolveNumber(
       easybookMarketingSmm?.[0]?.value ?? 0,
     );
-    const easyneonMarketingAdsTotal =
-      resolveNumber(easyneonMarketingAds38?.[0]?.value ?? 0) +
-      resolveNumber(easyneonMarketingAds42?.[0]?.value ?? 0) +
-      resolveNumber(easyneonMarketingAds45?.[0]?.value ?? 0);
-    const easybookMarketingAdsTotal =
-      resolveNumber(easybookMarketingAds38?.[0]?.value ?? 0) +
-      resolveNumber(easybookMarketingAds42?.[0]?.value ?? 0) +
-      resolveNumber(easybookMarketingAds45?.[0]?.value ?? 0);
     const easyneonPackPartsTotal = resolveNumber(
       easyneonPackPartsExpenses?.[0]?.value ?? 0,
     );
@@ -1205,6 +1347,9 @@ export class PnlService {
     const hrTotal = resolveNumber(hrExpenses?.[0]?.value ?? 0);
     const dividendsTotal = resolveNumber(dividendsExpenses?.[0]?.value ?? 0);
     const rkoTotal = resolveNumber(rkoExpenses?.[0]?.value ?? 0);
+    const courtsPenaltiesCommonTotal = resolveNumber(
+      courtsPenaltiesCommonExpenses?.[0]?.value ?? 0,
+    );
     const financeTotal = resolveNumber(financeExpenses?.[0]?.value ?? 0);
     const depositInterestTotal = resolveNumber(
       depositInterestExpenses?.[0]?.value ?? 0,
@@ -1289,7 +1434,7 @@ export class PnlService {
       easyneonMarketingTargetTotal +
       easyneonMarketingAvitoTotal +
       easyneonMarketingSmmTotal +
-      easyneonMarketingAdsTotal;
+      0;
 
     const commercialEasybook =
       easybookDesignLeadTotal +
@@ -1302,7 +1447,7 @@ export class PnlService {
       easybookMarketingTargetTotal +
       easybookMarketingAvitoTotal +
       easybookMarketingSmmTotal +
-      easybookMarketingAdsTotal +
+      0 +
       ropsEasybookTotal;
 
     const commercialWithPromotionEasyneon =
@@ -1316,7 +1461,11 @@ export class PnlService {
       grossProfitEasybook - commercialWithPromotionEasybook - vatEasybook;
 
     const operatingExpensesTotal =
-      accountingTotal + hrTotal + rkoTotal + programmersTotal;
+      accountingTotal +
+      hrTotal +
+      rkoTotal +
+      courtsPenaltiesCommonTotal +
+      programmersTotal;
 
     const ebitdaTotal =
       marginalIncomeEasyneon + marginalIncomeEasybook - operatingExpensesTotal;
@@ -1390,9 +1539,11 @@ export class PnlService {
         'promotion-easyneon': promotionEasyneonTotal,
         'promotion-easybook': promotionEasybookTotal,
         'easyneon-sales-managers': salesManagersEasyneonTotal,
+        'easyneon-sales-director': easyneonSalesDirectorTotal,
         'easyneon-sales-accounts': easyneonVkAccountManagersTotal,
         'easyneon-sales-vk-ordering': easyneonVkOrderManagersTotal,
         'easybook-sales-managers': salesManagersEasybookTotal,
+        'easybook-sales-director': easybookSalesDirectorTotal,
         'easybook-sales-accounts': accountManagersEasybookTotal,
         // 'easybook-sales-book-lead': easybookBookLeadManagersTotal,
         // 'easybook-sales-book-ordering': easybookBookOrderManagersTotal,
@@ -1405,15 +1556,19 @@ export class PnlService {
         'easyneon-marketing-target': easyneonMarketingTargetTotal,
         'easyneon-marketing-avito': easyneonMarketingAvitoTotal,
         'easyneon-marketing-smm': easyneonMarketingSmmTotal,
-        'easyneon-marketing-ads': easyneonMarketingAdsTotal,
+        'easyneon-marketing-ads': 0,
+        'easyneon-marketing-subs': 0,
         'easybook-marketing-target': easybookMarketingTargetTotal,
         'easybook-marketing-avito': easybookMarketingAvitoTotal,
         'easybook-marketing-smm': easybookMarketingSmmTotal,
-        'easybook-marketing-ads': easybookMarketingAdsTotal,
+        'easybook-marketing-ads': 0,
+        'easybook-marketing-subs': 0,
         'operating-expenses-accounting': accountingTotal,
         'operating-expenses-finance': financeTotal,
         'operating-expenses-hr': hrTotal,
         'operating-expenses-rko': rkoTotal,
+        'operating-expenses-courts-penalties-common':
+          courtsPenaltiesCommonTotal,
         'cogs-easybook-print': bookPrintTotal,
         'cogs-easybook-delivery': easybookDeliveryTotal,
         'cogs-easybook-rent': easybookRentTotal,
@@ -1740,7 +1895,9 @@ export class PnlService {
       productionHeadExpenses,
       easyneonDesignExpenses,
       easyneonDesignLeadExpenses,
+      easyneonSalesDirectorExpenses,
       easybookDesignLeadExpenses,
+      easybookSalesDirectorExpenses,
       easyneonSalesDirectorSalary,
       easybookSalesDirectorSalary,
       easyneonMarketingTarget,
@@ -1812,8 +1969,10 @@ export class PnlService {
       this.getExpensesByCategory([period], 81, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 81, EASYBOOK_PROJECT_ID),
       this.getExpensesByCategory([period], 83, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 75, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 84, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 85, EASYNEON_PROJECT_ID),
+      this.getExpensesByCategory([period], 75, EASYBOOK_PROJECT_ID),
       this.getExpensesByCategory([period], 38),
       this.getExpensesByCategory([period], 42),
       this.getExpensesByCategory([period], 45),
@@ -1882,8 +2041,14 @@ export class PnlService {
     const easyneonDesignLeadTotal = resolveNumber(
       easyneonDesignLeadExpenses?.[0]?.value ?? 0,
     );
+    const easyneonSalesDirectorTotal = resolveNumber(
+      easyneonSalesDirectorExpenses?.[0]?.value ?? 0,
+    );
     const easybookDesignLeadTotal = resolveNumber(
       easybookDesignLeadExpenses?.[0]?.value ?? 0,
+    );
+    const easybookSalesDirectorTotal = resolveNumber(
+      easybookSalesDirectorExpenses?.[0]?.value ?? 0,
     );
     const easyneonSalesDirectorSalaryTotal = resolveNumber(
       easyneonSalesDirectorSalary?.[0]?.value ?? 0,
@@ -2095,7 +2260,9 @@ export class PnlService {
         'promotion-easyneon': promotionEasyneonTotal,
         'promotion-easybook': promotionEasybookTotal,
         'easyneon-sales-managers': salesManagersEasyneonTotal,
+        'easyneon-sales-director': easyneonSalesDirectorTotal,
         'easybook-sales-managers': salesManagersEasybookTotal,
+        'easybook-sales-director': easybookSalesDirectorTotal,
         'easybook-sales-accounts': accountManagersEasybookTotal,
         'easybook-sales-rops': ropsEasybookTotal,
         'easyneon-design-head': easyneonDesignLeadTotal,
