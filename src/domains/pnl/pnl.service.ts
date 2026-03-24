@@ -555,105 +555,161 @@ export class PnlService {
     return Math.round(total * 100) / 100;
   }
 
+  private buildDdsValueKey(categoryId: number, projectId?: number) {
+    return `${categoryId}:${projectId ?? 'none'}`;
+  }
+
   async getDdsData(period: string) {
     const EASYNEON_PROJECT_ID = 3;
     const EASYBOOK_PROJECT_ID = 2;
     const EASYBANYA_PROJECT_ID = 4;
     const GENERAL_PROJECT_ID = 1;
 
-    const itemsConfig = [
-      { id: 2, projectId: EASYNEON_PROJECT_ID },
-      { id: 4, projectId: EASYNEON_PROJECT_ID },
-      { id: 10, projectId: EASYNEON_PROJECT_ID },
-      { id: 1, projectId: EASYNEON_PROJECT_ID },
-      { id: 3, projectId: EASYNEON_PROJECT_ID },
-      { id: 5, projectId: EASYNEON_PROJECT_ID },
-      { id: 2, projectId: EASYBOOK_PROJECT_ID },
-      { id: 4, projectId: EASYBOOK_PROJECT_ID },
-      { id: 10, projectId: EASYBOOK_PROJECT_ID },
-      { id: 1, projectId: EASYBOOK_PROJECT_ID },
-      { id: 3, projectId: EASYBOOK_PROJECT_ID },
-      { id: 5, projectId: EASYBOOK_PROJECT_ID },
-      { id: 14 },
-      { id: 158 },
-      { id: 13 },
-      { id: 148 },
-      { id: 156 },
-      { id: 50 },
-      { id: 18, projectId: EASYNEON_PROJECT_ID },
-      { id: 17, projectId: EASYNEON_PROJECT_ID },
-      { id: 152, projectId: EASYNEON_PROJECT_ID },
-      { id: 153, projectId: EASYNEON_PROJECT_ID },
-      { id: 22, projectId: EASYNEON_PROJECT_ID },
-      { id: 23, projectId: EASYNEON_PROJECT_ID },
-      { id: 146, projectId: EASYNEON_PROJECT_ID },
-      { id: 21, projectId: EASYNEON_PROJECT_ID },
-      { id: 24, projectId: EASYNEON_PROJECT_ID },
-      { id: 47, projectId: EASYNEON_PROJECT_ID },
-      { id: 34, projectId: EASYNEON_PROJECT_ID },
-      { id: 26, projectId: EASYNEON_PROJECT_ID },
-      { id: 52, projectId: EASYNEON_PROJECT_ID },
-      { id: 54, projectId: EASYNEON_PROJECT_ID },
-      { id: 55, projectId: EASYNEON_PROJECT_ID },
-      { id: 89, projectId: EASYNEON_PROJECT_ID },
-      { id: 56, projectId: EASYNEON_PROJECT_ID },
-      { id: 29, projectId: EASYNEON_PROJECT_ID },
-      { id: 31, projectId: EASYNEON_PROJECT_ID },
-      { id: 48, projectId: EASYNEON_PROJECT_ID },
-      { id: 81, projectId: EASYNEON_PROJECT_ID },
-      { id: 71, projectId: EASYNEON_PROJECT_ID },
-      { id: 72, projectId: EASYNEON_PROJECT_ID },
-      { id: 75, projectId: EASYNEON_PROJECT_ID },
-      { id: 79, projectId: EASYNEON_PROJECT_ID },
-      { id: 80, projectId: EASYNEON_PROJECT_ID },
-      { id: 76, projectId: EASYNEON_PROJECT_ID },
-      { id: 39, projectId: EASYNEON_PROJECT_ID },
-      { id: 45, projectId: EASYNEON_PROJECT_ID },
-      { id: 143, projectId: EASYBOOK_PROJECT_ID },
-      { id: 81, projectId: EASYBOOK_PROJECT_ID },
-      { id: 71, projectId: EASYBOOK_PROJECT_ID },
-      { id: 141, projectId: EASYBOOK_PROJECT_ID },
-      { id: 75, projectId: EASYBOOK_PROJECT_ID },
-      { id: 140, projectId: EASYBOOK_PROJECT_ID },
-      { id: 142, projectId: EASYBOOK_PROJECT_ID },
-      { id: 39, projectId: EASYBOOK_PROJECT_ID },
-      { id: 45, projectId: EASYBOOK_PROJECT_ID },
-      { id: 29, projectId: EASYBOOK_PROJECT_ID },
-      { id: 48, projectId: EASYBOOK_PROJECT_ID },
-      { id: 162, projectId: EASYBANYA_PROJECT_ID },
-      { id: 68, projectId: GENERAL_PROJECT_ID },
-      { id: 87, projectId: GENERAL_PROJECT_ID },
-      { id: 151, projectId: GENERAL_PROJECT_ID },
-      { id: 43, projectId: GENERAL_PROJECT_ID },
-      { id: 31, projectId: GENERAL_PROJECT_ID },
-      { id: 45, projectId: GENERAL_PROJECT_ID },
-      { id: 48, projectId: GENERAL_PROJECT_ID },
-      { id: 159 },
-      { id: 157 },
-      { id: 147 },
-      { id: 163 },
-      { id: 63 },
-      { id: 49 },
-      { id: 67 },
-      { id: 138 },
-      { id: 160 },
-      { id: 161 },
-    ];
+    const itemRequests = {
+      easyneon_sbp: { id: 2, projectId: EASYNEON_PROJECT_ID },
+      easyneon_online_kassa: { id: 4, projectId: EASYNEON_PROJECT_ID },
+      easyneon_cdek_cod: { id: 10, projectId: EASYNEON_PROJECT_ID },
+      easyneon_postal_cod: { id: 164, projectId: EASYNEON_PROJECT_ID },
+      easyneon_bank_transfer: { id: 1, projectId: EASYNEON_PROJECT_ID },
+      easyneon_dolami: { id: 3, projectId: EASYNEON_PROJECT_ID },
+      easyneon_installments: { id: 5, projectId: EASYNEON_PROJECT_ID },
+      easybook_sbp: { id: 2, projectId: EASYBOOK_PROJECT_ID },
+      easybook_online_kassa: { id: 4, projectId: EASYBOOK_PROJECT_ID },
+      easybook_cdek_cod: { id: 10, projectId: EASYBOOK_PROJECT_ID },
+      easybook_postal_cod: { id: 164, projectId: EASYBOOK_PROJECT_ID },
+      easybook_bank_transfer: { id: 1, projectId: EASYBOOK_PROJECT_ID },
+      easybook_dolami: { id: 3, projectId: EASYBOOK_PROJECT_ID },
+      easybook_installments: { id: 5, projectId: EASYBOOK_PROJECT_ID },
+      return_funds: { id: 14 },
+      return_deposit: { id: 158 },
+      deposit_interest: { id: 13 },
+      loan_inflow: { id: 148 },
+      account_transfer_inflow: { id: 156 },
+      production_materials: { id: 50 },
+      easyneon_packaging: { id: 18, projectId: EASYNEON_PROJECT_ID },
+      easyneon_production: { id: 17, projectId: EASYNEON_PROJECT_ID },
+      easyneon_printing: { id: 152, projectId: EASYNEON_PROJECT_ID },
+      easyneon_workshops: { id: 153, projectId: EASYNEON_PROJECT_ID },
+      easyneon_salaries: { id: 22, projectId: EASYNEON_PROJECT_ID },
+      easyneon_taxes: { id: 23, projectId: EASYNEON_PROJECT_ID },
+      easyneon_production_rent: { id: 146, projectId: EASYNEON_PROJECT_ID },
+      easyneon_delivery: { id: 21, projectId: EASYNEON_PROJECT_ID },
+      easyneon_advertising: { id: 24, projectId: EASYNEON_PROJECT_ID },
+      easyneon_other: { id: 47, projectId: EASYNEON_PROJECT_ID },
+      easyneon_fuel: { id: 34, projectId: EASYNEON_PROJECT_ID },
+      easyneon_utilities: { id: 26, projectId: EASYNEON_PROJECT_ID },
+      easyneon_repairs: { id: 52, projectId: EASYNEON_PROJECT_ID },
+      easyneon_office: { id: 54, projectId: EASYNEON_PROJECT_ID },
+      easyneon_business_trip: { id: 55, projectId: EASYNEON_PROJECT_ID },
+      easyneon_payroll_director: { id: 89, projectId: EASYNEON_PROJECT_ID },
+      easyneon_payroll_accountant: { id: 56, projectId: EASYNEON_PROJECT_ID },
+      easyneon_cdek: { id: 29, projectId: EASYNEON_PROJECT_ID },
+      easyneon_post: { id: 31, projectId: EASYNEON_PROJECT_ID },
+      easyneon_bank_fees: { id: 48, projectId: EASYNEON_PROJECT_ID },
+      easyneon_payroll_commercial_director: {
+        id: 81,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easyneon_payroll_design_head: {
+        id: 71,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easyneon_payroll_graphic_designer: {
+        id: 72,
+        projectId: EASYNEON_PROJECT_ID,
+      },
+      easyneon_payroll_rops: { id: 75, projectId: EASYNEON_PROJECT_ID },
+      easyneon_payroll_lidgen: { id: 79, projectId: EASYNEON_PROJECT_ID },
+      easyneon_payroll_marker: { id: 80, projectId: EASYNEON_PROJECT_ID },
+      easyneon_payroll_manager: { id: 76, projectId: EASYNEON_PROJECT_ID },
+      easyneon_vk_promo: { id: 39, projectId: EASYNEON_PROJECT_ID },
+      easyneon_smm: { id: 85, projectId: EASYNEON_PROJECT_ID },
+      easyneon_rent: { id: 36, projectId: EASYNEON_PROJECT_ID },
+      easyneon_services: { id: 45, projectId: EASYNEON_PROJECT_ID },
+      easybook_payroll_production: { id: 143, projectId: EASYBOOK_PROJECT_ID },
+      easybook_payroll_commercial_director: {
+        id: 81,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easybook_payroll_design_head: {
+        id: 71,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easybook_payroll_book_designer: {
+        id: 141,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easybook_payroll_rops: { id: 75, projectId: EASYBOOK_PROJECT_ID },
+      easybook_payroll_onboarding_manager: {
+        id: 140,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easybook_payroll_account_manager: {
+        id: 142,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easybook_vk_promo: { id: 39, projectId: EASYBOOK_PROJECT_ID },
+      easybook_smm: { id: 85, projectId: EASYBOOK_PROJECT_ID },
+      easybook_rent: { id: 36, projectId: EASYBOOK_PROJECT_ID },
+      easybook_services: { id: 45, projectId: EASYBOOK_PROJECT_ID },
+      easybook_cdek: { id: 29, projectId: EASYBOOK_PROJECT_ID },
+      easybook_bank_fees: { id: 48, projectId: EASYBOOK_PROJECT_ID },
+      easybanya_construction_materials: {
+        id: 162,
+        projectId: EASYBANYA_PROJECT_ID,
+      },
+      easybanya_smm: { id: 85, projectId: EASYBANYA_PROJECT_ID },
+      easybanya_rent: { id: 36, projectId: EASYBANYA_PROJECT_ID },
+      general_accounting: { id: 68, projectId: GENERAL_PROJECT_ID },
+      general_developers: { id: 87, projectId: GENERAL_PROJECT_ID },
+      general_finance: { id: 151, projectId: GENERAL_PROJECT_ID },
+      general_hiring: { id: 43, projectId: GENERAL_PROJECT_ID },
+      general_post: { id: 31, projectId: GENERAL_PROJECT_ID },
+      general_services: { id: 45, projectId: GENERAL_PROJECT_ID },
+      general_bank_fees: { id: 48, projectId: GENERAL_PROJECT_ID },
+      deposit_placement: { id: 159 },
+      account_transfer_outflow: { id: 157 },
+      taxes_other: { id: 147 },
+      dividends: { id: 163 },
+      loans_issued: { id: 63 },
+      owner_draw: { id: 49 },
+      investments: { id: 67 },
+      fines_penalties: { id: 138 },
+      investment_contributions: { id: 160 },
+      vat: { id: 161 },
+    } as const;
 
-    const items = await Promise.all(
-      itemsConfig.map(async ({ id, projectId }) => {
+    const itemEntries = await Promise.all(
+      Object.entries(itemRequests).map(async ([name, config]) => {
+        const { id } = config;
+        const projectId = 'projectId' in config ? config.projectId : undefined;
         const value = await this.getExpenseAmountByCategoryForPeriod(
           period,
           id,
           projectId,
         );
-        return { id, projectId, value };
+        return [name, { id, projectId, value }] as const;
       }),
+    );
+
+    const itemsByName = Object.fromEntries(itemEntries) as Record<
+      keyof typeof itemRequests,
+      { id: number; projectId?: number; value: number }
+    >;
+    const items = Object.values(itemsByName);
+    const valuesByKey = items.reduce(
+      (acc, item) => {
+        acc[this.buildDdsValueKey(item.id, item.projectId)] = item.value;
+        return acc;
+      },
+      {} as Record<string, number>,
     );
 
     return {
       period,
       items,
+      itemsByName,
+      valuesByKey,
     };
   }
 
@@ -1086,7 +1142,7 @@ export class PnlService {
       },
       easyneonMarketingAvito: {
         periods: [period],
-        categoryId: 85,
+        categoryId: 84,
         projectId: EASYNEON_PROJECT_ID,
       },
       easybookMarketingTarget: {
@@ -1096,17 +1152,17 @@ export class PnlService {
       },
       easybookMarketingAvito: {
         periods: [period],
-        categoryId: 85,
+        categoryId: 84,
         projectId: EASYBOOK_PROJECT_ID,
       },
       easyneonMarketingSmm: {
         periods: [period],
-        categoryId: 38,
+        categoryId: 85,
         projectId: EASYNEON_PROJECT_ID,
       },
       easybookMarketingSmm: {
         periods: [period],
-        categoryId: 38,
+        categoryId: 85,
         projectId: EASYBOOK_PROJECT_ID,
       },
       easyneonRentExpenses: {
@@ -1973,7 +2029,7 @@ export class PnlService {
       this.getExpensesByCategory([period], 84, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 85, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 75, EASYBOOK_PROJECT_ID),
-      this.getExpensesByCategory([period], 38),
+      this.getExpensesByCategory([period], 85, EASYNEON_PROJECT_ID),
       this.getExpensesByCategory([period], 42),
       this.getExpensesByCategory([period], 45),
       this.getExpensesByCategory([period], 36, EASYNEON_PROJECT_ID),
