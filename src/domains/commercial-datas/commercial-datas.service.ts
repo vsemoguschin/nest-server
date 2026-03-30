@@ -223,8 +223,8 @@ export class CommercialDatasService {
       }
       dopsPercentage = 0.1;
     }
-
-    if (workSpaceId === 3) {
+    const EASYNEON_JULIA_GROUPS_IDS = [3, 18];
+    if (workSpaceId === 3 && EASYNEON_JULIA_GROUPS_IDS.includes(groupId)) {
       if (!isIntern) {
         if (totalSales < 400_000) {
           bonusPercentage = 0.03;
@@ -254,6 +254,8 @@ export class CommercialDatasService {
       }
       dopsPercentage = bonusPercentage;
     }
+
+    //старые
     if (groupId === 19 || groupId === 17) {
       bonusPercentage = 0.07;
       dopsPercentage = 0.07;
@@ -265,6 +267,19 @@ export class CommercialDatasService {
     ) {
       dopsPercentage = 0.05;
       bonusPercentage = 0.05;
+    }
+    const EASYBOOK_GROUPS_IDS = [17, 19, 26];
+
+    //новые расчеты с апреля 2026
+    if (EASYBOOK_GROUPS_IDS.includes(groupId) && period >= '2026-04') {
+      if (role === 'MOP') {
+        bonusPercentage = totalSales <= 299_000 ? 0.05 : 0.07;
+        dopsPercentage = totalSales <= 299_000 ? 0.05 : 0.07;
+      }
+      if (role === 'MOV') {
+        bonusPercentage = totalSales <= 250_000 ? 0.04 : 0.05;
+        dopsPercentage = totalSales <= 250_000 ? 0.04 : 0.05;
+      }
     }
 
     return {
@@ -547,6 +562,134 @@ export class CommercialDatasService {
           paymentsFact,
           toSalary:
             period >= '2026-01'
+              ? +(toSalary * 0.95).toFixed(2)
+              : +toSalary.toFixed(2),
+        };
+      }),
+    );
+
+    return (
+      res
+        .filter((item): item is NonNullable<typeof item> => item !== undefined)
+        // .filter((item) => item?.toSalary !== 0)
+        .sort((a, b) => b.per.localeCompare(a.per))
+    );
+  }
+
+  /** Получение данных по продажам ROV по группе */
+  async getROVSalesDatas(groupId: number, period: string) {
+    //находим все платежи внесенные в этот период
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        date: {
+          startsWith: period,
+        },
+        // groupId: groupId,
+        deal: {
+          groupId: groupId,
+          reservation: false,
+          deletedAt: null,
+          status: { not: 'Возврат' },
+        },
+      },
+      include: {
+        deal: {
+          include: {
+            dops: true,
+            payments: true,
+            dealers: true,
+          },
+        },
+      },
+    });
+
+    /** ищем уникальные периоды сделок */
+    const paymentsPeriods = Array.from(
+      new Set(payments.map((p) => p.deal.saleDate.slice(0, 7))),
+    ).filter((p) => p >= '2025-09' && p <= period);
+    /** формируем данные по каждому периоду*/
+    const res = await Promise.all(
+      paymentsPeriods.map(async (per) => {
+        const g = await this.prisma.group.findUnique({
+          where: {
+            id: groupId,
+          },
+          include: {
+            users: {
+              where: {
+                role: {
+                  shortName: 'ROV',
+                },
+              },
+              include: {
+                managersPlans: {
+                  where: {
+                    period: per,
+                  },
+                },
+              },
+            },
+            deals: {
+              where: {
+                saleDate: {
+                  startsWith: per,
+                },
+                reservation: false,
+                deletedAt: null,
+                status: { not: 'Возврат' },
+              },
+              include: {
+                client: true,
+                payments: true,
+              },
+            },
+            dops: {
+              where: {
+                saleDate: {
+                  startsWith: per,
+                },
+                deal: {
+                  reservation: false,
+                  deletedAt: null,
+                  status: { not: 'Возврат' },
+                },
+              },
+              include: {
+                deal: {
+                  select: {
+                    title: true,
+                    price: true,
+                    payments: true,
+                    dops: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!g) {
+          return;
+        }
+        const { dealSales, dopSales, totalSales } =
+          this.calculateROPSalesForPeriod(g.deals, g.dops);
+        const bonusPercentage = 0.008; // Фиксированный процент для ROP
+        const paymentsFact = payments
+          .filter((p) => p.deal.saleDate.slice(0, 7) === per)
+          .reduce((a, b) => a + b.price, 0);
+        const toSalary = this.calculateROPToSalary(
+          paymentsFact,
+          bonusPercentage,
+        );
+        return {
+          per,
+          bonusPercentage,
+          totalSales,
+          dopSales,
+          dealSales,
+          paymentsFact,
+          toSalary:
+            period >= '2026-03'
               ? +(toSalary * 0.95).toFixed(2)
               : +toSalary.toFixed(2),
         };
@@ -1094,7 +1237,9 @@ export class CommercialDatasService {
     const ropdatas =
       (m.groupId === 19 || m.groupId === 17) && m.role.shortName === 'ROP'
         ? await this.getROPSalesDatas(m.groupId, period)
-        : [];
+        : m.groupId === 26 && m.role.shortName === 'ROV'
+          ? await this.getROVSalesDatas(m.groupId, period)
+          : [];
     const ropSalary = ropdatas.reduce((a, b) => a + b.toSalary, 0);
     totalSalary += +ropSalary.toFixed(2);
     return {
@@ -3363,7 +3508,9 @@ export class CommercialDatasService {
       const managerDops = dops.filter(
         (d) =>
           d.user.role.shortName === 'MOV' &&
-          (d.user.groupId === 19 || d.user.groupId === 17 || d.user.groupId === 26),
+          (d.user.groupId === 19 ||
+            d.user.groupId === 17 ||
+            d.user.groupId === 26),
       );
       if (managerDops.length) {
         const dealDopsPrice = dops.reduce((a, b) => a + b.price, 0);

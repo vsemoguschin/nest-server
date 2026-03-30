@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DeliveryCreateDto } from './dto/delivery-create.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UserDto } from '../users/dto/user.dto';
@@ -283,6 +287,7 @@ export class DeliveriesService {
       purpose: 'Заказ',
       // status:{in: ['Отправлена', 'Вручена']},
       deal: {
+        status: { not: 'Возврат' },
         reservation: false,
         deletedAt: null,
         ...(groupIds?.length ? { groupId: { in: groupIds } } : gSearch),
@@ -328,16 +333,29 @@ export class DeliveriesService {
             },
           },
         },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
       }),
     ]);
 
-    // Вычисляем общую сумму за весь период: deal.price + сумма всех dops.price для каждой доставки
-    const totalDeliveryPrice = allDeliveriesForTotal.reduce((sum, delivery) => {
-      const dealPrice = delivery.deal?.price ?? 0;
-      const dopsSum =
-        delivery.deal?.dops?.reduce((acc, dop) => acc + dop.price, 0) ?? 0;
-      return sum + dealPrice + dopsSum;
-    }, 0);
+    const uniqueDeliveriesForTotal: typeof allDeliveriesForTotal = [];
+    const seenDealIds = new Set<number>();
+    for (const delivery of allDeliveriesForTotal) {
+      if (!seenDealIds.has(delivery.dealId)) {
+        uniqueDeliveriesForTotal.push(delivery);
+        seenDealIds.add(delivery.dealId);
+      }
+    }
+
+    // Для total учитываем только одну, самую позднюю доставку по каждой сделке.
+    const totalDeliveryPrice = uniqueDeliveriesForTotal.reduce(
+      (sum, delivery) => {
+        const dealPrice = delivery.deal?.price ?? 0;
+        const dopsSum =
+          delivery.deal?.dops?.reduce((acc, dop) => acc + dop.price, 0) ?? 0;
+        return sum + dealPrice + dopsSum;
+      },
+      0,
+    );
 
     return {
       totalDeliveryPrice: Number(totalDeliveryPrice.toFixed(2)),
@@ -357,6 +375,7 @@ export class DeliveriesService {
           dealSaleDate: delivery.deal?.saleDate ?? '',
           status: delivery.status,
           date: delivery.date,
+          purpose: delivery.purpose,
         };
       }),
     };

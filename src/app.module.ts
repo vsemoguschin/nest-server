@@ -48,6 +48,7 @@ import { YandexDiskModule } from './integrations/yandex-disk/yandex-disk.module'
 import { PnlModule } from './domains/pnl/pnl.module';
 import { CdekModule } from './domains/cdek/cdek.module';
 import { VkMessagesModule } from './domains/vk-messages/vk-messages.module';
+import { VkCallbackModule } from './domains/vk-callback/vk-callback.module';
 import { CrmCustomersModule } from './domains/crm-customers/crm-customers.module';
 import { AiAssistantModule } from './domains/ai-assistant/ai-assistant.module';
 
@@ -98,6 +99,7 @@ import { AiAssistantModule } from './domains/ai-assistant/ai-assistant.module';
     PnlModule,
     CdekModule,
     VkMessagesModule,
+    VkCallbackModule,
     CrmCustomersModule,
     AiAssistantModule,
 

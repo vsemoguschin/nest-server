@@ -51,7 +51,7 @@ export class CliSpawnCodexRuntime implements CodexRuntime {
     this.codexBinPath = this.config.get<string>('CODEX_BIN_PATH') || 'codex';
     this.codexWorkspaceDir =
       this.config.get<string>('CODEX_WORKSPACE_DIR') ||
-      resolve(process.cwd(), '..', '..', 'codex-test', 'assistant');
+      resolve(process.cwd(), '..', '..', 'ai-assistant', 'brain');
     this.timeoutMs = Number(
       this.config.get<string>('CODEX_TIMEOUT_MS') || 120000,
     );

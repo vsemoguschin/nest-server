@@ -49,7 +49,7 @@ export class AiAssistantController {
   @ApiOperation({
     summary: 'MVP-прокси к локальному Codex',
     description:
-      'Вызывает локальный Codex из codex-test/assistant и возвращает text + threadId для простого CRM-чата.',
+      'Вызывает локальный Codex из canonical workspace ai-assistant/brain и возвращает text + threadId для простого CRM-чата.',
   })
   async respondWithCodex(
     @Body() body: CodexChatDto,
