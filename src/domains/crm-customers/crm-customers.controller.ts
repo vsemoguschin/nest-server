@@ -253,7 +253,7 @@ export class CrmCustomersController {
   @ApiOperation({
     summary: 'Список CRM-клиентов (MVP без include связей)',
     description:
-      'Cursor-пагинация с сортировкой по updatedAt desc, id desc и фильтрами q(fullName)/statusIds/tagIds/managerIds.',
+      'Cursor-пагинация с сортировкой по updatedAt desc, id desc и фильтрами q(fullName)/statusIds/tagIds/managerIds. Для локальных клиентов externalId может отсутствовать и в API нормализуется в пустую строку.',
   })
   @ApiOkResponse({
     description: 'Страница CRM-клиентов',
@@ -320,7 +320,7 @@ export class CrmCustomersController {
   @ApiOperation({
     summary: 'Карточка CRM-клиента',
     description:
-      'Возвращает детальные данные CRM-клиента для страницы карточки.',
+      'Возвращает детальные данные CRM-клиента для страницы карточки. Для локальных клиентов externalId может отсутствовать и в API нормализуется в пустую строку.',
   })
   @ApiOkResponse({
     description: 'Детальные данные CRM-клиента',
@@ -376,7 +376,7 @@ export class CrmCustomersController {
   @ApiOperation({
     summary: 'Получить одного CRM-клиента из BlueSales WebServer.aspx',
     description:
-      'Находит CRM-клиента по внутреннему id, берёт его accountCode и externalId и вызывает BlueSales customers.get через WebServer.aspx.',
+      'Legacy-only endpoint. Находит CRM-клиента по внутреннему id, берёт его accountCode и externalId и вызывает BlueSales customers.get через WebServer.aspx. Применим только к клиентам с заполненным externalId.',
   })
   async getBlueSalesCustomer(@Param('id', ParseIntPipe) id: number) {
     return this.crmCustomerBlueSalesService.getCustomerByCrmId(id);
@@ -401,7 +401,7 @@ export class CrmCustomersController {
   @ApiOperation({
     summary: 'Лента событий CRM-клиента из BlueSales',
     description:
-      'Возвращает ленту событий клиента из HTML CustomerView.aspx в BlueSales.',
+      'Legacy-only endpoint. Возвращает ленту событий клиента из HTML CustomerView.aspx в BlueSales. Применим только к клиентам с заполненным externalId.',
   })
   @ApiOkResponse({
     description: 'Лента событий клиента',

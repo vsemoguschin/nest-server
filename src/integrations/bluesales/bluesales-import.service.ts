@@ -91,6 +91,15 @@ export class BluesalesImportService {
     return '';
   }
 
+  private normalizeExternalId(value: unknown): string | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    const normalized = String(value).trim();
+    return normalized.length > 0 ? normalized : null;
+  }
+
   async importRange(fromYmd: string, tillYmd: string) {
     let cur = fromYmd;
     const yesterday = tillYmd;
@@ -260,60 +269,66 @@ export class BluesalesImportService {
   }
 
   private async upsertCustomer(c: ApiCustomer) {
+    const externalId = this.normalizeExternalId(c.id);
+    if (!externalId) {
+      this.logger.warn(
+        `Skip customer without valid externalId: ${JSON.stringify({ id: c.id, fullName: c.fullName })}`,
+      );
+      return;
+    }
+
     const refs = await this.upsertReferenceData(c);
     const firstContact = this.normalizeDotDateToIso(c.firstContactDate);
     const lastContact = this.normalizeDotDateToIso(c.lastContactDate);
     const nextContact = this.normalizeDotDateToIso(c.nextContactDate);
-    const customer = await this.prisma.crmCustomer.upsert({
-      where: { externalId: String(c.id) },
-      update: {
-        fullName: c.fullName,
-        photoUrl: c.photoUrl || '',
-        birthday: c.birthday || '',
-        sex: c.sex || '',
-        phone: c.phone || '',
-        email: c.email || '',
-        address: c.address || '',
-        otherContacts: c.otherContacts || '',
-        firstContactDate: firstContact,
-        lastContactDate: lastContact,
-        nextContactDate: nextContact,
-        shortNotes: c.shortNotes || '',
-        comments: c.comments || '',
-        countryId: refs.countryId,
-        cityId: refs.cityId,
-        crmStatusId: refs.crmStatusId,
-        sourceId: refs.sourceId,
-        salesChannelId: refs.salesChannelId,
-        managerId: refs.managerId,
-        vkId: refs.vkId,
-        avitoId: refs.avitoId,
-      },
-      create: {
-        externalId: String(c.id),
-        fullName: c.fullName,
-        photoUrl: c.photoUrl || '',
-        birthday: c.birthday || '',
-        sex: c.sex || '',
-        phone: c.phone || '',
-        email: c.email || '',
-        address: c.address || '',
-        otherContacts: c.otherContacts || '',
-        firstContactDate: firstContact,
-        lastContactDate: lastContact,
-        nextContactDate: nextContact,
-        shortNotes: c.shortNotes || '',
-        comments: c.comments || '',
-        countryId: refs.countryId ?? undefined,
-        cityId: refs.cityId ?? undefined,
-        crmStatusId: refs.crmStatusId ?? undefined,
-        sourceId: refs.sourceId ?? undefined,
-        salesChannelId: refs.salesChannelId ?? undefined,
-        managerId: refs.managerId ?? undefined,
-        vkId: refs.vkId ?? undefined,
-        avitoId: refs.avitoId ?? undefined,
-      },
+    const customerData = {
+      fullName: c.fullName,
+      photoUrl: c.photoUrl || '',
+      birthday: c.birthday || '',
+      sex: c.sex || '',
+      phone: c.phone || '',
+      email: c.email || '',
+      address: c.address || '',
+      otherContacts: c.otherContacts || '',
+      firstContactDate: firstContact,
+      lastContactDate: lastContact,
+      nextContactDate: nextContact,
+      shortNotes: c.shortNotes || '',
+      comments: c.comments || '',
+      countryId: refs.countryId,
+      cityId: refs.cityId,
+      crmStatusId: refs.crmStatusId,
+      sourceId: refs.sourceId,
+      salesChannelId: refs.salesChannelId,
+      managerId: refs.managerId,
+      vkId: refs.vkId,
+      avitoId: refs.avitoId,
+    };
+
+    const existingCustomer = await this.prisma.crmCustomer.findFirst({
+      where: { externalId },
+      select: { id: true },
     });
+
+    const customer = existingCustomer
+      ? await this.prisma.crmCustomer.update({
+          where: { id: existingCustomer.id },
+          data: customerData,
+        })
+      : await this.prisma.crmCustomer.create({
+          data: {
+            externalId,
+            ...customerData,
+            countryId: refs.countryId ?? undefined,
+            cityId: refs.cityId ?? undefined,
+            crmStatusId: refs.crmStatusId ?? undefined,
+            sourceId: refs.sourceId ?? undefined,
+            salesChannelId: refs.salesChannelId ?? undefined,
+            managerId: refs.managerId ?? undefined,
+            vkId: refs.vkId ?? undefined,
+            avitoId: refs.avitoId ?? undefined,
+          },
+        });
 
     if (Array.isArray(c.tags) && c.tags.length) {
       for (const t of c.tags) {

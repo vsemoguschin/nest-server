@@ -1334,7 +1334,7 @@ model CrmAccount {
 
 model CrmCustomer {
   id               Int                @id @default(autoincrement())
-  externalId       String             @unique // ID from external system
+  externalId       String?            // ID from external system
 
   accountId        Int?
   account          CrmAccount?        @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -1555,6 +1555,49 @@ model CrmSyncState {
 
   @@unique([accountId, key])
   @@index([accountId])
+}
+
+model CrmVkIntegration {
+  id                 Int               @id @default(autoincrement()) // ID интеграции
+  accountId          Int               // ID аккаунта CRM
+  groupId            Int               @unique // ID группы VK
+  groupName          String            // Название группы
+  callbackSecret     String            // Секрет VK Callback
+  confirmationCode   String            // Код подтверждения VK Callback
+  isActive           Boolean           @default(true) // Активна ли интеграция
+  initialCrmStatusId Int?              // Стартовый статус CRM, пока не используется
+  defaultSourceId    Int?              // Источник CRM, пока не используется
+  createdAt          DateTime          @default(now()) // Дата создания
+  updatedAt          DateTime          @updatedAt // Дата обновления
+
+  callbackEvents     VkCallbackEvent[]
+
+  @@index([accountId])
+}
+
+model VkCallbackEvent {
+  id              Int              @id @default(autoincrement()) // ID события
+  accountId       Int              // ID аккаунта CRM
+  vkIntegrationId Int              // ID VK-интеграции
+  eventId         String           // ID события VK
+  eventType       String           // Тип события VK
+  groupId         Int              // ID группы VK
+  vkUserId        Int?             // ID пользователя VK
+  apiVersion      String           @default("") // Версия API VK
+  payload         Json             // Сырые данные callback
+  status          String           @default("received") // Статус: received|processed|duplicate|failed
+  crmCustomerId   Int?             // ID CRM-клиента, пока не используется
+  errorMessage    String?          // Текст ошибки обработки
+  processedAt     DateTime?        // Дата успешной или неуспешной обработки
+  createdAt       DateTime         @default(now()) // Дата создания
+  updatedAt       DateTime         @updatedAt // Дата обновления
+
+  vkIntegration   CrmVkIntegration @relation(fields: [vkIntegrationId], references: [id], onDelete: Cascade)
+
+  @@unique([vkIntegrationId, eventId])
+  @@index([accountId])
+  @@index([vkIntegrationId])
+  @@index([groupId])
 }
 
 

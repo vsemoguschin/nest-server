@@ -28,6 +28,7 @@
     "seed:check-crm-customer-transition": "ts-node --transpile-only src/seeds/seed-check-crm-customer-transition.ts",
     "seed:print-crm-accounts": "ts-node --transpile-only src/seeds/seed-print-crm-accounts.ts",
     "seed:crm-account-easybook-assistant-group": "ts-node --transpile-only src/seeds/seed-crm-account-easybook-assistant-group.ts",
+    "seed:vk-callback-test": "ts-node --transpile-only src/seeds/seed-vk-callback-test.ts",
     "seed:find-task-order-master-report": "ts-node --transpile-only src/seeds/seed-find-task-order-master-report.ts",
     "seed:merge-expense-categories-subscriptions": "ts-node --transpile-only src/seeds/seed-merge-expense-categories-subscriptions.ts"
   },
@@ -73,7 +74,8 @@
     "socks-proxy-agent": "^8.0.5",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^11.1.0",
-    "winston": "^3.17.0"
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

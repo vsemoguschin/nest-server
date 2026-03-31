@@ -831,7 +831,7 @@ export class NotificationSchedulerService {
   // }
 
   // Импорт «только новых клиентов» за прошедший день, с надёжным восстановлением пропущенных дат
-  @Cron('5 0 3 * * *', { timeZone: 'Europe/Moscow' })
+  // @Cron('5 0 3 * * *', { timeZone: 'Europe/Moscow' })
   async importNewCustomersDaily() {
     if (this.env === 'development') {
       this.logger.debug(`[dev] skip importNewCustomersDaily`);
