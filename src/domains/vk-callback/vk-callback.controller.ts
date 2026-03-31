@@ -1,4 +1,5 @@
-import { Body, Controller, Header, Post } from '@nestjs/common';
+import { Body, Controller, Header, Post, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { Public } from 'src/auth/public.decorator';
 import { VkCallbackService } from './vk-callback.service';
 
@@ -8,8 +9,9 @@ export class VkCallbackController {
 
   @Post('callback')
   @Public()
-  @Header('Content-Type', 'text/plain; charset=utf-8')
-  handleCallback(@Body() body: any): string {
-    return this.vkCallbackService.handleCallback(body);
+  handleCallback(@Body() body: any, @Res() res: Response): void {
+    const result = this.vkCallbackService.handleCallback(body);
+
+    res.status(200).type('text/plain').send(result);
   }
 }

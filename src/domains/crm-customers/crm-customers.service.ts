@@ -612,9 +612,7 @@ export class CrmCustomersService {
   async listFilterAccounts() {
     const accounts = await this.prisma.crmAccount.findMany({
       where: {
-        customers: {
-          some: {},
-        },
+        isActive: true,
       },
       select: {
         id: true,
