@@ -457,7 +457,12 @@ async function upsertReferenceData(c: ApiCustomer, accountId: number) {
   const vkId = vkExternalId
     ? (
         await prisma.crmVk.upsert({
-          where: { externalId: vkExternalId },
+          where: {
+            accountId_externalId: {
+              accountId,
+              externalId: vkExternalId,
+            },
+          },
           update: {
             name: toStringOrEmpty(c.vk?.name),
             messagesGroupId: toStringOrEmpty(

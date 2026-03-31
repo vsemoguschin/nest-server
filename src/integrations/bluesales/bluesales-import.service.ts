@@ -243,15 +243,27 @@ export class BluesalesImportService {
 
     const vkId = c.vk
       ? (
-          await this.prisma.crmVk.upsert({
-            where: { externalId: String(c.vk.id) },
-            update: { name: c.vk.name, messagesGroupId: c.vk.messagesGroupId || '' },
-            create: {
-              externalId: String(c.vk.id),
-              name: c.vk.name,
-              messagesGroupId: c.vk.messagesGroupId || '',
-            },
-          })
+          await (async () => {
+            const vk = c.vk!;
+            const externalId = String(vk.id);
+            const existingCrmVk = await this.prisma.crmVk.findFirst({
+              where: { accountId: null, externalId },
+              select: { id: true },
+            });
+
+            return existingCrmVk
+              ? this.prisma.crmVk.update({
+                  where: { id: existingCrmVk.id },
+                  data: { name: vk.name, messagesGroupId: vk.messagesGroupId || '' },
+                })
+              : this.prisma.crmVk.create({
+                  data: {
+                    externalId,
+                    name: vk.name,
+                    messagesGroupId: vk.messagesGroupId || '',
+                  },
+                });
+          })()
         ).id
       : null;
 
