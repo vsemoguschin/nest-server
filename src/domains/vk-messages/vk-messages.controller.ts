@@ -13,6 +13,7 @@ import {
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { Observable } from 'rxjs';
+import { GetVkGroupMembersQueryDto } from './dto/get-vk-group-members.query.dto';
 import { VkMessagesProxyService } from './vk-messages.service';
 
 @Controller('vk/messages')
@@ -96,6 +97,21 @@ export class VkMessagesController {
       source,
       v: version,
       params,
+    });
+
+    res.status(result.status);
+    return result.data;
+  }
+
+  @Get('groups/members')
+  async getGroupMembers(
+    @Query() query: GetVkGroupMembersQueryDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.vk.get('/api/vk/groups/members', {
+      ...query,
+      source: query.source || 'easybook',
+      fields: query.fields?.join(','),
     });
 
     res.status(result.status);

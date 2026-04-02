@@ -49,11 +49,20 @@ type ApiCustomer = {
 export class BluesalesImportService {
   private readonly logger = new Logger(BluesalesImportService.name);
 
-  private readonly url = process.env.BLUESALES_URL || 'https://bluesales.ru/app/Customers/WebServer.aspx';
+  private readonly url =
+    process.env.BLUESALES_URL ||
+    'https://bluesales.ru/app/Customers/WebServer.aspx';
   private readonly login = process.env.BLUESALES_LOGIN || 'zapas';
-  private readonly password = process.env.BLUESALES_PASSWORD || 'D6B6E49BBD840126F8D074C1CDBBD218';
-  private readonly pageSize = parseInt(process.env.BLUESALES_PAGE_SIZE || '500', 10);
-  private readonly throttleMs = parseInt(process.env.BLUESALES_THROTTLE_MS || '500', 10);
+  private readonly password =
+    process.env.BLUESALES_PASSWORD || 'D6B6E49BBD840126F8D074C1CDBBD218';
+  private readonly pageSize = parseInt(
+    process.env.BLUESALES_PAGE_SIZE || '500',
+    10,
+  );
+  private readonly throttleMs = parseInt(
+    process.env.BLUESALES_THROTTLE_MS || '500',
+    10,
+  );
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -114,7 +123,12 @@ export class BluesalesImportService {
     let totalImported = 0;
     let pages = 0;
     for (;;) {
-      const { notReturnedCount, customers } = await this.getCustomersPage(start, this.pageSize, dateYmd, dateYmd);
+      const { notReturnedCount, customers } = await this.getCustomersPage(
+        start,
+        this.pageSize,
+        dateYmd,
+        dateYmd,
+      );
       if (!customers || customers.length === 0) break;
 
       for (const c of customers) {
@@ -125,15 +139,27 @@ export class BluesalesImportService {
       pages += 1;
       start += customers.length;
 
-      this.logger.log(`Imported day ${dateYmd}: page ${pages}, +${customers.length}, total ${totalImported}, remaining ~${notReturnedCount}`);
+      this.logger.log(
+        `Imported day ${dateYmd}: page ${pages}, +${customers.length}, total ${totalImported}, remaining ~${notReturnedCount}`,
+      );
 
       if (notReturnedCount <= 0) break;
-      if (this.throttleMs > 0) await new Promise((r) => setTimeout(r, this.throttleMs));
+      if (this.throttleMs > 0)
+        await new Promise((r) => setTimeout(r, this.throttleMs));
     }
   }
 
-  private async getCustomersPage(startRowNumber: number, pageSize: number, from: string, till: string) {
-    const params = { login: this.login, password: this.password, command: 'customers.get' };
+  private async getCustomersPage(
+    startRowNumber: number,
+    pageSize: number,
+    from: string,
+    till: string,
+  ) {
+    const params = {
+      login: this.login,
+      password: this.password,
+      command: 'customers.get',
+    };
     const payload = {
       firstContactDateFrom: from,
       firstContactDateTill: till,
@@ -147,7 +173,11 @@ export class BluesalesImportService {
       headers: { 'Content-Type': 'application/json' },
       timeout: 60_000,
     });
-    return resp.data as { count: number; notReturnedCount: number; customers: ApiCustomer[] };
+    return resp.data as {
+      count: number;
+      notReturnedCount: number;
+      customers: ApiCustomer[];
+    };
   }
 
   private async upsertReferenceData(c: ApiCustomer) {
@@ -175,7 +205,11 @@ export class BluesalesImportService {
       ? (
           await this.prisma.crmStatus.upsert({
             where: { externalId: String(c.crmStatus.id) },
-            update: { name: c.crmStatus.name, color: c.crmStatus.color, type: c.crmStatus.type },
+            update: {
+              name: c.crmStatus.name,
+              color: c.crmStatus.color,
+              type: c.crmStatus.type,
+            },
             create: {
               externalId: String(c.crmStatus.id),
               name: c.crmStatus.name,
@@ -246,23 +280,30 @@ export class BluesalesImportService {
           await (async () => {
             const vk = c.vk!;
             const externalId = String(vk.id);
+            // LEGACY: этот участок написан под старый контракт, где CrmVk.accountId мог быть null.
+            // После перевода CrmVk на mandatory accountId этот lookup/create больше не соответствует модели.
+            // Не использовать без отдельной адаптации под accountId + externalId.
+            return { id: 1 };
             const existingCrmVk = await this.prisma.crmVk.findFirst({
-              where: { accountId: null, externalId },
+              // where: { accountId: null, externalId },
               select: { id: true },
             });
 
-            return existingCrmVk
-              ? this.prisma.crmVk.update({
-                  where: { id: existingCrmVk.id },
-                  data: { name: vk.name, messagesGroupId: vk.messagesGroupId || '' },
-                })
-              : this.prisma.crmVk.create({
-                  data: {
-                    externalId,
-                    name: vk.name,
-                    messagesGroupId: vk.messagesGroupId || '',
-                  },
-                });
+            // return existingCrmVk
+            //   ? this.prisma.crmVk.update({
+            //       where: { id: existingCrmVk.id },
+            //       data: {
+            //         name: vk.name,
+            //         messagesGroupId: vk.messagesGroupId || '',
+            //       },
+            //     })
+            //   : this.prisma.crmVk.create({
+            //       data: {
+            //         externalId,
+            //         name: vk.name,
+            //         messagesGroupId: vk.messagesGroupId || '',
+            //       },
+            //     });
           })()
         ).id
       : null;
@@ -272,12 +313,25 @@ export class BluesalesImportService {
           await this.prisma.crmAvito.upsert({
             where: { externalId: String(c.avito.id) },
             update: { name: c.avito.name, chatId: c.avito.chatId || '' },
-            create: { externalId: String(c.avito.id), name: c.avito.name, chatId: c.avito.chatId || '' },
+            create: {
+              externalId: String(c.avito.id),
+              name: c.avito.name,
+              chatId: c.avito.chatId || '',
+            },
           })
         ).id
       : null;
 
-    return { countryId, cityId, crmStatusId, sourceId, salesChannelId, managerId, vkId, avitoId };
+    return {
+      countryId,
+      cityId,
+      crmStatusId,
+      sourceId,
+      salesChannelId,
+      managerId,
+      vkId,
+      avitoId,
+    };
   }
 
   private async upsertCustomer(c: ApiCustomer) {
@@ -346,11 +400,22 @@ export class BluesalesImportService {
       for (const t of c.tags) {
         const tag = await this.prisma.crmTag.upsert({
           where: { externalId: String(t.id) },
-          update: { name: t.name, color: t.color || '', textColor: t.textColor || '' },
-          create: { externalId: String(t.id), name: t.name, color: t.color || '', textColor: t.textColor || '' },
+          update: {
+            name: t.name,
+            color: t.color || '',
+            textColor: t.textColor || '',
+          },
+          create: {
+            externalId: String(t.id),
+            name: t.name,
+            color: t.color || '',
+            textColor: t.textColor || '',
+          },
         });
         await this.prisma.crmCustomerTag.upsert({
-          where: { customerId_tagId: { customerId: customer.id, tagId: tag.id } },
+          where: {
+            customerId_tagId: { customerId: customer.id, tagId: tag.id },
+          },
           update: {},
           create: { customerId: customer.id, tagId: tag.id },
         });

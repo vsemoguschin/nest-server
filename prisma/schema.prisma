@@ -1486,8 +1486,8 @@ model CrmManager {
 model CrmVk {
   id               Int       @id @default(autoincrement())
   externalId       String    // e.g., "213329253"
-  accountId        Int?
-  account          CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId        Int
+  account          CrmAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name             String
   messagesGroupId  String    @default("")
 

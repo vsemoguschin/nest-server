@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { CrmVk, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VkMessagesProxyService } from '../vk-messages/vk-messages.service';
+import { VkCallbackCustomerSyncService } from './vk-callback-customer-sync.service';
+import { VkCallbackMessageCustomerSyncService } from './vk-callback-message-customer-sync.service';
 import { VkCallbackLoggerService } from './logger/vk-callback-logger.service';
 
 type VkCallbackBody = Record<string, unknown> | null | undefined;
@@ -13,6 +15,8 @@ type VkIntegrationRecord = {
   callbackSecret: string;
   confirmationCode: string;
   isActive: boolean;
+  initialCrmStatusId: number | null;
+  defaultSourceId: number | null;
 };
 
 type VkUserProfile = {
@@ -30,6 +34,8 @@ export class VkCallbackService {
     private readonly prisma: PrismaService,
     private readonly vkMessagesProxyService: VkMessagesProxyService,
     private readonly vkCallbackLoggerService: VkCallbackLoggerService,
+    private readonly vkCallbackCustomerSyncService: VkCallbackCustomerSyncService,
+    private readonly vkCallbackMessageCustomerSyncService: VkCallbackMessageCustomerSyncService,
   ) {}
 
   async handleCallback(body: VkCallbackBody): Promise<string> {
@@ -60,6 +66,8 @@ export class VkCallbackService {
         callbackSecret: true,
         confirmationCode: true,
         isActive: true,
+        initialCrmStatusId: true,
+        defaultSourceId: true,
       },
     });
 
@@ -126,6 +134,10 @@ export class VkCallbackService {
 
     if (body.type === 'group_join') {
       await this.processGroupJoin(body, integration);
+    }
+
+    if (body.type === 'message_new') {
+      await this.processMessageNew(body, integration);
     }
 
     this.vkCallbackLoggerService.logAcceptedEvent(body);
@@ -239,7 +251,9 @@ export class VkCallbackService {
       });
 
       const vkExternalId = String(vkUserId);
-      const nextName = this.buildFullName(vkProfile) || vkExternalId;
+      const vkProfileName = this.buildFullName(vkProfile);
+      const nextCrmVkName = vkProfileName || vkExternalId;
+      let crmVk: CrmVk;
       const existingCrmVk = await this.prisma.crmVk.findFirst({
         where: {
           accountId: integration.accountId,
@@ -247,7 +261,10 @@ export class VkCallbackService {
         },
         select: {
           id: true,
+          accountId: true,
+          externalId: true,
           name: true,
+          messagesGroupId: true,
         },
       });
 
@@ -256,13 +273,10 @@ export class VkCallbackService {
           data: {
             accountId: integration.accountId,
             externalId: vkExternalId,
-            name: nextName,
-          },
-          select: {
-            id: true,
-            name: true,
+            name: nextCrmVkName,
           },
         });
+        crmVk = createdCrmVk;
 
         this.vkCallbackLoggerService.logCrmVkCreated(body, {
           integrationId: integration.id,
@@ -272,20 +286,19 @@ export class VkCallbackService {
         });
       } else {
         let currentName = existingCrmVk.name;
-        if (currentName !== nextName) {
+        if (vkProfileName && currentName !== vkProfileName) {
           const updatedCrmVk = await this.prisma.crmVk.update({
             where: {
               id: existingCrmVk.id,
             },
             data: {
-              name: nextName,
-            },
-            select: {
-              id: true,
-              name: true,
+              name: vkProfileName,
             },
           });
           currentName = updatedCrmVk.name;
+          crmVk = updatedCrmVk;
+        } else {
+          crmVk = existingCrmVk;
         }
 
         this.vkCallbackLoggerService.logCrmVkFound(body, {
@@ -294,9 +307,17 @@ export class VkCallbackService {
           crmVkId: existingCrmVk.id,
           vkUserId,
           name: currentName,
-          nameChanged: currentName === nextName && existingCrmVk.name !== nextName,
+          nameChanged: currentName === vkProfileName && existingCrmVk.name !== vkProfileName,
         });
       }
+
+      const { crmCustomer } =
+        await this.vkCallbackCustomerSyncService.syncGroupJoinCustomer({
+          integration,
+          callbackEventId: callbackEvent.id,
+          crmVk,
+          vkProfile,
+        });
 
       await this.prisma.vkCallbackEvent.update({
         where: {
@@ -304,6 +325,7 @@ export class VkCallbackService {
         },
         data: {
           status: 'processed',
+          crmCustomerId: crmCustomer.id,
           processedAt: new Date(),
           errorMessage: null,
         },
@@ -332,9 +354,242 @@ export class VkCallbackService {
     }
   }
 
+  private async processMessageNew(
+    body: Record<string, unknown>,
+    integration: VkIntegrationRecord,
+  ): Promise<void> {
+    const eventId = this.readString(body.event_id);
+    if (!eventId) {
+      this.vkCallbackLoggerService.logValidationError(body, 'missing_event_id', {
+        integrationId: integration.id,
+        accountId: integration.accountId,
+        groupId: integration.groupId,
+      });
+      return;
+    }
+
+    const existingEvent = await this.prisma.vkCallbackEvent.findUnique({
+      where: {
+        vkIntegrationId_eventId: {
+          vkIntegrationId: integration.id,
+          eventId,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (existingEvent) {
+      this.vkCallbackLoggerService.logDuplicate(body, {
+        integrationId: integration.id,
+        accountId: integration.accountId,
+        callbackEventId: existingEvent.id,
+        currentStatus: existingEvent.status,
+      });
+      return;
+    }
+
+    const message = this.readMessageNewMessage(body);
+    if (!message) {
+      this.vkCallbackLoggerService.logValidationError(
+        body,
+        'missing_message_new_message',
+        {
+          integrationId: integration.id,
+          accountId: integration.accountId,
+          groupId: integration.groupId,
+          eventId,
+        },
+      );
+      return;
+    }
+
+    const vkUserId = this.readNumber(message.from_id);
+    if (vkUserId === undefined) {
+      this.vkCallbackLoggerService.logValidationError(
+        body,
+        'missing_message_new_from_id',
+        {
+          integrationId: integration.id,
+          accountId: integration.accountId,
+          groupId: integration.groupId,
+          eventId,
+        },
+      );
+      return;
+    }
+
+    if (vkUserId <= 0) {
+      this.vkCallbackLoggerService.logValidationError(
+        body,
+        'invalid_message_new_from_id',
+        {
+          integrationId: integration.id,
+          accountId: integration.accountId,
+          groupId: integration.groupId,
+          eventId,
+          rawFromId: message.from_id,
+        },
+      );
+      return;
+    }
+
+    const messageId = this.readNumber(message.id);
+    if (!messageId) {
+      this.vkCallbackLoggerService.logValidationError(
+        body,
+        'missing_message_new_message_id',
+        {
+          integrationId: integration.id,
+          accountId: integration.accountId,
+          groupId: integration.groupId,
+          eventId,
+          vkUserId,
+        },
+      );
+      return;
+    }
+
+    const peerId = this.readNumber(message.peer_id);
+    const conversationMessageId = this.readNumber(message.conversation_message_id);
+    const callbackEvent = await this.prisma.vkCallbackEvent.create({
+      data: {
+        accountId: integration.accountId,
+        vkIntegrationId: integration.id,
+        eventId,
+        eventType: this.readString(body.type) ?? 'unknown',
+        groupId: integration.groupId,
+        vkUserId,
+        apiVersion: this.readString(body.v) ?? '',
+        payload: body as Prisma.InputJsonValue,
+        status: 'received',
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    try {
+      const vkExternalId = String(vkUserId);
+      const messageDate = this.readNumber(message.date);
+      const refSource = this.readString(message.ref_source);
+      let crmVk: CrmVk;
+      const existingCrmVk = await this.prisma.crmVk.findFirst({
+        where: {
+          accountId: integration.accountId,
+          externalId: vkExternalId,
+        },
+        select: {
+          id: true,
+          accountId: true,
+          externalId: true,
+          name: true,
+          messagesGroupId: true,
+        },
+      });
+
+      if (!existingCrmVk) {
+        const createdCrmVk = await this.prisma.crmVk.create({
+          data: {
+            accountId: integration.accountId,
+            externalId: vkExternalId,
+            name: vkExternalId,
+          },
+        });
+        crmVk = createdCrmVk;
+
+        this.vkCallbackLoggerService.logCrmVkCreated(body, {
+          integrationId: integration.id,
+          accountId: integration.accountId,
+          crmVkId: createdCrmVk.id,
+          vkUserId,
+          messageId,
+          peerId: peerId ?? null,
+          conversationMessageId: conversationMessageId ?? null,
+        });
+      } else {
+        crmVk = existingCrmVk;
+        this.vkCallbackLoggerService.logCrmVkFound(body, {
+          integrationId: integration.id,
+          accountId: integration.accountId,
+          crmVkId: existingCrmVk.id,
+          vkUserId,
+          messageId,
+          peerId: peerId ?? null,
+          conversationMessageId: conversationMessageId ?? null,
+          name: existingCrmVk.name,
+          nameChanged: false,
+        });
+      }
+
+      const { crmCustomer } =
+        await this.vkCallbackMessageCustomerSyncService.syncMessageNewCustomer({
+          integration,
+          callbackEventId: callbackEvent.id,
+          crmVk,
+          message: {
+            id: messageId,
+            from_id: vkUserId,
+            ...(peerId ? { peer_id: peerId } : {}),
+            ...(conversationMessageId
+              ? { conversation_message_id: conversationMessageId }
+              : {}),
+            ...(messageDate ? { date: messageDate } : {}),
+            ...(refSource ? { ref_source: refSource } : {}),
+          },
+        });
+
+      await this.prisma.vkCallbackEvent.update({
+        where: {
+          id: callbackEvent.id,
+        },
+        data: {
+          status: 'processed',
+          crmCustomerId: crmCustomer.id,
+          processedAt: new Date(),
+          errorMessage: null,
+        },
+      });
+    } catch (error) {
+      const errorMessage = this.toErrorMessage(error);
+
+      await this.prisma.vkCallbackEvent.update({
+        where: {
+          id: callbackEvent.id,
+        },
+        data: {
+          status: 'failed',
+          errorMessage,
+          processedAt: new Date(),
+        },
+      });
+
+      this.vkCallbackLoggerService.logFailed(body, {
+        integrationId: integration.id,
+        accountId: integration.accountId,
+        callbackEventId: callbackEvent.id,
+        vkUserId,
+        messageId,
+        peerId: peerId ?? null,
+        conversationMessageId: conversationMessageId ?? null,
+        errorMessage,
+      });
+    }
+  }
+
   private readGroupJoinUserId(body: Record<string, unknown>): number | undefined {
     const payload = this.isRecord(body.object) ? body.object : null;
     return this.readNumber(payload?.user_id);
+  }
+
+  private readMessageNewMessage(
+    body: Record<string, unknown>,
+  ): Record<string, unknown> | null {
+    const payload = this.isRecord(body.object) ? body.object : null;
+    const message = payload && this.isRecord(payload.message) ? payload.message : null;
+    return message;
   }
 
   private extractVkProfile(payload: unknown): VkUserProfile | null {
