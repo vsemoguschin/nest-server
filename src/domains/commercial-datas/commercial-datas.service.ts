@@ -262,7 +262,7 @@ export class CommercialDatasService {
     }
     if (
       (groupId === 19 || groupId === 17 || groupId === 26) &&
-      role === 'MOV' &&
+      (role === 'MOV' || role === 'ROV') &&
       period >= '2025-10'
     ) {
       dopsPercentage = 0.05;
@@ -276,7 +276,7 @@ export class CommercialDatasService {
         bonusPercentage = totalSales <= 299_000 ? 0.05 : 0.07;
         dopsPercentage = totalSales <= 299_000 ? 0.05 : 0.07;
       }
-      if (role === 'MOV') {
+      if (role === 'MOV' || role === 'ROV') {
         bonusPercentage = totalSales <= 250_000 ? 0.04 : 0.05;
         dopsPercentage = totalSales <= 250_000 ? 0.04 : 0.05;
       }

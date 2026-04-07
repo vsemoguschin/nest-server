@@ -73,6 +73,10 @@ export class GroupsAccessService {
       scope.id = { in: [2, 18, 3, user.groupId] };
     }
 
+    if (user.id === 75) {
+      scope.id = { in: [2, 18, 3, 4, 17, 19, 26] };
+    }
+
     // console.log(user.id, user.role.shortName, user.groupId, scope);
 
     return scope;

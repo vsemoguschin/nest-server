@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   MaxFileSizeValidator,
   Param,
@@ -142,6 +143,12 @@ export class TasksController {
     const fromTask = Number(orderLike?.task?.dealId);
     if (Number.isFinite(fromTask) && fromTask > 0) return fromTask;
     return null;
+  }
+
+  private assertMoveOrCopyBoardAccess(user: UserDto) {
+    if (user.role?.shortName === 'DIZ' && user.id !== 54) {
+      throw new ForbiddenException('У вас нет доступа к этой операции');
+    }
   }
 
   private normalizeOrderForAudit(order: any) {
@@ -685,13 +692,14 @@ export class TasksController {
     summary:
       'Копировать задачу на другую доску (без cover), с дубликатами orders',
   })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST', 'DIZ')
   async copyToBoard(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body(new ValidationPipe({ transform: true, whitelist: true }))
     dto: CopyTaskToBoardDto,
   ) {
+    this.assertMoveOrCopyBoardAccess(user);
     const created = await this.tasksService.copyToBoard(user, taskId, dto);
     await this.audit.log({
       userId: user.id,
@@ -705,13 +713,14 @@ export class TasksController {
 
   @Post('columns/:columnId/copy-to-board')
   @ApiOperation({ summary: 'Копировать все задачи колонки на другую доску' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST', 'DIZ')
   async copyColumnToBoard(
     @CurrentUser() user: UserDto,
     @Param('columnId', ParseIntPipe) columnId: number,
     @Body(new ValidationPipe({ transform: true, whitelist: true }))
     dto: CopyTaskToBoardDto,
   ) {
+    this.assertMoveOrCopyBoardAccess(user);
     const result = await this.tasksService.copyColumnToBoard(
       user,
       columnId,
@@ -735,13 +744,14 @@ export class TasksController {
 
   @Post(':taskId/move-to-board')
   @ApiOperation({ summary: 'Переместить задачу на другую доску' })
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROV', 'MOV', 'DP', 'LOGIST', 'DIZ')
   async moveToBoard(
     @CurrentUser() user: UserDto,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body(new ValidationPipe({ transform: true, whitelist: true }))
     dto: CopyTaskToBoardDto,
   ) {
+    this.assertMoveOrCopyBoardAccess(user);
     const updated = await this.tasksService.moveToBoard(user, taskId, dto);
     await this.audit.log({
       userId: user.id,

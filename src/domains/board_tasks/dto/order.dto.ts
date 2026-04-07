@@ -26,7 +26,7 @@ const HOLE_TYPES = [
   'Другое',
 ] as const;
 const ADAPTER_TYPES = ['Помещение', 'Уличный', 'Нет', 'Другое'] as const;
-const DIMMERS_TYPES = ['Пульт', 'Кнопка', ''] as const;
+const DIMMERS_TYPES = ['Пульт', 'Кнопка', 'Приложение', ''] as const;
 const PLUG_TYPES = ['Нет', 'Другое', 'Подарочный', 'Стандарт', 'USB'] as const;
 const PLUG_COLORS = ['Черный', 'Белый', 'Другое'] as const;
 const WIRE_TYPES = ['Акустический', 'Белый', 'Черный', 'Нет'] as const;
