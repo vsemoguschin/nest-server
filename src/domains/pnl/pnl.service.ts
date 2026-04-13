@@ -535,7 +535,17 @@ export class PnlService {
     }
 
     const positions = await this.prisma.operationPosition.findMany({
-      where,
+      // where,
+      where: {
+        originalOperation: {
+          operationDate: {
+            startsWith: period,
+          },
+        },
+        expenseCategoryId: categoryId,
+        projectId
+        // ...where,
+      },
       select: {
         amount: true,
       },

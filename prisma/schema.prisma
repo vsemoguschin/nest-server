@@ -1330,6 +1330,7 @@ model CrmAccount {
   tags          CrmTag[]
   customerTags  CrmCustomerTag[]
   syncStates    CrmSyncState[]
+  vkAdsAccountIntegrations VkAdsAccountIntegration[]
 }
 
 model CrmCustomer {
@@ -1632,6 +1633,135 @@ model VkAdsDailyStat {
 
   @@index([project, entity, date])
   @@unique([project, entity, entityId, date], map: "vkads_unique_entity_per_day")
+}
+
+model VkAdsAccountIntegration {
+  id               Int         @id @default(autoincrement())
+  accountId        Int
+  account          CrmAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  isActive         Boolean     @default(true)
+  baseUrl          String?
+  tokenEnvKey      String?
+  vkAdsAccountId   String?
+  vkAdsCabinetId   String?
+  defaultPackageId Int?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  tests            VkAdsTest[]
+
+  @@index([accountId])
+  @@index([isActive])
+}
+
+model VkAdsTest {
+  id                   Int                     @id @default(autoincrement())
+  accountIntegrationId Int
+  accountIntegration   VkAdsAccountIntegration @relation(fields: [accountIntegrationId], references: [id], onDelete: Restrict)
+  name                 String
+  status               String                  @default("draft")
+  objective            String
+  packageId            Int
+  startBudget          Decimal                 @db.Decimal(12, 2)
+  landingUrl           String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  audiences            VkAdsTestAudience[]
+  creatives            VkAdsTestCreative[]
+  variants             VkAdsTestVariant[]
+  actionLogs           VkAdsTestActionLog[]
+
+  @@index([accountIntegrationId])
+  @@index([status])
+  @@index([packageId])
+}
+
+model VkAdsTestAudience {
+  id                 Int                 @id @default(autoincrement())
+  testId             Int
+  test               VkAdsTest           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  name               String
+  sex                String?
+  ageFrom            Int?
+  ageTo              Int?
+  geoJson            Json?
+  interestsJson      Json?
+  status             String              @default("draft")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  variants           VkAdsTestVariant[]
+
+  @@index([testId])
+  @@index([status])
+}
+
+model VkAdsTestCreative {
+  id             Int                 @id @default(autoincrement())
+  testId         Int
+  test           VkAdsTest           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  name           String
+  title          String
+  text           String
+  videoSourceUrl String?
+  vkContentId    String?
+  status         String              @default("draft")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  variants       VkAdsTestVariant[]
+
+  @@index([testId])
+  @@index([status])
+}
+
+model VkAdsTestVariant {
+  id               Int                 @id @default(autoincrement())
+  testId           Int
+  test             VkAdsTest           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  audienceId       Int
+  audience         VkAdsTestAudience   @relation(fields: [audienceId], references: [id], onDelete: Cascade)
+  creativeId       Int
+  creative         VkAdsTestCreative   @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+  variantKey       String              @unique
+  status           String              @default("draft")
+  budgetLimitDay   Decimal             @db.Decimal(12, 2)
+  vkCampaignId     Int?
+  vkAdGroupId      Int?
+  vkBannerId       Int?
+  vkPrimaryUrlId   Int?
+  launchDate       DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  actionLogs       VkAdsTestActionLog[]
+
+  @@unique([testId, creativeId, audienceId])
+  @@index([testId])
+  @@index([audienceId])
+  @@index([creativeId])
+  @@index([status])
+  @@index([vkCampaignId])
+  @@index([vkAdGroupId])
+  @@index([vkBannerId])
+  @@index([vkPrimaryUrlId])
+}
+
+model VkAdsTestActionLog {
+  id          Int                @id @default(autoincrement())
+  testId      Int
+  test        VkAdsTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  variantId   Int?
+  variant     VkAdsTestVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  action      String
+  reason      String?
+  payloadJson Json?
+  createdAt   DateTime           @default(now())
+
+  @@index([testId])
+  @@index([variantId])
+  @@index([action])
 }
 
 /// Снапшот PNL-данных (агрегированные тяжелые расчеты), хранится по периодам

@@ -51,6 +51,7 @@ import { VkMessagesModule } from './domains/vk-messages/vk-messages.module';
 import { VkCallbackModule } from './domains/vk-callback/vk-callback.module';
 import { CrmCustomersModule } from './domains/crm-customers/crm-customers.module';
 import { AiAssistantModule } from './domains/ai-assistant/ai-assistant.module';
+import { VkAdsTestModule } from './domains/vk-ads-test/vk-ads-test.module';
 
 @Module({
   imports: [
@@ -102,6 +103,7 @@ import { AiAssistantModule } from './domains/ai-assistant/ai-assistant.module';
     VkCallbackModule,
     CrmCustomersModule,
     AiAssistantModule,
+    VkAdsTestModule,
 
     // другие модули
   ],
