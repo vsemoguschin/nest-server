@@ -14,14 +14,13 @@ datasource db {
 }
 
 model RefreshToken {
-  id         Int      @id @default(autoincrement()) 
-  token      String   @unique
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id])
-  createdAt  DateTime @default(now())
-  expiresAt  DateTime
-  revoked    Boolean  @default(false)
-  
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
 
   @@index([userId])
 }
@@ -30,158 +29,158 @@ model RefreshToken {
 // Project — корневая сущность. Все домены должны быть привязаны к проекту.
 model Project {
   id        Int      @id @default(autoincrement()) // ID проекта
-  name      String   // Название проекта (главная бизнес-единица)
+  name      String // Название проекта (главная бизнес-единица)
   code      String?  @unique // Короткий уникальный код (опционально)
   isActive  Boolean  @default(true) // Активен ли проект
   createdAt DateTime @default(now()) // Дата создания
   updatedAt DateTime @updatedAt // Дата обновления
 
-  groups    Group[]          // Группы пользователей внутри проекта
+  groups Group[] // Группы пользователей внутри проекта
 
-  operationPositions OperationPosition[]
-  counterPartiesIncome CounterParty[]  @relation("CounterPartyIncomeProject")
-  counterPartiesOutcome CounterParty[] @relation("CounterPartyOutcomeProject")
+  operationPositions    OperationPosition[]
+  counterPartiesIncome  CounterParty[]      @relation("CounterPartyIncomeProject")
+  counterPartiesOutcome CounterParty[]      @relation("CounterPartyOutcomeProject")
 }
 
 // ПРОСТРАНСТВО
 model WorkSpace {
-  id                 Int          @id @default(autoincrement()) 
-  title              String       @unique
-  department         String
-  deletedAt          DateTime?  // Поле для мягкого удаления
-  createdAt          DateTime     @default(now())
-  groups             Group[]
-  users              User[]
-  clients            Client[]
-  deals              Deal[]
-  dops               Dop[]
-  payments           Payment[]
-  dealSources        DealSource[]
-  adSources          AdSource[]
-  reports            RopReport[]
-  rovReports         RovReport[]
-  adExpenses         AdExpense[]
-  salaryPays         salaryPay[]
-  salaryCorrections  salaryCorrection[]
-  deliveries         Delivery[]
+  id                Int                @id @default(autoincrement())
+  title             String             @unique
+  department        String
+  deletedAt         DateTime? // Поле для мягкого удаления
+  createdAt         DateTime           @default(now())
+  groups            Group[]
+  users             User[]
+  clients           Client[]
+  deals             Deal[]
+  dops              Dop[]
+  payments          Payment[]
+  dealSources       DealSource[]
+  adSources         AdSource[]
+  reports           RopReport[]
+  rovReports        RovReport[]
+  adExpenses        AdExpense[]
+  salaryPays        salaryPay[]
+  salaryCorrections salaryCorrection[]
+  deliveries        Delivery[]
 }
-
 
 // ГРУПППА
 model Group {
-  id         Int        @id @default(autoincrement()) 
-  title      String     
-  deletedAt  DateTime?  // Поле для мягкого удаления
-  createdAt  DateTime   @default(now())
+  id        Int       @id @default(autoincrement())
+  title     String
+  deletedAt DateTime? // Поле для мягкого удаления
+  createdAt DateTime  @default(now())
 
-  projectId Int?      // Проект
-  project   Project?  @relation(fields: [projectId], references: [id]) // Связь с проектом
+  projectId Int? // Проект
+  project   Project? @relation(fields: [projectId], references: [id]) // Связь с проектом
 
   workSpaceId Int
-  workSpace  WorkSpace @relation(fields: [workSpaceId], references: [id])
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 
-  users       User[]
-  clients     Client[]
-  deals       Deal[]
-  dops        Dop[]
-  payments    Payment[]
-  reports     RopReport[]
-  rovReports  RovReport[]
-  adExpenses  AdExpense[]
-  adSources   AdSource[]
+  users      User[]
+  clients    Client[]
+  deals      Deal[]
+  dops       Dop[]
+  payments   Payment[]
+  reports    RopReport[]
+  rovReports RovReport[]
+  adExpenses AdExpense[]
+  adSources  AdSource[]
 
   @@index([projectId])
 }
 
 // РОЛЬ
 model Role {
-  id         Int        @id @default(autoincrement()) 
-  shortName  String     @unique
+  id         Int       @id @default(autoincrement())
+  shortName  String    @unique
   fullName   String
   department String // Используем enum
-  deletedAt  DateTime?  // Поле для мягкого удаления
-  createdAt  DateTime   @default(now())
+  deletedAt  DateTime? // Поле для мягкого удаления
+  createdAt  DateTime  @default(now())
   users      User[]
 }
 
 // ПОЛЬЗОВАТЕЛЬ
 model User {
-  id             Int       @id @default(autoincrement())
-  fullName       String
-  email          String    @unique
-  password       String
-  info           String    @default("")
-  tg             String    @default("")
-  tg_id          String    @default("")
-  status         String    @default("")
-  deletedAt  DateTime?  // Поле для мягкого удаления
-  createdAt  DateTime   @default(now())
-  avatarUrl      String?
+  id        Int       @id @default(autoincrement())
+  fullName  String
+  email     String    @unique
+  password  String
+  info      String    @default("")
+  tg        String    @default("")
+  tg_id     String    @default("")
+  status    String    @default("")
+  deletedAt DateTime? // Поле для мягкого удаления
+  createdAt DateTime  @default(now())
+  avatarUrl String?
 
-  refreshTokens  RefreshToken[]
+  refreshTokens RefreshToken[]
 
   // Добавляем связь с ролью:
-  roleId         Int
-  role           Role      @relation(fields: [roleId], references: [id])
-  isIntern       Boolean   @default(false)
+  roleId   Int
+  role     Role    @relation(fields: [roleId], references: [id])
+  isIntern Boolean @default(false)
 
-  workSpaceId    Int
-  workSpace      WorkSpace @relation(fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 
-  groupId        Int
-  group          Group     @relation(fields: [groupId], references: [id])
+  groupId Int
+  group   Group @relation(fields: [groupId], references: [id])
 
-  clients        Client[] // Один пользователь может иметь много клиентов
-  deals          Deal[] // Один пользователь может иметь много сделок
-  dealSales      DealUser[]
-  dealAudit      DealAudit[]
+  clients   Client[] // Один пользователь может иметь много клиентов
+  deals     Deal[] // Один пользователь может иметь много сделок
+  dealSales DealUser[]
+  dealAudit DealAudit[]
 
-  payments       Payment[]
+  payments Payment[]
 
-  dops           Dop[]
+  dops Dop[]
 
-  deliveries     Delivery[]
+  deliveries Delivery[]
 
-  reviews        Review[]
+  reviews Review[]
 
-  managersPlans  ManagersPlan[]
+  managersPlans ManagersPlan[]
 
   managerReports ManagerReport[]
 
-  salaryPays     salaryPay[]
+  salaryPays salaryPay[]
 
   salaryCorrections salaryCorrection[]
 
-  masterReports   MasterReport[]
-  masterRepairReports   MasterRepairReport[]
-  packerReports   PackerReport[]
-  masterShifts    MasterShift[]
-  packerShifts    PackerShift[]
-  logistShifts    LogistShift[]
-  otherReport     OtherReport[]
-  frezerReports   FrezerReport[]
+  masterReports       MasterReport[]
+  masterRepairReports MasterRepairReport[]
+  packerReports       PackerReport[]
+  masterShifts        MasterShift[]
+  packerShifts        PackerShift[]
+  logistShifts        LogistShift[]
+  otherReport         OtherReport[]
+  frezerReports       FrezerReport[]
 
   // Канбан
-  boards        Board[]            @relation("BoardUsers")
-  tasks         KanbanTask[]       @relation("TaskMembers")
-  createdTasks  KanbanTask[]       @relation("TaskCreator")
+  boards       Board[]      @relation("BoardUsers")
+  tasks        KanbanTask[] @relation("TaskMembers")
+  createdTasks KanbanTask[] @relation("TaskCreator")
 
   comments      KanbanTaskComments[]
   audits        KanbanTaskAudit[]
-  uploadedFiles KanbanFile[]       @relation("KanbanFileUploader")
+  uploadedFiles KanbanFile[]         @relation("KanbanFileUploader")
 
   columnSubscriptions ColumnSubscription[]
 }
+
 model ManagersPlan {
-  id         Int        @id @default(autoincrement()) 
-  period     String // Если нужен только год-месяц, можно хранить как DateTime (например, первый день месяца)
-  plan       Int        @default(0)
-  deletedAt  DateTime?  // Поле для мягкого удаления
-  createdAt  DateTime   @default(now())
-  
+  id        Int       @id @default(autoincrement())
+  period    String // Если нужен только год-месяц, можно хранить как DateTime (например, первый день месяца)
+  plan      Int       @default(0)
+  deletedAt DateTime? // Поле для мягкого удаления
+  createdAt DateTime  @default(now())
+
   // Связь с пользователем (для которого создаётся план)
-  userId  Int      
-  user    User          @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
   // Убираем @unique, чтобы один пользователь мог иметь несколько планов
 }
 
@@ -196,8 +195,8 @@ model ManagerReport {
   shiftCost      Float   @default(666.67)
   isIntern       Boolean @default(false)
 
-  userId         Int
-  user           User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 }
 
 model RopReport {
@@ -209,65 +208,66 @@ model RopReport {
   date           String
   period         String @default("")
 
-  workSpaceId         Int
-  workSpace           WorkSpace  @relation(fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 
-  groupId         Int?
-  group           Group?  @relation(fields: [groupId], references: [id])
+  groupId Int?
+  group   Group? @relation(fields: [groupId], references: [id])
 }
 
 //Отчет руководителя отдела ведения
 model RovReport {
-  id                 Int       @id @default(autoincrement())
-  date               String    // Дата отчета
-  takenToDesign      Int       @default(0) // Взяли в дизайн
-  sentToProduction   Int       @default(0) // Передали на производство
+  id               Int    @id @default(autoincrement())
+  date             String // Дата отчета
+  takenToDesign    Int    @default(0) // Взяли в дизайн
+  sentToProduction Int    @default(0) // Передали на производство
 
-  workSpaceId        Int
-  workSpace          WorkSpace @relation(fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 
-  groupId            Int       // Связь с группой
-  group              Group     @relation(fields: [groupId], references: [id])
+  groupId Int // Связь с группой
+  group   Group @relation(fields: [groupId], references: [id])
 
   @@unique([groupId, date])
   @@index([workSpaceId])
 }
+
 // Суммы выплат
 model salaryPay {
-  id             Int    @id @default(autoincrement())
-  date           String @default("")
-  period         String @default("")
-  price          Int
-  status         String
+  id     Int    @id @default(autoincrement())
+  date   String @default("")
+  period String @default("")
+  price  Int
+  status String
 
-  userId         Int
-  user           User   @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-  workSpaceId    Int
-  workSpace      WorkSpace @relation(fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 }
 
 // Корректировка зарплаты(штрафы/бонусы)
 model salaryCorrection {
-  id             Int    @id @default(autoincrement())
-  date           String @default("")
-  period         String @default("")
-  price          Int
-  type           String // Штраф/Бонус
-  description    String @default("")
-  
-  userId         Int
-  user           User   @relation(fields: [userId], references: [id])
+  id          Int    @id @default(autoincrement())
+  date        String @default("")
+  period      String @default("")
+  price       Int
+  type        String // Штраф/Бонус
+  description String @default("")
 
-  workSpaceId    Int
-  workSpace      WorkSpace @relation(fields: [workSpaceId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 }
 
 // КЛИЕНТ
 model Client {
   id           Int       @id @default(autoincrement())
   fullName     String // Имя клиента
-  phone        String    @default("")// Номер телефона
+  phone        String    @default("") // Номер телефона
   chatLink     String    @unique // Ссылка на чат
   adLink       String    @default("") // Ссылка на объявление
   gender       String // Пол
@@ -276,285 +276,288 @@ model Client {
   info         String    @default("") // Информация
   firstContact String // Дата первого контакта
   isRegular    Boolean   @default(false)
-  deletedAt    DateTime?  // Поле для мягкого удаления
+  deletedAt    DateTime? // Поле для мягкого удаления
   createdAt    DateTime  @default(now())
 
   // Внешний ключ для связи с пользователем
-  workSpaceId  Int
-  workSpace    WorkSpace @relation(fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 
   // Внешний ключ для связи с пользователем
-  groupId      Int
-  group        Group     @relation(fields: [groupId], references: [id])
+  groupId Int
+  group   Group @relation(fields: [groupId], references: [id])
 
   // Внешний ключ для связи с пользователем
-  userId       Int
-  user         User      @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
   // Связь со сделками:
-  deals        Deal[] // Один пользователь может иметь много сделок
+  deals Deal[] // Один пользователь может иметь много сделок
 }
-
 
 //--СДЕЛКА---------------------------------------------------------
 model Deal {
-  id                Int        @id @default(autoincrement())
-  saleDate          String     // Дата продажи (обязательное поле)
-  card_id           String     @default("") // ID карточки дизайна
-  title             String     // Название сделки
-  price             Int        // Стоимость
-  status            String     @default("Создана") // Допустимые значения: "Создана", "Изготовление", "Готов", "Готов к отправке", "Отправлена", "Вручена"
-  clothingMethod    String     // Метод закрытия (clothingMethod)
-  description       String     @default("") // Описание сделки
-  source            String     // Источник сделки
-  adTag             String     // ТЕГ
-  discont           String     // Скидка. Допустимые значения: "Без скидки", "Желтая", "ОПТ", "Рассылка", "Красная"
-  sphere            String     @default("") // Сфера деятельности
-  city              String     @default("") // Город
-  region            String     @default("") // Регион
-  paid              Boolean    @default(false) // Оплачена?
-  maketType         String     @default("") // Тип макета. Допустимые значения: "Дизайнерский", "Заготовка из базы", "Рекламный", "Визуализатор", "Из рассылки"
-  category          String     @default("")
-  maketPresentation String     @default("")// Дата презентации макета
-  period            String     @default("") // Период, например "2025-02"; значение можно вычислять на уровне приложения
-  deletedAt         DateTime?  // Поле для мягкого удаления
-  createdAt         DateTime   @default(now())
-  reservation       Boolean    @default(false) // Бронь
-  bookSize          String     @default("")
-  pageType          String     @default("")
-  pages             Int        @default(0)
+  id                Int       @id @default(autoincrement())
+  saleDate          String // Дата продажи (обязательное поле)
+  card_id           String    @default("") // ID карточки дизайна
+  title             String // Название сделки
+  price             Int // Стоимость
+  status            String    @default("Создана") // Допустимые значения: "Создана", "Изготовление", "Готов", "Готов к отправке", "Отправлена", "Вручена"
+  clothingMethod    String // Метод закрытия (clothingMethod)
+  description       String    @default("") // Описание сделки
+  source            String // Источник сделки
+  adTag             String // ТЕГ
+  discont           String // Скидка. Допустимые значения: "Без скидки", "Желтая", "ОПТ", "Рассылка", "Красная"
+  sphere            String    @default("") // Сфера деятельности
+  city              String    @default("") // Город
+  region            String    @default("") // Регион
+  paid              Boolean   @default(false) // Оплачена?
+  maketType         String    @default("") // Тип макета. Допустимые значения: "Дизайнерский", "Заготовка из базы", "Рекламный", "Визуализатор", "Из рассылки"
+  category          String    @default("")
+  maketPresentation String    @default("") // Дата презентации макета
+  period            String    @default("") // Период, например "2025-02"; значение можно вычислять на уровне приложения
+  deletedAt         DateTime? // Поле для мягкого удаления
+  createdAt         DateTime  @default(now())
+  reservation       Boolean   @default(false) // Бронь
+  bookSize          String    @default("")
+  pageType          String    @default("")
+  pages             Int       @default(0)
 
-  courseType        String     @default("")
-  discontAmount     Int        @default(0)
+  courseType    String @default("")
+  discontAmount Int    @default(0)
 
   // Внешний ключ для связи с пространством
-  workSpaceId       Int
-  workSpace         WorkSpace  @relation( fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 
   // Внешний ключ для связи с группой
-  groupId           Int
-  group             Group      @relation( fields: [groupId], references: [id])
+  groupId Int
+  group   Group @relation(fields: [groupId], references: [id])
 
   // Внешний ключ для связи с пользователем (создателем сделки)
-  userId            Int
-  user              User       @relation( fields: [userId], references: [id])
-  dealers           DealUser[]
+  userId  Int
+  user    User       @relation(fields: [userId], references: [id])
+  dealers DealUser[]
 
   // Внешний ключ для связи с клиентом
-  clientId          Int
-  client            Client     @relation( fields: [clientId], references: [id])
+  clientId Int
+  client   Client @relation(fields: [clientId], references: [id])
 
-  payments          Payment[]
+  payments Payment[]
 
-  dops              Dop[]
+  dops Dop[]
 
-  deliveries        Delivery[]
+  deliveries Delivery[]
 
-  reviews            Review[]
+  reviews Review[]
 
   // orders            Order[]
-  orders            TaskOrder[]
+  orders TaskOrder[]
 
-  tasks             KanbanTask[]
+  tasks KanbanTask[]
 
-  statusHistory     DealStatusHistory[]
-  audit             DealAudit[]
+  statusHistory DealStatusHistory[]
+  audit         DealAudit[]
 
-  masterReports         MasterReport[]
-  masterRepairReports   MasterRepairReport[]
-  packerReports         PackerReport[]
-  otherReports          OtherReport[]
+  masterReports       MasterReport[]
+  masterRepairReports MasterRepairReport[]
+  packerReports       PackerReport[]
+  otherReports        OtherReport[]
 
   @@index([saleDate, groupId])
 }
 
 // История изменения статуса
 model DealStatusHistory {
-  id         Int         @id @default(autoincrement()) 
-  status     String
-  changedAt  DateTime    @default(now())
-  comment    String?     
+  id        Int      @id @default(autoincrement())
+  status    String
+  changedAt DateTime @default(now())
+  comment   String?
 
-  dealId     Int
-  deal       Deal        @relation(fields: [dealId], references: [id])
+  dealId Int
+  deal   Deal @relation(fields: [dealId], references: [id])
 }
+
 // История изменений сделки
 model DealAudit {
-  id        Int      @id @default(autoincrement()) 
-  action    String   // Описание действия, например, "Статус изменён", "Данные обновлены"
-  comment   String?  // Дополнительный комментарий (если требуется)
+  id        Int      @id @default(autoincrement())
+  action    String // Описание действия, например, "Статус изменён", "Данные обновлены"
+  comment   String? // Дополнительный комментарий (если требуется)
   createdAt DateTime @default(now())
 
-  dealId    Int      // ID сделки, к которой относится аудит
-  deal      Deal     @relation(fields: [dealId], references: [id])
+  dealId Int // ID сделки, к которой относится аудит
+  deal   Deal @relation(fields: [dealId], references: [id])
 
-  userId    Int?     // ID пользователя, который совершил действие (опционально)
-  user      User?    @relation(fields: [userId], references: [id])
+  userId Int? // ID пользователя, который совершил действие (опционально)
+  user   User? @relation(fields: [userId], references: [id])
 }
 
 // Источники сделок
 model AdSource {
-  id           Int           @id @default(autoincrement()) 
-  title        String        @unique
-  adExpenses   AdExpense[]
+  id         Int         @id @default(autoincrement())
+  title      String      @unique
+  adExpenses AdExpense[]
 
   // Внешний ключ для связи с пространством
-  workSpaceId  Int
-  workSpace    WorkSpace  @relation( fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 
-  groupId       Int?
-  group         Group?  @relation(fields: [groupId], references: [id])
+  groupId Int?
+  group   Group? @relation(fields: [groupId], references: [id])
 }
 
 // Источники сделок
 model DealSource {
-  id           Int           @id @default(autoincrement()) 
-  title        String        @unique
+  id    Int    @id @default(autoincrement())
+  title String @unique
 
   // Внешний ключ для связи с пространством
-  workSpaceId  Int
-  workSpace    WorkSpace  @relation( fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 }
 
 // расходы на рекламу
 model AdExpense {
-  id            Int        @id @default(autoincrement())
-  price         Int        @default(0)
-  date          String
-  period        String     @default("")
+  id     Int    @id @default(autoincrement())
+  price  Int    @default(0)
+  date   String
+  period String @default("")
 
-  adSourceId    Int
-  adSource      AdSource   @relation(fields: [adSourceId], references: [id])
+  adSourceId Int
+  adSource   AdSource @relation(fields: [adSourceId], references: [id])
 
-  workSpaceId   Int
-  workSpace     WorkSpace  @relation( fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 
-  groupId       Int?
-  group         Group?  @relation(fields: [groupId], references: [id])
+  groupId Int?
+  group   Group? @relation(fields: [groupId], references: [id])
 }
 
 // Методы закрытия
 model ClothingMethod {
-  id     Int     @id @default(autoincrement()) 
-  title  String  @unique
+  id    Int    @id @default(autoincrement())
+  title String @unique
 }
+
 // Рекламные теги
 model AdTag {
-  id     Int     @id @default(autoincrement()) 
-  title  String  @unique
+  id    Int    @id @default(autoincrement())
+  title String @unique
 }
+
 // Сферы деятельности
 model Sphere {
-  id     Int     @id @default(autoincrement()) 
-  title  String  @unique
+  id    Int    @id @default(autoincrement())
+  title String @unique
 }
+
 //-----------------------------------------------------------------
 
 // ДИЛЕРЫ
 model DealUser {
-  id        Int    @id @default(autoincrement()) 
-  price     Int    // Сумма
-  idx       Int    @default(0)// Индекс (для сортировки)
+  id    Int @id @default(autoincrement())
+  price Int // Сумма
+  idx   Int @default(0) // Индекс (для сортировки)
 
-  dealId    Int
-  deal      Deal   @relation(fields: [dealId], references: [id])
+  dealId Int
+  deal   Deal @relation(fields: [dealId], references: [id])
 
-  userId    Int
-  user      User   @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
   @@unique([dealId, userId])
 }
 
 // ПЛАТЕЖИ
 model Payment {
-  id           Int         @id @default(autoincrement()) 
-  title        String      // Назначение платежа
-  price        Int         // Сумма
-  date         String      // Дата отплаты (можно заменить на DateTime, если потребуется)
-  method       String      // Способ оплаты
-  description  String      @default("") // Описание
-  reservation  Boolean     @default(false) // Бронь
-  period       String      @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
-  stutus       String      @default("") 
-  paymentId    String      @default("")
-  paymentLink  String      @default("")
-  isConfirmed  Boolean     @default(true)
-  terminal     String      @default("")
+  id          Int     @id @default(autoincrement())
+  title       String // Назначение платежа
+  price       Int // Сумма
+  date        String // Дата отплаты (можно заменить на DateTime, если потребуется)
+  method      String // Способ оплаты
+  description String  @default("") // Описание
+  reservation Boolean @default(false) // Бронь
+  period      String  @default("") // Период (например, "2025-02"). Логику установки значения по умолчанию лучше делать на уровне приложения
+  stutus      String  @default("")
+  paymentId   String  @default("")
+  paymentLink String  @default("")
+  isConfirmed Boolean @default(true)
+  terminal    String  @default("")
 
   // Связи 
-  userId       Int
-  user         User       @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-  dealId       Int
-  deal         Deal       @relation(fields: [dealId], references: [id])
+  dealId Int
+  deal   Deal @relation(fields: [dealId], references: [id])
 
-  workSpaceId  Int
-  workspace    WorkSpace  @relation(fields: [workSpaceId], references: [id])
+  workSpaceId Int
+  workspace   WorkSpace @relation(fields: [workSpaceId], references: [id])
 
-  groupId           Int?
-  group             Group?      @relation( fields: [groupId], references: [id])
+  groupId Int?
+  group   Group? @relation(fields: [groupId], references: [id])
 }
-
 
 // ДОП. УСЛУГИ
 model Dop {
-  id          Int      @id @default(autoincrement()) 
-  saleDate    String   // Дата продажи (можно заменить на DateTime, если требуется)
-  type        String   // Тип допа (можно изменить на внешний ключ к DopsTypes, если нужно)
-  price       Int      // Стоимость
-  description String   @default("")
-  period      String   @default("") // Период, например "2025-02". Значение задается приложением
+  id          Int    @id @default(autoincrement())
+  saleDate    String // Дата продажи (можно заменить на DateTime, если требуется)
+  type        String // Тип допа (можно изменить на внешний ключ к DopsTypes, если нужно)
+  price       Int // Стоимость
+  description String @default("")
+  period      String @default("") // Период, например "2025-02". Значение задается приложением
 
   // Отношения:
-  userId      Int
-  user        User     @relation(fields: [userId], references: [id])
-  
-  dealId      Int
-  deal        Deal     @relation(fields: [dealId], references: [id])
-  
-  workSpaceId      Int
-  workSpace        WorkSpace     @relation(fields: [workSpaceId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-  groupId           Int?
-  group             Group?      @relation( fields: [groupId], references: [id])
+  dealId Int
+  deal   Deal @relation(fields: [dealId], references: [id])
+
+  workSpaceId Int
+  workSpace   WorkSpace @relation(fields: [workSpaceId], references: [id])
+
+  groupId Int?
+  group   Group? @relation(fields: [groupId], references: [id])
 
   @@index([saleDate, groupId])
   @@index([dealId])
 }
+
 // Типы допов
 model DopsType {
-  id    Int    @id @default(autoincrement()) 
+  id    Int    @id @default(autoincrement())
   title String @unique
 }
 
 // ДОСТАВКИ
 model Delivery {
-  id             Int     @id @default(autoincrement()) 
-  date           String  @default("")
-  method         String  @default("") // типа сдек/самовывоз и тп
-  type           String  @default("") // платно/бесплатно
-  purpose        String  @default("") // заказ, досыл, ремонт, возврат(за наш счет нам)
-  description    String  @default("")
-  track          String  @default("")
-  status         String  @default("")
-  price          Float   @default(0)
-  deliveredDate  String  @default("") // Дата доставки
-  cdekStatus     String?
+  id            Int     @id @default(autoincrement())
+  date          String  @default("")
+  method        String  @default("") // типа сдек/самовывоз и тп
+  type          String  @default("") // платно/бесплатно
+  purpose       String  @default("") // заказ, досыл, ремонт, возврат(за наш счет нам)
+  description   String  @default("")
+  track         String  @default("")
+  status        String  @default("")
+  price         Float   @default(0)
+  deliveredDate String  @default("") // Дата доставки
+  cdekStatus    String?
   // isConfirmed    Boolean @default(true)
 
-  deletedAt      DateTime?
+  deletedAt DateTime?
 
-  dealId         Int
-  deal           Deal    @relation(fields: [dealId], references: [id])
+  dealId Int
+  deal   Deal @relation(fields: [dealId], references: [id])
 
-  taskId         Int?
-  task           KanbanTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskId Int?
+  task   KanbanTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
-  workSpaceId    Int?
-  workSpace      WorkSpace?    @relation(fields: [workSpaceId], references: [id])
+  workSpaceId Int?
+  workSpace   WorkSpace? @relation(fields: [workSpaceId], references: [id])
 
-  userId         Int?
-  user           User?   @relation(fields: [userId], references: [id])
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id])
 
   @@index([taskId])
   @@index([date])
@@ -563,46 +566,46 @@ model Delivery {
 
 // ОТЗЫВЫ
 model Review {
-  id      Int     @id @default(autoincrement()) 
-  date    String  // Обязательное поле "дата отзыва"
+  id   Int    @id @default(autoincrement())
+  date String // Обязательное поле "дата отзыва"
 
-  userId  Int
-  user    User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-  dealId  Int
-  deal    Deal    @relation(fields: [dealId], references: [id])
-  
+  dealId Int
+  deal   Deal @relation(fields: [dealId], references: [id])
+
   // fileId  Int
   // file    File    @relation(fields: [fileId], references: [id])
-  file    File[]
+  file File[]
 }
 
 model File {
-  id        Int      @id @default(autoincrement()) 
-  name      String   @default("")
-  ya_name   String   @default("")
-  size      Int      @default(0)
-  preview   String   @default("")
-  path      String   @default("")
-  directory String   @default("")
+  id        Int    @id @default(autoincrement())
+  name      String @default("")
+  ya_name   String @default("")
+  size      Int    @default(0)
+  preview   String @default("")
+  path      String @default("")
+  directory String @default("")
 
-  reviewId  Int        // Связь с отзывом
-  review    Review  @relation(fields: [reviewId], references: [id])
+  reviewId Int // Связь с отзывом
+  review   Review @relation(fields: [reviewId], references: [id])
 }
 
 model Supplie {
-  id              Int      @id @default(autoincrement())
-  date            String  
-  shipmentDate    String  @default("")
-  supplier        String  //поставщик
-  paymentMethod   String  //счет, перевод, наличка
-  orderStatus     String  //Оформлен заказ, В пути, Отгружен нам
-  paymentStatus   String  //Оплачен, Не оплачен
-  deliveryMethod  String  //Сдек, Самовывоз, Доставка от поставщика, Курьерская доставка
-  invoice         String?
-  track           String?
-  positions       SuppliePosition[]
-  
+  id             Int               @id @default(autoincrement())
+  date           String
+  shipmentDate   String            @default("")
+  supplier       String //поставщик
+  paymentMethod  String //счет, перевод, наличка
+  orderStatus    String //Оформлен заказ, В пути, Отгружен нам
+  paymentStatus  String //Оплачен, Не оплачен
+  deliveryMethod String //Сдек, Самовывоз, Доставка от поставщика, Курьерская доставка
+  invoice        String?
+  track          String?
+  positions      SuppliePosition[]
+
   // Связь с операцией Т-Банка (один к одному, может отсутствовать)
   // operationId     Int?     @unique
   // operation       OriginalOperationFromTbank? @relation(fields: [operationId], references: [id])
@@ -611,295 +614,295 @@ model Supplie {
 }
 
 model SuppliePosition {
-  id              Int      @id @default(autoincrement())
-  name            String
-  priceForItem    Float
-  quantity        Decimal
-  category        String  @default("")
+  id           Int     @id @default(autoincrement())
+  name         String
+  priceForItem Float
+  quantity     Decimal
+  category     String  @default("")
 
-  supplieId       Int
-  supplie         Supplie  @relation(fields: [supplieId], references: [id])
+  supplieId Int
+  supplie   Supplie @relation(fields: [supplieId], references: [id])
 
   @@index([category, supplieId])
   @@index([supplieId])
 }
 
 model Suppliers {
-  id      Int      @id @default(autoincrement())
-  name    String   @unique
+  id   Int    @id @default(autoincrement())
+  name String @unique
 }
 
-model SuppliesCategories  {
-  id    Int      @id @default(autoincrement())
-  name  String
+model SuppliesCategories {
+  id   Int    @id @default(autoincrement())
+  name String
 }
 
 model MasterRepairReport {
-  id            Int      @id @default(autoincrement())
-  date          String
-  name          String
-  grinding      Int    @default(0)  //Шлифовка 350р
-  unpackage     Int    @default(0)  //Распаковка стандарт 50
-  unpackageBig  Int    @default(0)  //Распаковка большая 100
-  smartContr    Int    @default(0)  //замена смарт контроллера 200
-  acoustics     Int    @default(0)  //Акустика 150
-  metrs         Float  @default(0)  //замена неона 130
-  els           Int    @default(0)  //замена элемента 70
-  penaltyCost   Int    @default(0)
+  id           Int       @id @default(autoincrement())
+  date         String
+  name         String
+  grinding     Int       @default(0) //Шлифовка 350р
+  unpackage    Int       @default(0) //Распаковка стандарт 50
+  unpackageBig Int       @default(0) //Распаковка большая 100
+  smartContr   Int       @default(0) //замена смарт контроллера 200
+  acoustics    Int       @default(0) //Акустика 150
+  metrs        Float     @default(0) //замена неона 130
+  els          Int       @default(0) //замена элемента 70
+  penaltyCost  Int       @default(0)
   deletedAt    DateTime?
 
-  type          String // Стандарт/Уличная/Смарт/РГБ
-  cost          Int
-  isPenalty     Boolean  @default(false)
-  comment       String   @default("")
+  type      String // Стандарт/Уличная/Смарт/РГБ
+  cost      Int
+  isPenalty Boolean @default(false)
+  comment   String  @default("")
 
-  userId     Int
-  user       User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-  dealId     Int?
-  deal       Deal?   @relation(fields: [dealId], references: [id])
+  dealId Int?
+  deal   Deal? @relation(fields: [dealId], references: [id])
 }
 
 model MasterReport {
-  id           Int      @id @default(autoincrement())
-  date         String
-  name         String
-  metrs        Float
-  els          Int
-  type         String
-  cost         Int
-  penaltyCost  Int      @default(0)
-  isPenalty    Boolean  @default(false)
-  comment      String   @default("")
+  id          Int     @id @default(autoincrement())
+  date        String
+  name        String
+  metrs       Float
+  els         Int
+  type        String
+  cost        Int
+  penaltyCost Int     @default(0)
+  isPenalty   Boolean @default(false)
+  comment     String  @default("")
 
-  lightingType      String  @default("")
-  lightingLength    Float   @default(0)
-  lightingElements  Int     @default(0)
-  lightingCost      Int     @default(0)
-  deletedAt    DateTime?
+  lightingType     String    @default("")
+  lightingLength   Float     @default(0)
+  lightingElements Int       @default(0)
+  lightingCost     Int       @default(0)
+  deletedAt        DateTime?
 
-  userId     Int
-  user       User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-  dealId     Int?
-  deal       Deal?   @relation(fields: [dealId], references: [id])
+  dealId Int?
+  deal   Deal? @relation(fields: [dealId], references: [id])
 
-  orderId    Int?
+  orderId Int?
 }
 
 model PackerReport {
-  id           Int      @id @default(autoincrement())
-  date         String
-  name         String
-  overSize     Boolean //Не размер
-  isGift       Boolean //Не размер
-  items        Int     //количество вывесок в заказе
-  adapters     Int      @default(0)
-  lam          Int      @default(0)
-  cost         Int
-  dimmers      Int  //количество диммеров
-  dops         Int      @default(0)
-  dopsComment  String   @default("")
-  deletedAt    DateTime?
+  id          Int       @id @default(autoincrement())
+  date        String
+  name        String
+  overSize    Boolean //Не размер
+  isGift      Boolean //Не размер
+  items       Int //количество вывесок в заказе
+  adapters    Int       @default(0)
+  lam         Int       @default(0)
+  cost        Int
+  dimmers     Int //количество диммеров
+  dops        Int       @default(0)
+  dopsComment String    @default("")
+  deletedAt   DateTime?
 
-  isPenalty  Boolean  @default(false)
-  comment    String   @default("")
-  penaltyCost  Int      @default(0)
+  isPenalty   Boolean @default(false)
+  comment     String  @default("")
+  penaltyCost Int     @default(0)
 
-  userId       Int
-  user         User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-  dealId       Int?
-  deal         Deal?   @relation(fields: [dealId], references: [id])
+  dealId Int?
+  deal   Deal? @relation(fields: [dealId], references: [id])
 
-  taskId       Int?
+  taskId Int?
 }
 
 model MasterShift {
-  id          Int     @id @default(autoincrement())
-  shift_date  String //2025-05-01
+  id         Int    @id @default(autoincrement())
+  shift_date String //2025-05-01
 
-  userId      Int
-  user        User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 }
 
 model PackerShift {
-  id          Int     @id @default(autoincrement())
-  shift_date  String //2025-05-01
+  id         Int    @id @default(autoincrement())
+  shift_date String //2025-05-01
 
-  userId      Int
-  user        User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 }
 
 model LogistShift {
-  id          Int     @id @default(autoincrement())
-  shift_date  String //2025-05-01
-  cost        Int    @default(0)
+  id         Int    @id @default(autoincrement())
+  shift_date String //2025-05-01
+  cost       Int    @default(0)
 
-  userId      Int
-  user        User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 }
 
 model OtherReport {
-  id           Int     @id @default(autoincrement())
-  date         String //2025-05-01
-  name         String
-  cost         Int
-  penaltyCost  Int      @default(0)
-  comment      String  @default("")
-  deletedAt    DateTime?
+  id          Int       @id @default(autoincrement())
+  date        String //2025-05-01
+  name        String
+  cost        Int
+  penaltyCost Int       @default(0)
+  comment     String    @default("")
+  deletedAt   DateTime?
 
-  userId       Int
-  user         User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-  dealId       Int?
-  deal         Deal?   @relation(fields: [dealId], references: [id])
+  dealId Int?
+  deal   Deal? @relation(fields: [dealId], references: [id])
 
-  taskId       Int?
+  taskId Int?
 }
 
 model FrezerReport {
-  id           Int      @id @default(autoincrement())
-  date         String
-  items        Int     @default(0)
-  sheets       Float   @default(0)
-  remake       Float   @default(0)
-  hours        Int     @default(0)
-  cost         Int     @default(0)
-  square       Float   @default(0)
-  comment      String  @default("")
-  penaltyCost  Int     @default(0)
+  id          Int    @id @default(autoincrement())
+  date        String
+  items       Int    @default(0)
+  sheets      Float  @default(0)
+  remake      Float  @default(0)
+  hours       Int    @default(0)
+  cost        Int    @default(0)
+  square      Float  @default(0)
+  comment     String @default("")
+  penaltyCost Int    @default(0)
 
-  userId       Int
-  user         User    @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 }
 
 model ExpenseCategory {
-  id                     Int                @id @default(autoincrement())
-  name                   String
-  type                   String             // Тип категории: Доходы, Расходы, Активы, Обязательства, Капитал
-  description            String?
-  parentId               Int?               // ID родительской категории (если есть)
-  parent                 ExpenseCategory?   @relation("CategoryRelation", fields: [parentId], references: [id], onDelete: SetNull)
-  children               ExpenseCategory[]  @relation("CategoryRelation")
+  id                    Int               @id @default(autoincrement())
+  name                  String
+  type                  String // Тип категории: Доходы, Расходы, Активы, Обязательства, Капитал
+  description           String?
+  parentId              Int? // ID родительской категории (если есть)
+  parent                ExpenseCategory?  @relation("CategoryRelation", fields: [parentId], references: [id], onDelete: SetNull)
+  children              ExpenseCategory[] @relation("CategoryRelation")
   // operations             Operation[]        // Операции, связанные с категорией (только для листовых категорий)
-  counterPartiesIncome   CounterParty[]     @relation("CounterPartyIncome")
-  counterPartiesOutcome  CounterParty[]     @relation("CounterPartyOutcome")
+  counterPartiesIncome  CounterParty[]    @relation("CounterPartyIncome")
+  counterPartiesOutcome CounterParty[]    @relation("CounterPartyOutcome")
 
-  operationPositions     OperationPosition[]
+  operationPositions OperationPosition[]
 
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-  deletedAt              DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 }
 
 model PlanFactAccount {
-  id                Int      @id @default(autoincrement()) 
-  name              String   // Название
-  accountNumber     String   @unique // Номер счета
-  balance           Float    @default(0) // Остаток
-  type              String   @default("") // безналичны/наличный
-  balanceStartDate  String   @default("") // date
-  comment           String   @default("") // коментарий
-  isReal            Boolean  @default(true) // есть доступ по АПИ
+  id               Int     @id @default(autoincrement())
+  name             String // Название
+  accountNumber    String  @unique // Номер счета
+  balance          Float   @default(0) // Остаток
+  type             String  @default("") // безналичны/наличный
+  balanceStartDate String  @default("") // date
+  comment          String  @default("") // коментарий
+  isReal           Boolean @default(true) // есть доступ по АПИ
 
-  operations        Operation[]
+  operations         Operation[]
   originalOperations OriginalOperationFromTbank[]
-  syncStatus        TbankSyncStatus?
+  syncStatus         TbankSyncStatus?
 }
 
 model Operation {
-  id                 Int       @id @default(autoincrement())
-  operationId        String    @unique
-  operationDate      String
-  operationDateTime  DateTime
-  typeOfOperation    String    @default("")
-  operationType      String    @default("")
-  category           String    @default("")
-  description        String    @default("")
-  payPurpose         String    @default("")
+  id                Int      @id @default(autoincrement())
+  operationId       String   @unique
+  operationDate     String
+  operationDateTime DateTime
+  typeOfOperation   String   @default("")
+  operationType     String   @default("")
+  category          String   @default("")
+  description       String   @default("")
+  payPurpose        String   @default("")
   // accountAmount      Float
-  isCreated          Boolean   @default(false)
+  isCreated         Boolean  @default(false)
 
   // expenseCategoryId  Int?            // Связь с категорией (только листовая категория)
   // expenseCategory    ExpenseCategory?  @relation(fields: [expenseCategoryId], references: [id])
 
-  accountId          Int
-  account            PlanFactAccount   @relation(fields: [accountId], references: [id])
+  accountId Int
+  account   PlanFactAccount @relation(fields: [accountId], references: [id])
 
   // counterPartyId     Int?
   // counterParty       CounterParty?      @relation(fields: [counterPartyId], references: [id])
 
   operationPositions OperationPosition[]
 
-  updatedAt          DateTime          @updatedAt
-  deletedAt          DateTime?
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 }
 
 model CounterParty {
-  id                 Int               @id @default(autoincrement())
-  title              String
-  type               String  @default("") // Плательщик/Получатель/Смешанный
-  inn                String  @default("")
-  kpp                String  @default("")
-  account            String  @default("")
-  bankBic            String  @default("")
-  bankName           String  @default("")
-  contrAgentGroup    String  @default("") // Банки/Гос. органы/Клиенты/Поставщики/Сотрудники 
+  id              Int    @id @default(autoincrement())
+  title           String
+  type            String @default("") // Плательщик/Получатель/Смешанный
+  inn             String @default("")
+  kpp             String @default("")
+  account         String @default("")
+  bankBic         String @default("")
+  bankName        String @default("")
+  contrAgentGroup String @default("") // Банки/Гос. органы/Клиенты/Поставщики/Сотрудники 
 
   // operations         Operation[]
   operationPositions OperationPosition[]
 
-  incomeExpenseCategoryId   Int?            // Связь с категорией для входящих операций
-  incomeExpenseCategory     ExpenseCategory?  @relation("CounterPartyIncome", fields: [incomeExpenseCategoryId], references: [id])
-  outcomeExpenseCategoryId  Int?            // Связь с категорией для исходящих операций
-  outcomeExpenseCategory    ExpenseCategory?  @relation("CounterPartyOutcome", fields: [outcomeExpenseCategoryId], references: [id])
+  incomeExpenseCategoryId  Int? // Связь с категорией для входящих операций
+  incomeExpenseCategory    ExpenseCategory? @relation("CounterPartyIncome", fields: [incomeExpenseCategoryId], references: [id])
+  outcomeExpenseCategoryId Int? // Связь с категорией для исходящих операций
+  outcomeExpenseCategory   ExpenseCategory? @relation("CounterPartyOutcome", fields: [outcomeExpenseCategoryId], references: [id])
 
-  incomeProjectId   Int?
-  incomeProject     Project? @relation("CounterPartyIncomeProject", fields: [incomeProjectId], references: [id])
-  outcomeProjectId  Int?
-  outcomeProject    Project? @relation("CounterPartyOutcomeProject", fields: [outcomeProjectId], references: [id])
+  incomeProjectId  Int?
+  incomeProject    Project? @relation("CounterPartyIncomeProject", fields: [incomeProjectId], references: [id])
+  outcomeProjectId Int?
+  outcomeProject   Project? @relation("CounterPartyOutcomeProject", fields: [outcomeProjectId], references: [id])
 
   @@index([incomeProjectId])
   @@index([outcomeProjectId])
 }
 
 model AutoCategoryRule {
-  id                Int       @id @default(autoincrement()) // Уникальный идентификатор правила
-  enabled           Boolean   @default(true) // Флаг активности правила автокатегоризации
-  priority          Int       @default(100) // Приоритет применения (меньше — раньше). Используется при совпадениях
+  id                Int      @id @default(autoincrement()) // Уникальный идентификатор правила
+  enabled           Boolean  @default(true) // Флаг активности правила автокатегоризации
+  priority          Int      @default(100) // Приоритет применения (меньше — раньше). Используется при совпадениях
   name              String // Название правила для удобства
-  description       String    @default("") // Описание логики правила
+  description       String   @default("") // Описание логики правила
   keywords          String[] // Тип сопоставления: например, 'keywords' | 'regex'
   operationType     String // Тип операции: входящая/исходящая/перевод и т.п.
   accountIds        Int[] // ID счетов, на которые будет применяться правило
   counterPartyIds   Int[] // ID контрагентов, на которые будет применяться правило
   expenseCategoryId Int // ID категории расходов, которую назначать при совпадении
-  createdAt         DateTime  @default(now()) // Дата создания
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime @default(now()) // Дата создания
+  updatedAt         DateTime @updatedAt
 
   @@index([enabled, priority])
 }
 
 model OperationPosition {
-  id                 Int               @id @default(autoincrement())
-  amount             Float
-  period             String?
+  id     Int     @id @default(autoincrement())
+  amount Float
+  period String?
 
-  operationId        Int?            // Связь с операцией
-  operation          Operation?  @relation(fields: [operationId], references: [id])
+  operationId Int? // Связь с операцией
+  operation   Operation? @relation(fields: [operationId], references: [id])
 
-  originalOperationId Int?           // Связь с оригинальной операцией из Т-Банка
+  originalOperationId Int? // Связь с оригинальной операцией из Т-Банка
   originalOperation   OriginalOperationFromTbank? @relation(fields: [originalOperationId], references: [id])
 
-  counterPartyId     Int?
-  counterParty       CounterParty?      @relation(fields: [counterPartyId], references: [id])
+  counterPartyId Int?
+  counterParty   CounterParty? @relation(fields: [counterPartyId], references: [id])
 
-  expenseCategoryId  Int?            // Связь с категорией
-  expenseCategory    ExpenseCategory?  @relation(fields: [expenseCategoryId], references: [id])
+  expenseCategoryId Int? // Связь с категорией
+  expenseCategory   ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
 
-  projectId          Int?            // Связь с проектом
-  project            Project?        @relation(fields: [projectId], references: [id])
+  projectId Int? // Связь с проектом
+  project   Project? @relation(fields: [projectId], references: [id])
 
   @@index([originalOperationId])
   @@index([operationId])
@@ -909,91 +912,91 @@ model OperationPosition {
 }
 
 model OriginalOperationFromTbank {
-  id                 Int       @id @default(autoincrement())
-  operationId        String    @unique
-  operationDate      String
-  typeOfOperation    String
-  category           String
-  description        String
-  payPurpose         String
-  accountAmount       Float
-  counterPartyAccount String
-  counterPartyInn     String
-  counterPartyKpp     String
-  counterPartyBic     String
+  id                   Int     @id @default(autoincrement())
+  operationId          String  @unique
+  operationDate        String
+  typeOfOperation      String
+  category             String
+  description          String
+  payPurpose           String
+  accountAmount        Float
+  counterPartyAccount  String
+  counterPartyInn      String
+  counterPartyKpp      String
+  counterPartyBic      String
   counterPartyBankName String
-  counterPartyTitle   String
-  expenseCategoryId   Int?
-  expenseCategoryName String?
-  
-  accountId          Int
-  account            PlanFactAccount @relation(fields: [accountId], references: [id])
-  
+  counterPartyTitle    String
+  expenseCategoryId    Int?
+  expenseCategoryName  String?
+
+  accountId Int
+  account   PlanFactAccount @relation(fields: [accountId], references: [id])
+
   operationPositions OperationPosition[]
-  
+
   // Связь с поставкой (один к одному, может отсутствовать)
   // supplie            Supplie?
-  
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([accountId, operationDate])
 }
 
 model TbankSyncStatus {
-  id                Int      @id @default(autoincrement())
-  accountId         Int      @unique
+  id                Int             @id @default(autoincrement())
+  accountId         Int             @unique
   account           PlanFactAccount @relation(fields: [accountId], references: [id])
   lastSyncDate      DateTime // Последняя дата синхронизации
-  lastOperationDate String   // Дата последней полученной операции (YYYY-MM-DD)
-  totalOperations   Int      @default(0) // Общее количество синхронизированных операций
-  syncStatus        String   @default("success") // success, error, in_progress
-  errorMessage      String?  // Сообщение об ошибке, если есть
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  lastOperationDate String // Дата последней полученной операции (YYYY-MM-DD)
+  totalOperations   Int             @default(0) // Общее количество синхронизированных операций
+  syncStatus        String          @default("success") // success, error, in_progress
+  errorMessage      String? // Сообщение об ошибке, если есть
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
 
 //// ========= BOARD =========
 model Board {
-  id          Int          @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   title       String
   description String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  columns     Column[]
-  tasks       KanbanTask[]
-  tags        KanbanTaskTags[]
+  columns Column[]
+  tasks   KanbanTask[]
+  tags    KanbanTaskTags[]
 
   // участники доски (многие-ко-многим)
-  users       User[]       @relation("BoardUsers")
-
-  @@index([deletedAt])
+  users User[] @relation("BoardUsers")
   // При необходимости уникальности названия в рамках рабочего пространства:
   // @@unique([workspaceId, title])
+
+  @@index([deletedAt])
 }
 
 //// ========= COLUMN =========
 model Column {
-  id         Int        @id @default(autoincrement())
-  title      String
-  position   Decimal     @db.Decimal(10, 4) // порядок в доске (drag & drop)
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  deletedAt  DateTime?
+  id        Int       @id @default(autoincrement())
+  title     String
+  position  Decimal   @db.Decimal(10, 4) // порядок в доске (drag & drop)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-  tasks      KanbanTask[]
+  tasks KanbanTask[]
 
-  boardId    Int
-  board      Board       @relation(fields: [boardId], references: [id], onDelete: Restrict)
+  boardId Int
+  board   Board @relation(fields: [boardId], references: [id], onDelete: Restrict)
 
   subscriptions ColumnSubscription[]
+  // Если нужно запретить одинаковые названия колонок внутри одной доски:
+  // @@unique([boardId, title])
 
   @@index([boardId, position])
   @@index([deletedAt])
-  // Если нужно запретить одинаковые названия колонок внутри одной доски:
-  // @@unique([boardId, title])
 }
 
 model ColumnSubscription {
@@ -1001,7 +1004,7 @@ model ColumnSubscription {
   userId     Int
   columnId   Int
   createdAt  DateTime @default(now())
-  noticeType String  @default("all")  // all | only_my 
+  noticeType String   @default("all") // all | only_my 
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   column Column @relation(fields: [columnId], references: [id], onDelete: Cascade)
@@ -1012,63 +1015,63 @@ model ColumnSubscription {
 
 //// ========= KANBAN TASK =========
 model KanbanTask {
-  id           Int        @id @default(autoincrement())
-  title        String
-  description  String     @default("")
-  position     Decimal    @db.Decimal(10, 4) // порядок внутри колонки
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  deletedAt    DateTime?
-  archived     Boolean    @default(false)
-  cover        String?
-  chatLink     String?
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String    @default("")
+  position    Decimal   @db.Decimal(10, 4) // порядок внутри колонки
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  archived    Boolean   @default(false)
+  cover       String?
+  chatLink    String?
 
   // участники и создатель
-  members      User[]     @relation("TaskMembers")
-  creatorId    Int
-  creator      User      @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+  members   User[] @relation("TaskMembers")
+  creatorId Int
+  creator   User   @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Restrict)
 
   // вложения канбана (через связующую таблицу)
-  attachments  KanbanTaskAttachment[]
-  orders       TaskOrder[]
-  deliveries   Delivery[]
+  attachments KanbanTaskAttachment[]
+  orders      TaskOrder[]
+  deliveries  Delivery[]
 
-  comments     KanbanTaskComments[]
-  tags         KanbanTaskTags[] @relation("TaskTags")
-  audits       KanbanTaskAudit[]
+  comments KanbanTaskComments[]
+  tags     KanbanTaskTags[]     @relation("TaskTags")
+  audits   KanbanTaskAudit[]
 
-  boardId      Int
-  board        Board      @relation(fields: [boardId], references: [id], onDelete: Restrict)
+  boardId Int
+  board   Board @relation(fields: [boardId], references: [id], onDelete: Restrict)
 
-  columnId     Int
-  column       Column     @relation(fields: [columnId], references: [id], onDelete: Restrict)
+  columnId Int
+  column   Column @relation(fields: [columnId], references: [id], onDelete: Restrict)
 
-  dealId       Int?
-  deal         Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  dealId Int?
+  deal   Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  // Если нужно ограничить дубликаты названий в пределах доски:
+  // @@unique([boardId, title])
 
   @@index([boardId, columnId, position])
   @@index([dealId])
   @@index([dealId, boardId])
   @@index([deletedAt])
-  // Если нужно ограничить дубликаты названий в пределах доски:
-  // @@unique([boardId, title])
 }
 
 //// ========= COMMENTS =========
 model KanbanTaskComments {
-  id        Int         @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   text      String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  authorId  Int
-  author    User       @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  authorId Int
+  author   User @relation(fields: [authorId], references: [id], onDelete: Restrict)
 
-  taskId    Int
-  task      KanbanTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId Int
+  task   KanbanTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
-  files     KanbanFile[]
+  files KanbanFile[]
 
   @@index([taskId, createdAt])
   @@index([deletedAt])
@@ -1076,182 +1079,180 @@ model KanbanTaskComments {
 
 //// ========= TAGS =========
 model KanbanTaskTags {
-  id        Int         @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   name      String
-  color     String      @default("")
-  createdAt DateTime    @default(now())
+  color     String   @default("")
+  createdAt DateTime @default(now())
 
- // Связь многие-ко-многим с задачами
-  tasks     KanbanTask[] @relation("TaskTags")
+  // Связь многие-ко-многим с задачами
+  tasks KanbanTask[] @relation("TaskTags")
 
-  boardId    Int
-  board      Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  boardId Int
+  board   Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
 
   // запрет дубликата одинакового тега в пределах одной доски
-  @@unique([boardId, name]) 
+  @@unique([boardId, name])
 }
 
 //// ========= AUDIT =========
 model KanbanTaskAudit {
-  id        Int         @id @default(autoincrement())
-  createdAt DateTime    @default(now())
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
 
-  userId    Int
-  user      User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
-  taskId    Int
-  task      KanbanTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId Int
+  task   KanbanTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
-  action    String      // примеры: CREATE, UPDATE_TITLE, MOVE, ADD_MEMBER
-  payload   Json?       // произвольные данные (fromColumnId, toColumnId, fieldsChanged, ...)
-  description String?    
+  action      String // примеры: CREATE, UPDATE_TITLE, MOVE, ADD_MEMBER
+  payload     Json? // произвольные данные (fromColumnId, toColumnId, fieldsChanged, ...)
+  description String?
 
   @@index([taskId, createdAt])
 }
 
 //// ========= KANBAN FILE (ОТДЕЛЬНО ОТ ТВОЕЙ File) =========
 model KanbanFile {
-  id           Int         @id @default(autoincrement())
-  name         String      @default("")
-  ya_name      String      @default("")
-  size         Int         @default(0)
-  preview      String      @default("") // URL превью, если есть
-  path         String      @default("") // полный URL/путь
-  directory    String      @default("")
-  mimeType     String?
-  file         String?
+  id        Int     @id @default(autoincrement())
+  name      String  @default("")
+  ya_name   String  @default("")
+  size      Int     @default(0)
+  preview   String  @default("") // URL превью, если есть
+  path      String  @default("") // полный URL/путь
+  directory String  @default("")
+  mimeType  String?
+  file      String?
 
-  createdAt    DateTime    @default(now())
-  deletedAt    DateTime?
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
 
   uploadedById Int
-  uploadedBy   User       @relation("KanbanFileUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  uploadedBy   User @relation("KanbanFileUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
 
-  taskLinks    KanbanTaskAttachment[]
+  taskLinks KanbanTaskAttachment[]
 
-  commentId    Int?                       // ← делает связь опциональной
-  comment      KanbanTaskComments? @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  commentId Int? // ← делает связь опциональной
+  comment   KanbanTaskComments? @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  // Если ключ в облаке уникален, можно включить:
+  // @@unique([ya_name])
 
   @@index([deletedAt])
   @@index([uploadedById])
-  // Если ключ в облаке уникален, можно включить:
-  // @@unique([ya_name])
 }
 
 //// ========= ATTACHMENT (TASK ↔ FILE) =========
 model KanbanTaskAttachment {
-  id        Int         @id @default(autoincrement())
+  id        Int        @id @default(autoincrement())
   taskId    Int
   fileId    Int
-  task      KanbanTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  file      KanbanFile  @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  createdAt DateTime    @default(now())
+  task      KanbanTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  file      KanbanFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
 
   @@unique([taskId, fileId]) // не даём прикрепить один и тот же файл к задаче повторно
   @@index([taskId])
   @@index([fileId])
 }
 
-
 model TaskOrder {
-  id             Int             @id @default(autoincrement()) 
-  title          String          @default("")    // Название заказа
-  deadline       String          @default("")    // Дедлайн формат 2025-08-24
-  material       String          @default("")    // Материал подложки
-  boardWidth     Int             @default(0)     // Ширина подложки
-  boardHeight    Int             @default(0)     // Высота подложки
-  holeType       String          @default("")    // Диаметр отверстий
-  holeInfo       String          @default("")    // Доп инфо по отверстиям
-  stand          Boolean         @default(false) // Подставка
-  laminate       String          @default("")    // Пленка
-  print          Boolean         @default(false) // Печать
-  printQuality   Boolean         @default(false) // Качество печати
+  id           Int     @id @default(autoincrement())
+  title        String  @default("") // Название заказа
+  deadline     String  @default("") // Дедлайн формат 2025-08-24
+  material     String  @default("") // Материал подложки
+  boardWidth   Int     @default(0) // Ширина подложки
+  boardHeight  Int     @default(0) // Высота подложки
+  holeType     String  @default("") // Диаметр отверстий
+  holeInfo     String  @default("") // Доп инфо по отверстиям
+  stand        Boolean @default(false) // Подставка
+  laminate     String  @default("") // Пленка
+  print        Boolean @default(false) // Печать
+  printQuality Boolean @default(false) // Качество печати
 
-  acrylic        String          @default("")    // Акрил
-  isAcrylic      Boolean         @default(false) // нужен ли акрил
-  screen         Boolean         @default(false)
+  acrylic   String  @default("") // Акрил
+  isAcrylic Boolean @default(false) // нужен ли акрил
+  screen    Boolean @default(false)
 
-  type           String          @default("")    // Тип (Помещение/Улица)
+  type String @default("") // Тип (Помещение/Улица)
 
-  wireLength     String          @default("")    // Длина провода от вывески
-  wireInfo       String          @default("")    // Длина провода от вывески - текстом
-  wireType       String          @default("Акустический")    // Тип провода от вевески
+  wireLength String @default("") // Длина провода от вывески
+  wireInfo   String @default("") // Длина провода от вывески - текстом
+  wireType   String @default("Акустический") // Тип провода от вевески
 
-  elements       Int             @default(0)     // Количество элементов
-  gift           Boolean         @default(false) // Подарок
-  adapter        String          @default("")    // Блок (например, Помещение, Уличный, Нет)
-  adapterInfo    String          @default("")    // Доп информация
-  adapterModel   String          @default("")    // Модель блока
-  
-  plug           String          @default("")    // Вилка (стандарт черная, стандарт белая, нет, )
-  plugColor      String          @default("")    // цвет
-  plugLength     Decimal         @default(0)    // Длинна
+  elements     Int     @default(0) // Количество элементов
+  gift         Boolean @default(false) // Подарок
+  adapter      String  @default("") // Блок (например, Помещение, Уличный, Нет)
+  adapterInfo  String  @default("") // Доп информация
+  adapterModel String  @default("") // Модель блока
 
+  plug       String  @default("") // Вилка (стандарт черная, стандарт белая, нет, )
+  plugColor  String  @default("") // цвет
+  plugLength Decimal @default(0) // Длинна
 
-  switch         Boolean         @default(true)    // Выключатель
-  fitting        String          @default("")    // Крепления
-  dimmer         Boolean         @default(false) // Диммер
-  dimmerType     String          @default("") // Модель диммера
-  giftPack       Boolean         @default(false) // Подарочная упаковка
-  description    String          @default("")    // Описание
-  deletedAt      DateTime?                       // Для мягкого удаления
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt @default(now())
-  docs           Boolean         @default(false) // Документы
+  switch      Boolean   @default(true) // Выключатель
+  fitting     String    @default("") // Крепления
+  dimmer      Boolean   @default(false) // Диммер
+  dimmerType  String    @default("") // Модель диммера
+  giftPack    Boolean   @default(false) // Подарочная упаковка
+  description String    @default("") // Описание
+  deletedAt   DateTime? // Для мягкого удаления
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+  docs        Boolean   @default(false) // Документы
 
-  neons          Neon[]
-  lightings      Lighting[]
+  neons     Neon[]
+  lightings Lighting[]
 
-  dealId     Int?
-  deal       Deal?        @relation(fields: [dealId], references: [id])
+  dealId Int?
+  deal   Deal? @relation(fields: [dealId], references: [id])
 
-  taskId     Int
-  task       KanbanTask   @relation(fields: [taskId], references: [id])
+  taskId Int
+  task   KanbanTask @relation(fields: [taskId], references: [id])
 
-  package    Package?
-  orderCost  OrderCost?
+  package   Package?
+  orderCost OrderCost?
 
   @@index([taskId])
   @@index([dealId])
 }
 
 model OrderCost {
-  id              Int       @id @default(autoincrement())
-  orderId         Int       @unique
-  order           TaskOrder @relation(fields: [orderId], references: [id])
-  taskId          Int
-  dealId          Int?
-  boardId         Int
-  computedAt      DateTime  @default(now())
-  calcVersion     Int       @default(1)
+  id          Int       @id @default(autoincrement())
+  orderId     Int       @unique
+  order       TaskOrder @relation(fields: [orderId], references: [id])
+  taskId      Int
+  dealId      Int?
+  boardId     Int
+  computedAt  DateTime  @default(now())
+  calcVersion Int       @default(1)
 
-  priceForBoard   Decimal   @default(0) // Поликарбонат
-  priceForScreen  Decimal   @default(0) // экран
-  neonPrice       Decimal   @default(0) // неон
-  lightingPrice   Decimal   @default(0) // подсветка
-  wirePrice       Decimal   @default(0) // аккустика
-  adapterPrice    Decimal   @default(0) // блок питания
-  plugPrice       Decimal   @default(0) // 
-  packageCost     Decimal   @default(0)
-  dimmerPrice     Decimal   @default(0)
-  totalCost       Decimal   @default(0)
+  priceForBoard  Decimal @default(0) // Поликарбонат
+  priceForScreen Decimal @default(0) // экран
+  neonPrice      Decimal @default(0) // неон
+  lightingPrice  Decimal @default(0) // подсветка
+  wirePrice      Decimal @default(0) // аккустика
+  adapterPrice   Decimal @default(0) // блок питания
+  plugPrice      Decimal @default(0) // 
+  packageCost    Decimal @default(0)
+  dimmerPrice    Decimal @default(0)
+  totalCost      Decimal @default(0)
 
-  boardWidth      Int       @default(0)
-  boardHeight     Int       @default(0)
-  polikSquare     Decimal   @default(0)
-  policPerimetr   Decimal   @default(0)
-  pazLength       Decimal   @default(0)
-  lightingsLength Decimal   @default(0)
-  wireLength      Decimal   @default(0)
-  print           Boolean   @default(false)
-  screen          Boolean   @default(false)
-  dimmer          Boolean   @default(false)
-  wireType        String    @default("")
-  adapterModel    String    @default("")
-  plug            String    @default("")
+  boardWidth      Int     @default(0)
+  boardHeight     Int     @default(0)
+  polikSquare     Decimal @default(0)
+  policPerimetr   Decimal @default(0)
+  pazLength       Decimal @default(0)
+  lightingsLength Decimal @default(0)
+  wireLength      Decimal @default(0)
+  print           Boolean @default(false)
+  screen          Boolean @default(false)
+  dimmer          Boolean @default(false)
+  wireType        String  @default("")
+  adapterModel    String  @default("")
+  plug            String  @default("")
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([taskId])
   @@index([dealId])
@@ -1259,135 +1260,135 @@ model OrderCost {
 }
 
 model Package {
-  id        Int           @id @default(autoincrement())
-  items     PackageItem[]
+  id    Int           @id @default(autoincrement())
+  items PackageItem[]
 
-  orderId  Int        @unique
-  order    TaskOrder  @relation(fields: [orderId], references: [id])
+  orderId Int       @unique
+  order   TaskOrder @relation(fields: [orderId], references: [id])
 }
 
 model PackageItem {
-  id          Int        @id @default(autoincrement())
-  name        String     @default("")
-  category    String     @default("") // неон, блок, держатели
-  quantity    Decimal    @default(0) // количество
-  desc        String     @default("") // дополнительное описание
-  cost        Decimal    @default(0) // стоимость
+  id       Int     @id @default(autoincrement())
+  name     String  @default("")
+  category String  @default("") // неон, блок, держатели
+  quantity Decimal @default(0) // количество
+  desc     String  @default("") // дополнительное описание
+  cost     Decimal @default(0) // стоимость
 
-  packageId   Int
-  package     Package  @relation(fields: [packageId], references: [id])
+  packageId Int
+  package   Package @relation(fields: [packageId], references: [id])
 }
 
 // НЕОН
 model Neon {
-  id        Int         @id @default(autoincrement()) 
-  width     String      @default("")
-  length    Decimal     @default(0) // Длина неона
-  color     String      @default("") // Цвет неона
+  id     Int     @id @default(autoincrement())
+  width  String  @default("")
+  length Decimal @default(0) // Длина неона
+  color  String  @default("") // Цвет неона
 
   // Связь с заказом (TaskOrder)
-  orderTaskId   Int
-  orderTask     TaskOrder       @relation(fields: [orderTaskId], references: [id])
+  orderTaskId Int
+  orderTask   TaskOrder @relation(fields: [orderTaskId], references: [id])
 }
 
 model Lighting {
-  id        Int         @id @default(autoincrement()) 
-  length    Decimal     @default(0)// Длина неона
-  color     String      @default("")// Цвет неона
-  elements  Int         @default(0) // Количество элементов
+  id       Int     @id @default(autoincrement())
+  length   Decimal @default(0) // Длина неона
+  color    String  @default("") // Цвет неона
+  elements Int     @default(0) // Количество элементов
 
   // Связь с заказом (TaskOrder)
-  orderTaskId   Int
-  orderTask     TaskOrder       @relation(fields: [orderTaskId], references: [id])
+  orderTaskId Int
+  orderTask   TaskOrder @relation(fields: [orderTaskId], references: [id])
 }
 
 model ProdReport {
-  id       Int     @id @default(autoincrement())
-  date     String
-  type     String  // create/repair/packer/other
-  cost     Int     @default(0)
-  comment  String  @default("")
+  id      Int    @id @default(autoincrement())
+  date    String
+  type    String // create/repair/packer/other
+  cost    Int    @default(0)
+  comment String @default("")
 }
 
 // ===== CRM Customers (from external API) =====
 model CrmAccount {
-  id            Int              @id @default(autoincrement())
-  code          String           @unique
-  name          String
-  isActive      Boolean          @default(true)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  customers     CrmCustomer[]
-  countries     CrmCountry[]
-  cities        CrmCity[]
-  statuses      CrmStatus[]
-  sources       CrmSource[]
-  salesChannels CrmSalesChannel[]
-  managers      CrmManager[]
-  vks           CrmVk[]
-  avitos        CrmAvito[]
-  tags          CrmTag[]
-  customerTags  CrmCustomerTag[]
-  syncStates    CrmSyncState[]
+  customers                CrmCustomer[]
+  countries                CrmCountry[]
+  cities                   CrmCity[]
+  statuses                 CrmStatus[]
+  sources                  CrmSource[]
+  salesChannels            CrmSalesChannel[]
+  managers                 CrmManager[]
+  vks                      CrmVk[]
+  avitos                   CrmAvito[]
+  tags                     CrmTag[]
+  customerTags             CrmCustomerTag[]
+  syncStates               CrmSyncState[]
   vkAdsAccountIntegrations VkAdsAccountIntegration[]
 }
 
 model CrmCustomer {
-  id               Int                @id @default(autoincrement())
-  externalId       String?            // ID from external system
+  id         Int     @id @default(autoincrement())
+  externalId String? // ID from external system
 
-  accountId        Int?
-  account          CrmAccount?        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId Int?
+  account   CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  fullName         String
-  photoUrl         String             @default("")
-  birthday         String             @default("") // dd.mm.yyyy or empty
-  sex              String             @default("")  // "m" | "f" | ""
+  fullName String
+  photoUrl String @default("")
+  birthday String @default("") // dd.mm.yyyy or empty
+  sex      String @default("") // "m" | "f" | ""
 
-  phone            String             @default("")
-  email            String             @default("")
-  address          String             @default("")
-  otherContacts    String             @default("")
+  phone         String @default("")
+  email         String @default("")
+  address       String @default("")
+  otherContacts String @default("")
 
-  firstContactDate String             @default("")
-  lastContactDate  String             @default("")
-  nextContactDate  String             @default("")
+  firstContactDate String @default("")
+  lastContactDate  String @default("")
+  nextContactDate  String @default("")
 
-  shortNotes       String             @default("")
-  comments         String             @default("")
+  shortNotes String @default("")
+  comments   String @default("")
 
   // Relations to simple reference tables
-  countryId        Int?
-  country          CrmCountry?        @relation(fields: [countryId], references: [id])
+  countryId Int?
+  country   CrmCountry? @relation(fields: [countryId], references: [id])
 
-  cityId           Int?
-  city             CrmCity?           @relation(fields: [cityId], references: [id])
+  cityId Int?
+  city   CrmCity? @relation(fields: [cityId], references: [id])
 
-  crmStatusId      Int?
-  crmStatus        CrmStatus?         @relation(fields: [crmStatusId], references: [id])
+  crmStatusId Int?
+  crmStatus   CrmStatus? @relation(fields: [crmStatusId], references: [id])
 
-  sourceId         Int?
-  source           CrmSource?         @relation(fields: [sourceId], references: [id])
+  sourceId Int?
+  source   CrmSource? @relation(fields: [sourceId], references: [id])
 
-  salesChannelId   Int?
-  salesChannel     CrmSalesChannel?   @relation(fields: [salesChannelId], references: [id])
+  salesChannelId Int?
+  salesChannel   CrmSalesChannel? @relation(fields: [salesChannelId], references: [id])
 
-  managerId        Int?
-  manager          CrmManager?        @relation(fields: [managerId], references: [id])
+  managerId Int?
+  manager   CrmManager? @relation(fields: [managerId], references: [id])
 
   // Social/platform links
-  vkId             Int?
-  vk               CrmVk?             @relation(fields: [vkId], references: [id])
+  vkId Int?
+  vk   CrmVk? @relation(fields: [vkId], references: [id])
 
-  avitoId          Int?
-  avito            CrmAvito?          @relation(fields: [avitoId], references: [id])
+  avitoId Int?
+  avito   CrmAvito? @relation(fields: [avitoId], references: [id])
 
   // Tagging (many-to-many via join table)
-  tags             CrmCustomerTag[]
+  tags CrmCustomerTag[]
 
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([accountId, externalId])
   @@index([accountId])
@@ -1395,116 +1396,116 @@ model CrmCustomer {
 }
 
 model CrmCountry {
-  id         Int           @id @default(autoincrement())
-  externalId String?       @unique // e.g., 272680 (as string)
+  id         Int         @id @default(autoincrement())
+  externalId String?     @unique // e.g., 272680 (as string)
   accountId  Int?
-  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account    CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
 
-  customers  CrmCustomer[]
+  customers CrmCustomer[]
 
   @@unique([accountId, externalId])
   @@index([accountId])
 }
 
 model CrmCity {
-  id         Int           @id @default(autoincrement())
-  externalId String?       @unique // e.g., 5401585 (as string)
+  id         Int         @id @default(autoincrement())
+  externalId String?     @unique // e.g., 5401585 (as string)
   accountId  Int?
-  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account    CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
 
-  customers  CrmCustomer[]
+  customers CrmCustomer[]
 
   @@unique([accountId, externalId])
   @@index([accountId])
 }
 
 model CrmStatus {
-  id         Int           @id @default(autoincrement())
-  externalId String?       @unique // e.g., 289750
+  id         Int         @id @default(autoincrement())
+  externalId String?     @unique // e.g., 289750
   accountId  Int?
-  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account    CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
-  color      String         @default("")
-  type       Int            @default(0)
+  color      String      @default("")
+  type       Int         @default(0)
 
-  customers  CrmCustomer[]
+  customers CrmCustomer[]
 
   @@unique([accountId, externalId])
   @@index([accountId])
 }
 
 model CrmSource {
-  id         Int           @id @default(autoincrement())
-  externalId String?       @unique // e.g., 157642
+  id         Int         @id @default(autoincrement())
+  externalId String?     @unique // e.g., 157642
   accountId  Int?
-  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account    CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
 
-  customers  CrmCustomer[]
+  customers CrmCustomer[]
 
   @@unique([accountId, externalId])
   @@index([accountId])
 }
 
 model CrmSalesChannel {
-  id         Int           @id @default(autoincrement())
-  externalId String?       @unique // e.g., 194494
+  id         Int         @id @default(autoincrement())
+  externalId String?     @unique // e.g., 194494
   accountId  Int?
-  account    CrmAccount?   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  code       Int           @default(0)
+  account    CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  code       Int         @default(0)
   name       String
 
-  customers  CrmCustomer[]
+  customers CrmCustomer[]
 
   @@unique([accountId, externalId])
   @@index([accountId])
 }
 
 model CrmManager {
-  id                Int       @id @default(autoincrement())
-  externalId        String?   @unique // e.g., 58841
-  accountId         Int?
-  account           CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  fullName          String
-  email             String    @default("")
-  login             String    @default("")
-  phone             String    @default("")
-  vk                String?   // profile link if present
-  lastLoginDate     String    @default("")
-  lastActivityDate  String    @default("")
-  isActive          Boolean   @default(true)
+  id               Int         @id @default(autoincrement())
+  externalId       String?     @unique // e.g., 58841
+  accountId        Int?
+  account          CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  fullName         String
+  email            String      @default("")
+  login            String      @default("")
+  phone            String      @default("")
+  vk               String? // profile link if present
+  lastLoginDate    String      @default("")
+  lastActivityDate String      @default("")
+  isActive         Boolean     @default(true)
   // Store complex permissions structure as JSON
-  permissions       Json?
+  permissions      Json?
 
-  customers         CrmCustomer[]
+  customers CrmCustomer[]
 
   @@unique([accountId, externalId])
   @@index([accountId])
 }
 
 model CrmVk {
-  id               Int       @id @default(autoincrement())
-  externalId       String    // e.g., "213329253"
-  accountId        Int
-  account          CrmAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  name             String
-  messagesGroupId  String    @default("")
+  id              Int        @id @default(autoincrement())
+  externalId      String // e.g., "213329253"
+  accountId       Int
+  account         CrmAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name            String
+  messagesGroupId String     @default("")
 
-  customers        CrmCustomer[]
+  customers CrmCustomer[]
 
   @@unique([accountId, externalId])
   @@index([accountId])
 }
 
 model CrmAvito {
-  id        Int     @id @default(autoincrement())
-  externalId String @unique // e.g., "33680330"
+  id         Int         @id @default(autoincrement())
+  externalId String      @unique // e.g., "33680330"
   accountId  Int?
   account    CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  name      String
-  chatId    String  @default("")
+  name       String
+  chatId     String      @default("")
 
   customers CrmCustomer[]
 
@@ -1513,15 +1514,15 @@ model CrmAvito {
 }
 
 model CrmTag {
-  id         Int      @id @default(autoincrement())
-  externalId String?  @unique // e.g., 377570
+  id         Int         @id @default(autoincrement())
+  externalId String?     @unique // e.g., 377570
   accountId  Int?
   account    CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   name       String
-  color      String   @default("")
-  textColor  String   @default("")
+  color      String      @default("")
+  textColor  String      @default("")
 
-  customers  CrmCustomerTag[]
+  customers CrmCustomerTag[]
 
   @@unique([accountId, externalId])
   @@index([accountId])
@@ -1529,14 +1530,14 @@ model CrmTag {
 
 // Join table for many-to-many: Customer ↔ Tag
 model CrmCustomerTag {
-  id          Int          @id @default(autoincrement())
-  accountId   Int?
-  customerId  Int
-  tagId       Int
+  id         Int  @id @default(autoincrement())
+  accountId  Int?
+  customerId Int
+  tagId      Int
 
-  account     CrmAccount?  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  customer    CrmCustomer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  tag         CrmTag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  account  CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  customer CrmCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag      CrmTag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@unique([customerId, tagId])
   @@index([accountId])
@@ -1552,48 +1553,48 @@ model CrmSyncState {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  account             CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account CrmAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@unique([accountId, key])
   @@index([accountId])
 }
 
 model CrmVkIntegration {
-  id                 Int               @id @default(autoincrement()) // ID интеграции
-  accountId          Int               // ID аккаунта CRM
-  groupId            Int               @unique // ID группы VK
-  groupName          String            // Название группы
-  callbackSecret     String            // Секрет VK Callback
-  confirmationCode   String            // Код подтверждения VK Callback
-  isActive           Boolean           @default(true) // Активна ли интеграция
-  initialCrmStatusId Int?              // Стартовый статус CRM, пока не используется
-  defaultSourceId    Int?              // Источник CRM, пока не используется
-  createdAt          DateTime          @default(now()) // Дата создания
-  updatedAt          DateTime          @updatedAt // Дата обновления
+  id                 Int      @id @default(autoincrement()) // ID интеграции
+  accountId          Int // ID аккаунта CRM
+  groupId            Int      @unique // ID группы VK
+  groupName          String // Название группы
+  callbackSecret     String // Секрет VK Callback
+  confirmationCode   String // Код подтверждения VK Callback
+  isActive           Boolean  @default(true) // Активна ли интеграция
+  initialCrmStatusId Int? // Стартовый статус CRM, пока не используется
+  defaultSourceId    Int? // Источник CRM, пока не используется
+  createdAt          DateTime @default(now()) // Дата создания
+  updatedAt          DateTime @updatedAt // Дата обновления
 
-  callbackEvents     VkCallbackEvent[]
+  callbackEvents VkCallbackEvent[]
 
   @@index([accountId])
 }
 
 model VkCallbackEvent {
-  id              Int              @id @default(autoincrement()) // ID события
-  accountId       Int              // ID аккаунта CRM
-  vkIntegrationId Int              // ID VK-интеграции
-  eventId         String           // ID события VK
-  eventType       String           // Тип события VK
-  groupId         Int              // ID группы VK
-  vkUserId        Int?             // ID пользователя VK
-  apiVersion      String           @default("") // Версия API VK
-  payload         Json             // Сырые данные callback
-  status          String           @default("received") // Статус: received|processed|duplicate|failed
-  crmCustomerId   Int?             // ID CRM-клиента, пока не используется
-  errorMessage    String?          // Текст ошибки обработки
-  processedAt     DateTime?        // Дата успешной или неуспешной обработки
-  createdAt       DateTime         @default(now()) // Дата создания
-  updatedAt       DateTime         @updatedAt // Дата обновления
+  id              Int       @id @default(autoincrement()) // ID события
+  accountId       Int // ID аккаунта CRM
+  vkIntegrationId Int // ID VK-интеграции
+  eventId         String // ID события VK
+  eventType       String // Тип события VK
+  groupId         Int // ID группы VK
+  vkUserId        Int? // ID пользователя VK
+  apiVersion      String    @default("") // Версия API VK
+  payload         Json // Сырые данные callback
+  status          String    @default("received") // Статус: received|processed|duplicate|failed
+  crmCustomerId   Int? // ID CRM-клиента, пока не используется
+  errorMessage    String? // Текст ошибки обработки
+  processedAt     DateTime? // Дата успешной или неуспешной обработки
+  createdAt       DateTime  @default(now()) // Дата создания
+  updatedAt       DateTime  @updatedAt // Дата обновления
 
-  vkIntegration   CrmVkIntegration @relation(fields: [vkIntegrationId], references: [id], onDelete: Cascade)
+  vkIntegration CrmVkIntegration @relation(fields: [vkIntegrationId], references: [id], onDelete: Cascade)
 
   @@unique([vkIntegrationId, eventId])
   @@index([accountId])
@@ -1601,54 +1602,54 @@ model VkCallbackEvent {
   @@index([groupId])
 }
 
-
 /// Ежедневная статистика VK Ads (агрегированная и бизнес-поля), хранится по дням
 model VkAdsDailyStat {
-  id        Int      @id @default(autoincrement())
-  project   String   // 'neon' | 'book'
-  entity    String   // 'ad_plans' | 'ad_groups' | 'banners'
-  entityId  Int
-  date      String   // YYYY-MM-DD
+  id       Int    @id @default(autoincrement())
+  project  String // 'neon' | 'book'
+  entity   String // 'ad_plans' | 'ad_groups' | 'banners'
+  entityId Int
+  date     String // YYYY-MM-DD
 
   // Метаданные и связи
-  status            String?
-  name              String?
-  budgetLimitDay    String?
-  adGroupId         Int?
-  adGroups          Int[]
-  banners           Int[]
-  refs              String[]
+  status         String?
+  name           String?
+  budgetLimitDay String?
+  adGroupId      Int?
+  adGroups       Int[]
+  banners        Int[]
+  refs           String[]
 
   // Сырые тоталы из v3 (например, total.base.*)
-  total     Json?
+  total Json?
 
   // Бизнес-метрики и расчетные поля
-  dealsPrice  Float  @default(0)
-  makets      Int    @default(0)
-  spentNds    Float  @default(0)
-  maketPrice  Float  @default(0)
-  drr         Float  @default(0)
+  dealsPrice Float @default(0)
+  makets     Int   @default(0)
+  spentNds   Float @default(0)
+  maketPrice Float @default(0)
+  drr        Float @default(0)
 
   createdAt DateTime @default(now())
 
-  @@index([project, entity, date])
   @@unique([project, entity, entityId, date], map: "vkads_unique_entity_per_day")
+  @@index([project, entity, date])
 }
 
 model VkAdsAccountIntegration {
-  id               Int         @id @default(autoincrement())
+  id               Int        @id @default(autoincrement())
   accountId        Int
-  account          CrmAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  isActive         Boolean     @default(true)
+  account          CrmAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  isActive         Boolean    @default(true)
   baseUrl          String?
   tokenEnvKey      String?
   vkAdsAccountId   String?
   vkAdsCabinetId   String?
   defaultPackageId Int?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
-  tests            VkAdsTest[]
+  tests       VkAdsTest[]
+  videoAssets VkAdsTestVideoAsset[]
 
   @@index([accountId])
   @@index([isActive])
@@ -1664,78 +1665,119 @@ model VkAdsTest {
   packageId            Int
   startBudget          Decimal                 @db.Decimal(12, 2)
   landingUrl           String?
+  vkPrimaryUrlId       Int?
+  vkCampaignId         Int?
   createdAt            DateTime                @default(now())
   updatedAt            DateTime                @updatedAt
 
-  audiences            VkAdsTestAudience[]
-  creatives            VkAdsTestCreative[]
-  variants             VkAdsTestVariant[]
-  actionLogs           VkAdsTestActionLog[]
+  audiences   VkAdsTestAudience[]
+  creatives   VkAdsTestCreative[]
+  videoAssets VkAdsTestVideoAsset[]
+  variants    VkAdsTestVariant[]
+  actionLogs  VkAdsTestActionLog[]
 
   @@index([accountIntegrationId])
   @@index([status])
   @@index([packageId])
+  @@index([vkPrimaryUrlId])
+  @@index([vkCampaignId])
 }
 
 model VkAdsTestAudience {
-  id                 Int                 @id @default(autoincrement())
-  testId             Int
-  test               VkAdsTest           @relation(fields: [testId], references: [id], onDelete: Cascade)
-  name               String
-  sex                String?
-  ageFrom            Int?
-  ageTo              Int?
-  geoJson            Json?
-  interestsJson      Json?
-  status             String              @default("draft")
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  id                Int       @id @default(autoincrement())
+  testId            Int
+  test              VkAdsTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  name              String
+  sex               String?
+  ageFrom           Int?
+  ageTo             Int?
+  geoJson           Json?
+  interestsJson     Json?
+  vkSegmentId       Int?
+  includeSegmentIds Json?
+  excludeSegmentIds Json?
+  status            String    @default("draft")
+  vkAdGroupId       Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  variants           VkAdsTestVariant[]
+  variants VkAdsTestVariant[]
 
   @@index([testId])
   @@index([status])
+  @@index([vkSegmentId])
+  @@index([vkAdGroupId])
 }
 
 model VkAdsTestCreative {
-  id             Int                 @id @default(autoincrement())
+  id             Int                  @id @default(autoincrement())
   testId         Int
-  test           VkAdsTest           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  test           VkAdsTest            @relation(fields: [testId], references: [id], onDelete: Cascade)
+  videoAssetId   Int?
+  videoAsset     VkAdsTestVideoAsset? @relation(fields: [videoAssetId], references: [id], onDelete: SetNull)
   name           String
   title          String
   text           String
   videoSourceUrl String?
   vkContentId    String?
-  status         String              @default("draft")
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  status         String               @default("draft")
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
-  variants       VkAdsTestVariant[]
+  variants VkAdsTestVariant[]
 
   @@index([testId])
+  @@index([status])
+  @@index([videoAssetId])
+}
+
+model VkAdsTestVideoAsset {
+  id                   Int                     @id @default(autoincrement())
+  testId               Int
+  test                 VkAdsTest               @relation(fields: [testId], references: [id], onDelete: Cascade)
+  accountIntegrationId Int
+  accountIntegration   VkAdsAccountIntegration @relation(fields: [accountIntegrationId], references: [id], onDelete: Restrict)
+  vkContentId          Int
+  name                 String?
+  rawContentJson       Json
+  previewUrl           String?
+  videoUrl             String?
+  width                Int?
+  height               Int?
+  durationSec          Int?
+  status               String                  @default("processing")
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  creatives VkAdsTestCreative[]
+
+  @@index([testId])
+  @@index([accountIntegrationId])
+  @@index([vkContentId])
   @@index([status])
 }
 
 model VkAdsTestVariant {
-  id               Int                 @id @default(autoincrement())
-  testId           Int
-  test             VkAdsTest           @relation(fields: [testId], references: [id], onDelete: Cascade)
-  audienceId       Int
-  audience         VkAdsTestAudience   @relation(fields: [audienceId], references: [id], onDelete: Cascade)
-  creativeId       Int
-  creative         VkAdsTestCreative   @relation(fields: [creativeId], references: [id], onDelete: Cascade)
-  variantKey       String              @unique
-  status           String              @default("draft")
-  budgetLimitDay   Decimal             @db.Decimal(12, 2)
-  vkCampaignId     Int?
-  vkAdGroupId      Int?
-  vkBannerId       Int?
-  vkPrimaryUrlId   Int?
-  launchDate       DateTime?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  id             Int               @id @default(autoincrement())
+  testId         Int
+  test           VkAdsTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  audienceId     Int
+  audience       VkAdsTestAudience @relation(fields: [audienceId], references: [id], onDelete: Cascade)
+  creativeId     Int
+  creative       VkAdsTestCreative @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+  variantKey     String            @unique
+  ref            String?
+  status         String            @default("draft")
+  budgetLimitDay Decimal           @db.Decimal(12, 2)
+  vkCampaignId   Int?
+  vkAdGroupId    Int?
+  vkBannerId     Int?
+  vkPrimaryUrlId Int?
+  launchDate     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
-  actionLogs       VkAdsTestActionLog[]
+  actionLogs VkAdsTestActionLog[]
 
   @@unique([testId, creativeId, audienceId])
   @@index([testId])
@@ -1746,18 +1788,19 @@ model VkAdsTestVariant {
   @@index([vkAdGroupId])
   @@index([vkBannerId])
   @@index([vkPrimaryUrlId])
+  @@index([ref])
 }
 
 model VkAdsTestActionLog {
-  id          Int                @id @default(autoincrement())
+  id          Int               @id @default(autoincrement())
   testId      Int
-  test        VkAdsTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  test        VkAdsTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
   variantId   Int?
-  variant     VkAdsTestVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  variant     VkAdsTestVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
   action      String
   reason      String?
   payloadJson Json?
-  createdAt   DateTime           @default(now())
+  createdAt   DateTime          @default(now())
 
   @@index([testId])
   @@index([variantId])
@@ -1767,9 +1810,9 @@ model VkAdsTestActionLog {
 /// Снапшот PNL-данных (агрегированные тяжелые расчеты), хранится по периодам
 model PnlSnapshot {
   id           Int      @id @default(autoincrement())
-  type         String   // 'neon' | 'book'
-  anchorPeriod String   // YYYY-MM (период, который запрашивает UI)
-  payload      Json     // результат расчета (например, ответ PnlService)
+  type         String // 'neon' | 'book'
+  anchorPeriod String // YYYY-MM (период, который запрашивает UI)
+  payload      Json // результат расчета (например, ответ PnlService)
   version      Int      @default(1)
   computedAt   DateTime @default(now())
   createdAt    DateTime @default(now())

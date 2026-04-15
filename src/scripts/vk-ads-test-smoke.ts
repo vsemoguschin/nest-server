@@ -68,8 +68,8 @@ type CleanupItemResult = {
 type SmokeCleanupResult = {
   enabled: boolean;
   attempted: boolean;
-  banner?: CleanupItemResult;
-  adGroup?: CleanupItemResult;
+  banners?: CleanupItemResult[];
+  adGroups?: CleanupItemResult[];
   adPlan?: CleanupItemResult;
 };
 
@@ -125,6 +125,8 @@ type SmokeResult = {
   campaignCreated: boolean;
   adGroupCreated: boolean;
   bannerCreated: boolean;
+  reuseAdGroupCreated: boolean;
+  reuseBannerCreated: boolean;
   bannerChecked: boolean;
   bannerTemplateSource: BannerTemplateSource | null;
   bannerTemplateSourceReason: string | null;
@@ -133,6 +135,8 @@ type SmokeResult = {
     adPlanId: number | null;
     adGroupId: number | null;
     bannerId: number | null;
+    reuseAdGroupId: number | null;
+    reuseBannerId: number | null;
     templateAdGroupId: number | null;
     templateBannerId: number | null;
   };
@@ -545,8 +549,8 @@ async function findTemplateBanner(params: {
 async function cleanupEntities(params: {
   client: VkAdsTestClient;
   integrationId: number;
-  bannerId: number | null;
-  adGroupId: number | null;
+  bannerIds: Array<number | null>;
+  adGroupIds: Array<number | null>;
   adPlanId: number | null;
   enabled: boolean;
 }): Promise<SmokeCleanupResult> {
@@ -562,12 +566,15 @@ async function cleanupEntities(params: {
     attempted: true,
   };
 
-  if (params.bannerId !== null) {
+  cleanup.banners = [];
+  for (const bannerId of params.bannerIds.filter(
+    (value): value is number => value !== null,
+  )) {
     try {
-      await params.client.deleteBanner(params.integrationId, params.bannerId);
+      await params.client.deleteBanner(params.integrationId, bannerId);
       const deletedBanner = await params.client.getBanner(
         params.integrationId,
-        params.bannerId,
+        bannerId,
         {
           fields: 'id,status',
         },
@@ -577,7 +584,7 @@ async function cleanupEntities(params: {
           ? deletedBanner.status
           : undefined;
 
-      cleanup.banner = {
+      cleanup.banners.push({
         ok: status === 'deleted',
         status,
         ...(status === 'deleted'
@@ -586,24 +593,27 @@ async function cleanupEntities(params: {
               message:
                 'DELETE banner completed, but follow-up GET did not return status=deleted',
             }),
-      };
+      });
     } catch (error) {
-      cleanup.banner = {
+      cleanup.banners.push({
         ok: false,
         message: mapClientError(error).message,
-      };
+      });
     }
   }
 
-  if (params.adGroupId !== null) {
+  cleanup.adGroups = [];
+  for (const adGroupId of params.adGroupIds.filter(
+    (value): value is number => value !== null,
+  )) {
     try {
-      await params.client.deleteAdGroup(params.integrationId, params.adGroupId);
-      cleanup.adGroup = { ok: true };
+      await params.client.deleteAdGroup(params.integrationId, adGroupId);
+      cleanup.adGroups.push({ ok: true });
     } catch (error) {
-      cleanup.adGroup = {
+      cleanup.adGroups.push({
         ok: false,
         message: mapClientError(error).message,
-      };
+      });
     }
   }
 
@@ -648,6 +658,8 @@ async function main(): Promise<void> {
     campaignCreated: false,
     adGroupCreated: false,
     bannerCreated: false,
+    reuseAdGroupCreated: false,
+    reuseBannerCreated: false,
     bannerChecked: false,
     bannerTemplateSource: null,
     bannerTemplateSourceReason: null,
@@ -656,6 +668,8 @@ async function main(): Promise<void> {
       adPlanId: null,
       adGroupId: null,
       bannerId: null,
+      reuseAdGroupId: null,
+      reuseBannerId: null,
       templateAdGroupId: null,
       templateBannerId: null,
     },
@@ -795,6 +809,48 @@ async function main(): Promise<void> {
     });
     result.bannerChecked = true;
 
+    const reuseAdGroup = await client.createAdGroup(
+      config.integrationId,
+      {
+        ad_plan_id: adPlanId,
+        name: `${config.adGroupNamePrefix}-${suffix}-reuse`,
+        package_id: Number(pkg.id),
+        status: 'blocked',
+      },
+    );
+    const reuseAdGroupId = asNumber(reuseAdGroup.id);
+    if (reuseAdGroupId === null) {
+      throw new Error(
+        'VK Ads createAdGroup response does not contain numeric id for reuse path',
+      );
+    }
+    result.reuseAdGroupCreated = true;
+    result.createdIds.reuseAdGroupId = reuseAdGroupId;
+
+    const reuseBanner = await client.createBanner(
+      config.integrationId,
+      reuseAdGroupId,
+      buildBannerPayload({
+        template: template.banner,
+        name: `${config.adGroupNamePrefix}-${suffix}-reuse-banner`,
+        primaryUrlId: url.id,
+      }),
+    );
+    const reuseBannerId =
+      asNumber(reuseBanner.id) ??
+      asNumber(Array.isArray(reuseBanner.banners) ? reuseBanner.banners[0]?.id : null);
+    if (reuseBannerId === null) {
+      throw new Error(
+        'VK Ads createBanner response does not contain numeric id for reuse path',
+      );
+    }
+    result.reuseBannerCreated = true;
+    result.createdIds.reuseBannerId = reuseBannerId;
+
+    await client.getBanner(config.integrationId, reuseBannerId, {
+      fields: 'id,name,status,urls',
+    });
+
     result.scriptSucceeded = true;
     result.technicalVerdict = 'passed';
     result.productVerdict = 'passed';
@@ -811,8 +867,11 @@ async function main(): Promise<void> {
     result.cleanup = await cleanupEntities({
       client,
       integrationId: config.integrationId,
-      bannerId: result.createdIds.bannerId,
-      adGroupId: result.createdIds.adGroupId,
+      bannerIds: [result.createdIds.bannerId, result.createdIds.reuseBannerId],
+      adGroupIds: [
+        result.createdIds.adGroupId,
+        result.createdIds.reuseAdGroupId,
+      ],
       adPlanId: result.createdIds.adPlanId,
       enabled: config.cleanupEnabled,
     });

@@ -2172,8 +2172,18 @@ export class PlanfactService {
       );
     }
 
-    const fromDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
-    const toDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+    const monthString = String(month).padStart(2, '0');
+    const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    // Границы строим в московском времени, чтобы не сдвигать период на UTC+0.
+    const fromDate = new Date(
+      `${year}-${monthString}-01T00:00:00.000+03:00`,
+    );
+    const toDate = new Date(
+      `${year}-${monthString}-${String(lastDayOfMonth).padStart(
+        2,
+        '0',
+      )}T23:59:59.999+03:00`,
+    );
 
     const accounts = [
       {

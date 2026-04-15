@@ -50,9 +50,47 @@ export class VkAdsTestRepository {
     });
   }
 
+  listAudiencesForSelection(accountIntegrationId?: number) {
+    return this.prisma.vkAdsTestAudience.findMany({
+      where: {
+        status: {
+          not: 'archived',
+        },
+        ...(accountIntegrationId !== undefined
+          ? {
+              test: {
+                accountIntegrationId,
+              },
+            }
+          : {}),
+      },
+      orderBy: [{ testId: 'desc' }, { id: 'asc' }],
+      include: {
+        test: {
+          select: {
+            id: true,
+            name: true,
+            accountIntegrationId: true,
+          },
+        },
+      },
+    });
+  }
+
   findTestById(id: number, tx: PrismaTx | PrismaService = this.prisma) {
     return tx.vkAdsTest.findUnique({
       where: { id },
+    });
+  }
+
+  findTestRuntimeIds(id: number, tx: PrismaTx | PrismaService = this.prisma) {
+    return tx.vkAdsTest.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        vkPrimaryUrlId: true,
+        vkCampaignId: true,
+      },
     });
   }
 
@@ -81,8 +119,14 @@ export class VkAdsTestRepository {
     return this.prisma.vkAdsTest.findUnique({
       where: { id },
       include: {
-        creatives: { orderBy: { id: 'asc' } },
+        creatives: {
+          orderBy: { id: 'asc' },
+          include: {
+            videoAsset: true,
+          },
+        },
         audiences: { orderBy: { id: 'asc' } },
+        videoAssets: { orderBy: { id: 'desc' } },
         accountIntegration: {
           include: {
             account: {
@@ -97,7 +141,11 @@ export class VkAdsTestRepository {
         variants: {
           orderBy: { id: 'asc' },
           include: {
-            creative: true,
+            creative: {
+              include: {
+                videoAsset: true,
+              },
+            },
             audience: true,
           },
         },
@@ -114,10 +162,23 @@ export class VkAdsTestRepository {
       where: { id },
       include: {
         accountIntegration: true,
+        creatives: {
+          orderBy: { id: 'asc' },
+          include: {
+            videoAsset: true,
+          },
+        },
+        audiences: {
+          orderBy: { id: 'asc' },
+        },
         variants: {
           orderBy: { id: 'asc' },
           include: {
-            creative: true,
+            creative: {
+              include: {
+                videoAsset: true,
+              },
+            },
             audience: true,
           },
         },
@@ -134,6 +195,7 @@ export class VkAdsTestRepository {
           select: {
             id: true,
             status: true,
+            vkCampaignId: true,
           },
         },
       },
@@ -156,7 +218,27 @@ export class VkAdsTestRepository {
     });
   }
 
-  createAudience(data: Prisma.VkAdsTestAudienceCreateInput | Record<string, any>) {
+  getTestForOwnershipReadModel(id: number) {
+    return this.prisma.vkAdsTest.findUnique({
+      where: { id },
+      include: {
+        audiences: {
+          orderBy: { id: 'asc' },
+        },
+        variants: {
+          orderBy: { id: 'asc' },
+          include: {
+            creative: true,
+            audience: true,
+          },
+        },
+      },
+    });
+  }
+
+  createAudience(
+    data: Prisma.VkAdsTestAudienceCreateInput | Record<string, any>,
+  ) {
     return this.prisma.vkAdsTestAudience.create({
       data: this.normalizeAudienceCreateInput(data),
     });
@@ -179,7 +261,19 @@ export class VkAdsTestRepository {
     });
   }
 
-  createCreative(data: Prisma.VkAdsTestCreativeCreateInput | Record<string, any>) {
+  findAudienceRuntimeIds(testId: number, id: number) {
+    return this.prisma.vkAdsTestAudience.findFirst({
+      where: { id, testId },
+      select: {
+        id: true,
+        vkAdGroupId: true,
+      },
+    });
+  }
+
+  createCreative(
+    data: Prisma.VkAdsTestCreativeCreateInput | Record<string, any>,
+  ) {
     return this.prisma.vkAdsTestCreative.create({
       data: this.normalizeCreativeCreateInput(data),
     });
@@ -199,10 +293,84 @@ export class VkAdsTestRepository {
   findCreative(testId: number, id: number) {
     return this.prisma.vkAdsTestCreative.findFirst({
       where: { id, testId },
+      include: {
+        videoAsset: true,
+      },
     });
   }
 
-  createVariant(data: Prisma.VkAdsTestVariantCreateInput | Record<string, any>) {
+  findCreativeById(id: number) {
+    return this.prisma.vkAdsTestCreative.findUnique({
+      where: { id },
+      include: {
+        test: true,
+        videoAsset: true,
+      },
+    });
+  }
+
+  createVideoAsset(
+    data: Prisma.VkAdsTestVideoAssetCreateInput,
+    tx: PrismaTx | PrismaService = this.prisma,
+  ) {
+    return tx.vkAdsTestVideoAsset.create({ data });
+  }
+
+  updateVideoAsset(
+    id: number,
+    data: Prisma.VkAdsTestVideoAssetUpdateInput,
+    tx: PrismaTx | PrismaService = this.prisma,
+  ) {
+    return tx.vkAdsTestVideoAsset.update({
+      where: { id },
+      data,
+    });
+  }
+
+  findVideoAsset(id: number) {
+    return this.prisma.vkAdsTestVideoAsset.findUnique({
+      where: { id },
+      include: {
+        test: true,
+      },
+    });
+  }
+
+  findVideoAssetByTest(testId: number, id: number) {
+    return this.prisma.vkAdsTestVideoAsset.findFirst({
+      where: {
+        id,
+        testId,
+      },
+    });
+  }
+
+  findVideoAssetByIntegration(accountIntegrationId: number, id: number) {
+    return this.prisma.vkAdsTestVideoAsset.findFirst({
+      where: {
+        id,
+        accountIntegrationId,
+      },
+    });
+  }
+
+  listVideoAssetsByTest(testId: number) {
+    return this.prisma.vkAdsTestVideoAsset.findMany({
+      where: { testId },
+      orderBy: { id: 'desc' },
+    });
+  }
+
+  listVideoAssetsByIntegration(accountIntegrationId: number) {
+    return this.prisma.vkAdsTestVideoAsset.findMany({
+      where: { accountIntegrationId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+  }
+
+  createVariant(
+    data: Prisma.VkAdsTestVariantCreateInput | Record<string, any>,
+  ) {
     return this.prisma.vkAdsTestVariant.create({
       data: this.normalizeVariantCreateInput(data),
     });
@@ -234,7 +402,10 @@ export class VkAdsTestRepository {
     });
   }
 
-  findComposedInput(testId: number, tx: PrismaTx | PrismaService = this.prisma) {
+  findComposedInput(
+    testId: number,
+    tx: PrismaTx | PrismaService = this.prisma,
+  ) {
     return tx.vkAdsTest.findUnique({
       where: { id: testId },
       include: {
@@ -266,7 +437,10 @@ export class VkAdsTestRepository {
     });
   }
 
-  countActiveVariants(testId: number, tx: PrismaTx | PrismaService = this.prisma) {
+  countActiveVariants(
+    testId: number,
+    tx: PrismaTx | PrismaService = this.prisma,
+  ) {
     return tx.vkAdsTestVariant.count({
       where: {
         testId,
@@ -284,6 +458,24 @@ export class VkAdsTestRepository {
       where: { id },
       data,
     });
+  }
+
+  updateTestRuntimeIds(
+    id: number,
+    data: Partial<
+      Pick<Prisma.VkAdsTestUpdateInput, 'vkCampaignId' | 'vkPrimaryUrlId'>
+    >,
+    tx: PrismaTx | PrismaService = this.prisma,
+  ) {
+    return this.updateTest(id, data, tx);
+  }
+
+  updateAudienceRuntimeIds(
+    id: number,
+    data: Pick<Prisma.VkAdsTestAudienceUpdateInput, 'vkAdGroupId'>,
+    tx: PrismaTx | PrismaService = this.prisma,
+  ) {
+    return this.updateAudience(id, data, tx);
   }
 
   logAction(
@@ -319,13 +511,16 @@ export class VkAdsTestRepository {
     return {
       test: data.test,
       name: data.name,
+      vkSegmentId: data.vkSegmentId,
+      includeSegmentIds: data.includeSegmentIds,
+      excludeSegmentIds: data.excludeSegmentIds,
       sex: data.sex,
       ageFrom: data.ageFrom,
       ageTo: data.ageTo,
       geoJson: data.geoJson,
       interestsJson: data.interestsJson,
       status: data.status ?? 'draft',
-    };
+    } as Prisma.VkAdsTestAudienceCreateInput;
   }
 
   private normalizeCreativeCreateInput(
@@ -341,6 +536,9 @@ export class VkAdsTestRepository {
 
     return {
       test: raw.test,
+      ...(raw.videoAssetId !== undefined
+        ? { videoAsset: { connect: { id: raw.videoAssetId } } }
+        : {}),
       name: raw.name,
       title: raw.title,
       text: raw.text,
@@ -360,6 +558,7 @@ export class VkAdsTestRepository {
       audience: raw.audience,
       creative: raw.creative,
       variantKey: raw.variantKey,
+      ref: raw.ref,
       status: raw.status ?? 'draft',
       budgetLimitDay: raw.budgetLimitDay ?? raw.currentBudgetDay ?? 0.01,
       vkCampaignId: raw.vkCampaignId,

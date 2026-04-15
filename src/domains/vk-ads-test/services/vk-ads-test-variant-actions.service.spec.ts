@@ -11,8 +11,8 @@ jest.mock(
 );
 
 describe('VkAdsTestVariantActionsService', () => {
-  it('pauses variant through campaign status and updates local status', async () => {
-    const repository = createRepositoryMock(createVariant());
+  it('pauses variant through banner ownership and updates local status', async () => {
+    const repository = createRepositoryMock(createVariant({ vkBannerId: 601 }));
     const client = createClientMock();
     const service = new VkAdsTestVariantActionsService(
       repository as any,
@@ -21,35 +21,46 @@ describe('VkAdsTestVariantActionsService', () => {
 
     await service.pauseVariant(10);
 
-    expect(client.updateCampaignStatus).toHaveBeenCalledWith(5, 401, 'blocked');
+    expect(client.updateBanner).toHaveBeenCalledWith(5, 601, {
+      status: 'blocked',
+    });
     expect(repository.updateVariant).toHaveBeenCalledWith(10, {
       status: 'paused',
     });
     expect(repository.logAction).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'variant_paused',
-        payloadJson: { vkCampaignId: 401 },
+        payloadJson: { vkBannerId: 601, vkCampaignId: 401 },
       }),
     );
   });
 
-  it('does not resume variant unless it is paused', async () => {
-    const repository = createRepositoryMock(createVariant({ status: 'active' }));
+  it('falls back to campaign status when banner id is missing', async () => {
+    const repository = createRepositoryMock(
+      createVariant({ status: 'paused', vkBannerId: null }),
+    );
     const client = createClientMock();
     const service = new VkAdsTestVariantActionsService(
       repository as any,
       client as any,
     );
 
-    await expect(service.resumeVariant(10)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    expect(client.updateCampaignStatus).not.toHaveBeenCalled();
-    expect(repository.updateVariant).not.toHaveBeenCalled();
+    await service.resumeVariant(10);
+
+    expect(client.updateCampaignStatus).toHaveBeenCalledWith(5, 401, 'active');
+    expect(repository.updateVariant).toHaveBeenCalledWith(10, {
+      status: 'active',
+    });
   });
 
-  it('updates ad group budget and local variant budget', async () => {
-    const repository = createRepositoryMock(createVariant());
+  it('updates ad group budget through audience ownership and local variant budget', async () => {
+    const repository = createRepositoryMock(
+      createVariant({
+        vkBannerId: 601,
+        audienceVkAdGroupId: 701,
+        variantVkAdGroupId: null,
+      }),
+    );
     const client = createClientMock();
     const service = new VkAdsTestVariantActionsService(
       repository as any,
@@ -58,7 +69,7 @@ describe('VkAdsTestVariantActionsService', () => {
 
     await service.updateBudget(10, 150);
 
-    expect(client.updateAdGroupBudget).toHaveBeenCalledWith(5, 501, '150');
+    expect(client.updateAdGroupBudget).toHaveBeenCalledWith(5, 701, '150');
     expect(repository.updateVariant).toHaveBeenCalledWith(10, {
       budgetLimitDay: new Prisma.Decimal('150'),
     });
@@ -66,7 +77,7 @@ describe('VkAdsTestVariantActionsService', () => {
       expect.objectContaining({
         action: 'variant_budget_updated',
         payloadJson: {
-          vkAdGroupId: 501,
+          vkAdGroupId: 701,
           oldBudget: '100',
           newBudget: '150',
         },
@@ -75,7 +86,13 @@ describe('VkAdsTestVariantActionsService', () => {
   });
 
   it('logs failed budget action and does not update local budget', async () => {
-    const repository = createRepositoryMock(createVariant());
+    const repository = createRepositoryMock(
+      createVariant({
+        vkBannerId: 601,
+        audienceVkAdGroupId: 701,
+        variantVkAdGroupId: null,
+      }),
+    );
     const client = createClientMock();
     client.updateAdGroupBudget.mockRejectedValueOnce(new Error('VK failed'));
     const service = new VkAdsTestVariantActionsService(
@@ -85,7 +102,7 @@ describe('VkAdsTestVariantActionsService', () => {
 
     await expect(service.updateBudget(10, 150)).rejects.toThrow('VK failed');
 
-    expect(client.updateAdGroupBudget).toHaveBeenCalledWith(5, 501, '150');
+    expect(client.updateAdGroupBudget).toHaveBeenCalledWith(5, 701, '150');
     expect(repository.updateVariant).not.toHaveBeenCalled();
     expect(repository.logAction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -95,7 +112,7 @@ describe('VkAdsTestVariantActionsService', () => {
           action: 'update_budget',
           oldBudget: '100',
           newBudget: '150',
-          vkAdGroupId: 501,
+          vkAdGroupId: 701,
           errorMessage: 'VK failed',
         }),
       }),
@@ -115,6 +132,7 @@ function createClientMock() {
   return {
     updateCampaignStatus: jest.fn().mockResolvedValue(null),
     updateAdGroupBudget: jest.fn().mockResolvedValue(null),
+    updateBanner: jest.fn().mockResolvedValue(null),
   };
 }
 
@@ -123,21 +141,40 @@ function createVariant(
     status?: string;
     vkCampaignId?: number | null;
     vkAdGroupId?: number | null;
+    variantVkAdGroupId?: number | null;
+    vkBannerId?: number | null;
+    audienceVkAdGroupId?: number | null;
   } = {},
 ) {
+  const campaignId = overrides.vkCampaignId ?? 401;
+  const variantAdGroupId =
+    overrides.variantVkAdGroupId === undefined
+      ? 501
+      : overrides.variantVkAdGroupId;
+  const audienceAdGroupId =
+    overrides.audienceVkAdGroupId === undefined
+      ? variantAdGroupId
+      : overrides.audienceVkAdGroupId;
+
   return {
     id: 10,
     testId: 1,
     status: overrides.status ?? 'active',
     budgetLimitDay: new Prisma.Decimal('100'),
-    vkCampaignId: overrides.vkCampaignId ?? 401,
-    vkAdGroupId: overrides.vkAdGroupId ?? 501,
+    vkCampaignId: campaignId,
+    vkAdGroupId: variantAdGroupId,
+    vkBannerId: overrides.vkBannerId ?? null,
     test: {
       id: 1,
       accountIntegrationId: 5,
+      vkCampaignId: campaignId,
       accountIntegration: {
         id: 5,
       },
+    },
+    audience: {
+      id: 20,
+      vkAdGroupId: audienceAdGroupId,
     },
   };
 }

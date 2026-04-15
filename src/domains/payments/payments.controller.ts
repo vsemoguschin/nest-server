@@ -12,6 +12,7 @@ import {
   DefaultValuePipe,
   ParseArrayPipe,
   Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -49,6 +50,15 @@ type PaymentListResponse = {
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
+
+  private extractBearerToken(authHeader?: string | string[]) {
+    const rawHeader = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+    if (!rawHeader?.startsWith('Bearer ')) {
+      return '';
+    }
+
+    return rawHeader.slice('Bearer '.length).trim();
+  }
 
   @Post()
   @ApiOperation({
@@ -153,8 +163,11 @@ export class PaymentsController {
     @CurrentUser() user: UserDto,
     @Req() req: Request,
   ) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader?.replace('Bearer ', '') || '';
+    const token = this.extractBearerToken(req.headers['authorization']);
+    if (!token) {
+      throw new UnauthorizedException('Отсутствует токен авторизации');
+    }
+
     return this.paymentsService.createLink(dto, user, token);
   }
 
@@ -165,8 +178,11 @@ export class PaymentsController {
     @CurrentUser() user: UserDto,
     @Req() req: Request,
   ) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader?.replace('Bearer ', '') || '';
+    const token = this.extractBearerToken(req.headers['authorization']);
+    if (!token) {
+      throw new UnauthorizedException('Отсутствует токен авторизации');
+    }
+
     return this.paymentsService.createOfferLink(dto, token);
   }
 
@@ -219,6 +235,9 @@ export class PaymentsController {
       terminal: dto.terminal,
     };
 
-    return this.paymentsService.createLink(createPaymentLinkDto, null, '');
+    return this.paymentsService.createLink(createPaymentLinkDto, null, {
+      flowType: 'internal',
+      internalToken,
+    });
   }
 }

@@ -10,14 +10,20 @@ import { CreateTestDto } from '../dto/create-test.dto';
 import { UpdateAudienceDto } from '../dto/update-audience.dto';
 import { UpdateCreativeDto } from '../dto/update-creative.dto';
 import { UpdateTestDto } from '../dto/update-test.dto';
+import { VkAdsTestClient } from '../clients/vk-ads-test.client';
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
+import { VkAdsTestVideoAssetsService } from './vk-ads-test-video-assets.service';
 
 const VK_ADS_TEST_OBJECTIVE = 'socialengagement';
 const VK_ADS_TEST_PACKAGE_ID = 3127;
 
 @Injectable()
 export class VkAdsTestService {
-  constructor(private readonly repository: VkAdsTestRepository) {}
+  constructor(
+    private readonly repository: VkAdsTestRepository,
+    private readonly client: VkAdsTestClient,
+    private readonly videoAssetsService: VkAdsTestVideoAssetsService,
+  ) {}
 
   async listIntegrations() {
     const integrations = await this.repository.listActiveIntegrations();
@@ -29,6 +35,51 @@ export class VkAdsTestService {
       accountName: integration.account?.name ?? null,
       vkAdsAccountId: integration.vkAdsAccountId,
       vkAdsCabinetId: integration.vkAdsCabinetId,
+    }));
+  }
+
+  async listAudiences(accountIntegrationId?: number) {
+    if (accountIntegrationId === undefined) {
+      return [];
+    }
+
+    const pageSize = 100;
+    const segments: Array<Record<string, unknown>> = [];
+    let offset = 0;
+    let total = Number.POSITIVE_INFINITY;
+
+    while (offset < total) {
+      const page = await this.client.getRemarketingSegments(
+        accountIntegrationId,
+        {
+          limit: pageSize,
+          offset,
+        },
+      );
+
+      const items = Array.isArray(page.items) ? page.items : [];
+      segments.push(...items);
+
+      const count = typeof page.count === 'number' ? page.count : null;
+      total = count !== null ? count : segments.length;
+
+      if (items.length < pageSize) {
+        break;
+      }
+
+      offset += pageSize;
+    }
+
+    return segments.map((segment) => ({
+      id: Number(segment.id),
+      name: String(segment.name || ''),
+      created: typeof segment.created === 'string' ? segment.created : null,
+      updated: typeof segment.updated === 'string' ? segment.updated : null,
+      flags: Array.isArray(segment.flags) ? segment.flags : [],
+      passCondition:
+        typeof segment.pass_condition === 'number'
+          ? segment.pass_condition
+          : null,
     }));
   }
 
@@ -107,6 +158,13 @@ export class VkAdsTestService {
 
   async addCreative(testId: number, dto: CreateCreativeDto) {
     await this.assertTestExists(testId);
+    const videoAsset =
+      dto.videoAssetId !== undefined
+        ? await this.videoAssetsService.ensureVideoAssetForCreative(
+            testId,
+            dto.videoAssetId,
+          )
+        : null;
 
     const creative = await this.repository.createCreative({
       test: { connect: { id: testId } },
@@ -114,7 +172,10 @@ export class VkAdsTestService {
       title: dto.title,
       text: dto.text,
       videoSourceUrl: dto.videoSourceUrl,
-      vkContentId: this.normalizeOptionalId(dto.vkContentId),
+      ...(videoAsset ? { videoAssetId: videoAsset.id } : {}),
+      vkContentId: this.normalizeOptionalId(
+        videoAsset?.vkContentId ?? dto.vkContentId ?? dto.videoContentId,
+      ),
       status: 'draft',
     });
 
@@ -136,6 +197,13 @@ export class VkAdsTestService {
     dto: UpdateCreativeDto,
   ) {
     await this.assertCreativeExists(testId, creativeId);
+    const videoAsset =
+      dto.videoAssetId !== undefined
+        ? await this.videoAssetsService.ensureVideoAssetForCreative(
+            testId,
+            dto.videoAssetId,
+          )
+        : undefined;
 
     const data: Prisma.VkAdsTestCreativeUpdateInput = {
       ...this.pickDefined({
@@ -143,7 +211,10 @@ export class VkAdsTestService {
         title: dto.title,
         text: dto.text,
         videoSourceUrl: dto.videoSourceUrl,
-        vkContentId: this.normalizeOptionalId(dto.vkContentId),
+        videoAsset: videoAsset ? { connect: { id: videoAsset.id } } : undefined,
+        vkContentId: this.normalizeOptionalId(
+          videoAsset?.vkContentId ?? dto.vkContentId ?? dto.videoContentId,
+        ),
       }),
     };
 
@@ -159,6 +230,18 @@ export class VkAdsTestService {
     });
 
     return creative;
+  }
+
+  async updateCreativeById(creativeId: number, dto: UpdateCreativeDto) {
+    const creative = await this.repository.findCreativeById(creativeId);
+
+    if (!creative) {
+      throw new NotFoundException(
+        `VK Ads test creative not found: id=${creativeId}`,
+      );
+    }
+
+    return this.updateCreative(creative.testId, creativeId, dto);
   }
 
   async removeCreative(testId: number, creativeId: number) {
@@ -179,10 +262,20 @@ export class VkAdsTestService {
 
   async addAudience(testId: number, dto: CreateAudienceDto) {
     await this.assertTestExists(testId);
+    const includeSegmentIds = this.normalizeSegmentIds(
+      dto.includeSegmentIds ??
+        (dto.vkSegmentId !== undefined ? [dto.vkSegmentId] : []),
+    );
+    const excludeSegmentIds = this.normalizeSegmentIds(dto.excludeSegmentIds);
+
+    this.assertNoOverlap(includeSegmentIds, excludeSegmentIds);
 
     const audience = await this.repository.createAudience({
       test: { connect: { id: testId } },
       name: dto.name,
+      vkSegmentId: dto.vkSegmentId,
+      includeSegmentIds,
+      excludeSegmentIds,
       sex: dto.sex,
       ageFrom: dto.ageFrom,
       ageTo: dto.ageTo,
@@ -209,6 +302,16 @@ export class VkAdsTestService {
     dto: UpdateAudienceDto,
   ) {
     await this.assertAudienceExists(testId, audienceId);
+    const includeSegmentIds = dto.includeSegmentIds
+      ? this.normalizeSegmentIds(dto.includeSegmentIds)
+      : undefined;
+    const excludeSegmentIds = dto.excludeSegmentIds
+      ? this.normalizeSegmentIds(dto.excludeSegmentIds)
+      : undefined;
+
+    if (includeSegmentIds && excludeSegmentIds) {
+      this.assertNoOverlap(includeSegmentIds, excludeSegmentIds);
+    }
 
     const data: Prisma.VkAdsTestAudienceUpdateInput = {
       ...this.pickDefined({
@@ -218,6 +321,13 @@ export class VkAdsTestService {
         ageTo: dto.ageTo,
         geoJson: dto.geoJson as Prisma.InputJsonValue,
         interestsJson: dto.interestsJson as Prisma.InputJsonValue,
+        vkSegmentId: dto.vkSegmentId,
+        includeSegmentIds: includeSegmentIds as
+          | Prisma.InputJsonValue
+          | undefined,
+        excludeSegmentIds: excludeSegmentIds as
+          | Prisma.InputJsonValue
+          | undefined,
       }),
     };
 
@@ -301,6 +411,30 @@ export class VkAdsTestService {
     return normalized;
   }
 
+  private normalizeSegmentIds(value: unknown): number[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item > 0);
+  }
+
+  private assertNoOverlap(
+    includeSegmentIds: number[],
+    excludeSegmentIds: number[],
+  ) {
+    const include = new Set(includeSegmentIds);
+    const overlap = excludeSegmentIds.filter((id) => include.has(id));
+
+    if (overlap.length) {
+      throw new BadRequestException(
+        `VK segment cannot be both included and excluded: ${overlap.join(', ')}`,
+      );
+    }
+  }
+
   private pickDefined<T extends Record<string, unknown>>(value: T) {
     return Object.fromEntries(
       Object.entries(value).filter(([, item]) => item !== undefined),
@@ -314,10 +448,14 @@ export class VkAdsTestService {
   ) {
     const parts = [
       integration.account?.name || integration.account?.code,
-      integration.vkAdsAccountId ? `VK account ${integration.vkAdsAccountId}` : '',
+      integration.vkAdsAccountId
+        ? `VK account ${integration.vkAdsAccountId}`
+        : '',
       integration.vkAdsCabinetId ? `cabinet ${integration.vkAdsCabinetId}` : '',
     ].filter(Boolean);
 
-    return parts.length ? parts.join(' / ') : `VK Ads integration #${integration.id}`;
+    return parts.length
+      ? parts.join(' / ')
+      : `VK Ads integration #${integration.id}`;
   }
 }

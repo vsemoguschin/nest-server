@@ -1,6 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
-import { VkAdsTestVariantActionsService } from './vk-ads-test-variant-actions.service';
+import { VkAdsTestClient } from '../clients/vk-ads-test.client';
 
 type TestActionKind = 'pause' | 'resume';
 type TestActionResultStatus = 'succeeded' | 'failed' | 'skipped';
@@ -25,13 +29,12 @@ type TestActionReport = {
 type ActionTest = NonNullable<
   Awaited<ReturnType<VkAdsTestRepository['getTestForActions']>>
 >;
-type ActionVariant = ActionTest['variants'][number];
 
 @Injectable()
 export class VkAdsTestTestActionsService {
   constructor(
     private readonly repository: VkAdsTestRepository,
-    private readonly variantActions: VkAdsTestVariantActionsService,
+    private readonly client: VkAdsTestClient,
   ) {}
 
   async pauseTest(testId: number) {
@@ -53,36 +56,93 @@ export class VkAdsTestTestActionsService {
       throw new NotFoundException(`VK Ads test not found: id=${testId}`);
     }
 
+    const campaignId = this.resolveCampaignId(test);
+    if (!campaignId) {
+      throw new BadRequestException(
+        `VK Ads test has no vkCampaignId: id=${test.id}`,
+      );
+    }
+
     const results: TestActionResult[] = [];
+    const targetVariants = test.variants.filter(
+      (variant) => variant.status === targetStatus,
+    );
 
-    for (const variant of test.variants) {
-      if (variant.status !== targetStatus) {
-        results.push({
-          variantId: variant.id,
-          status: 'skipped',
-          errorMessage: `variant_status_not_${targetStatus}`,
-        });
-        continue;
-      }
-
-      try {
-        await this.runVariantAction(action, variant);
-        results.push({
-          variantId: variant.id,
-          status: 'succeeded',
-        });
-      } catch (error) {
+    try {
+      await this.client.updateCampaignStatus(
+        test.accountIntegrationId,
+        campaignId,
+        action === 'pause' ? 'blocked' : 'active',
+      );
+    } catch (error) {
+      for (const variant of targetVariants) {
         results.push({
           variantId: variant.id,
           status: 'failed',
           errorMessage: this.toShortErrorMessage(error),
         });
       }
+      for (const variant of test.variants) {
+        if (variant.status === targetStatus) continue;
+        results.push({
+          variantId: variant.id,
+          status: 'skipped',
+          errorMessage: `variant_status_not_${targetStatus}`,
+        });
+      }
+      return this.finalizeReport(test, action, results);
     }
 
+    for (const variant of targetVariants) {
+      await this.repository.updateVariant(variant.id, {
+        status: action === 'pause' ? 'paused' : 'active',
+      });
+      results.push({
+        variantId: variant.id,
+        status: 'succeeded',
+      });
+    }
+
+    for (const variant of test.variants) {
+      if (variant.status === targetStatus) continue;
+      results.push({
+        variantId: variant.id,
+        status: 'skipped',
+        errorMessage: `variant_status_not_${targetStatus}`,
+      });
+    }
+
+    return this.finalizeReport(test, action, results, true);
+  }
+
+  private resolveCampaignId(test: ActionTest) {
+    if (test.vkCampaignId) {
+      return test.vkCampaignId;
+    }
+
+    const variantCampaignId = (
+      test.variants.find((variant) => variant.vkCampaignId) as
+        | { vkCampaignId?: number | null }
+        | undefined
+    )?.vkCampaignId;
+
+    if (variantCampaignId) {
+      // Transitional fallback: older rows can still carry campaign id on variant.
+      return variantCampaignId;
+    }
+
+    return null;
+  }
+
+  private async finalizeReport(
+    test: ActionTest,
+    action: TestActionKind,
+    results: TestActionResult[],
+    campaignUpdated = false,
+  ) {
     const report = this.toReport(test.id, action, results);
 
-    if (report.succeeded > 0 && report.failed === 0) {
+    if (campaignUpdated && report.failed === 0) {
       await this.repository.updateTest(test.id, {
         status: action === 'pause' ? 'paused' : 'active',
       });
@@ -104,19 +164,7 @@ export class VkAdsTestTestActionsService {
     return report;
   }
 
-  private runVariantAction(action: TestActionKind, variant: ActionVariant) {
-    if (action === 'pause') {
-      return this.variantActions.pauseVariant(variant.id);
-    }
-
-    return this.variantActions.resumeVariant(variant.id);
-  }
-
-  private toReport(
-    testId: number,
-    action: TestActionKind,
-    results: TestActionResult[],
-  ): TestActionReport {
+  private toReport(testId: number, action: TestActionKind, results: TestActionResult[]): TestActionReport {
     return {
       testId,
       action,

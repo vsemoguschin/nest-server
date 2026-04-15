@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayUnique,
+  IsArray,
   IsIn,
   IsInt,
   IsOptional,
@@ -13,8 +15,27 @@ export class CreateAudienceDto {
   name: string;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  vkSegmentId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsArray()
+  @IsInt({ each: true })
+  @ArrayUnique()
+  includeSegmentIds?: number[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsArray()
+  @IsInt({ each: true })
+  @ArrayUnique()
+  excludeSegmentIds?: number[];
+
+  @IsOptional()
   @IsIn(['male', 'female'])
-  sex?: 'male' | 'female';
+  sex?: 'male' | 'female' | null;
 
   @IsOptional()
   @Type(() => Number)

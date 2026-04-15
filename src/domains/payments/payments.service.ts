@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -8,9 +12,71 @@ import { createHash } from 'crypto';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 import { CreateOfferLinkDto } from './dto/create-offer-link.dto';
 
+type PaymentFlowType = 'user' | 'internal';
+
+type CreateLinkAuthOptions = {
+  flowType?: PaymentFlowType;
+  jwtToken?: string;
+  internalToken?: string;
+};
+
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private buildPaymentServiceHeaders(params: {
+    jwtToken?: string;
+    internalToken?: string;
+  }) {
+    const headers: Record<string, string> = {};
+    const jwtToken = params.jwtToken?.trim();
+    const internalToken = params.internalToken?.trim();
+
+    if (jwtToken) {
+      headers.Authorization = `Bearer ${jwtToken}`;
+    }
+    if (internalToken) {
+      headers['x-internal-token'] = internalToken;
+    }
+
+    return headers;
+  }
+
+  private logPaymentFlow(event: string, meta: Record<string, unknown>) {
+    console.info(
+      JSON.stringify({
+        context: 'crm-payments',
+        event,
+        ...meta,
+      }),
+    );
+  }
+
+  private readDownstreamStatus(error: unknown) {
+    if (axios.isAxiosError(error)) {
+      return error.response?.status ?? null;
+    }
+
+    return null;
+  }
+
+  private normalizeLinkAuthOptions(
+    auth: string | CreateLinkAuthOptions,
+  ): Required<CreateLinkAuthOptions> {
+    if (typeof auth === 'string') {
+      return {
+        flowType: 'user',
+        jwtToken: auth,
+        internalToken: '',
+      };
+    }
+
+    return {
+      flowType: auth.flowType ?? 'user',
+      jwtToken: auth.jwtToken ?? '',
+      internalToken: auth.internalToken ?? '',
+    };
+  }
 
   async create(createPaymentDto: CreatePaymentDto, user: UserDto) {
     const existingDeal = await this.prisma.deal.findUnique({
@@ -76,6 +142,8 @@ export class PaymentsService {
     // Email и Phone не требуются - клиент заполнит email на странице оферты
     const paymentServiceUrl =
       process.env.PAYMENT_SERVICE_URL || 'http://localhost:5001';
+    const headers = this.buildPaymentServiceHeaders({ jwtToken });
+
     try {
       const { data } = await axios.post(
         `${paymentServiceUrl}/api/payments/draft`,
@@ -86,11 +154,18 @@ export class PaymentsService {
           terminal: createOfferLinkDto.terminal,
         },
         {
-          headers: {
-            Authorization: `Bearer ${jwtToken}`,
-          },
+          headers,
         },
       );
+
+      this.logPaymentFlow('downstream_success', {
+        flowType: 'user',
+        endpoint: '/api/payments/draft',
+        tokenPresent: Boolean(headers.Authorization),
+        downstreamStatus: 200,
+        paymentId: '',
+        token: data.token ?? null,
+      });
 
       // Возвращаем только публичную ссылку на страницу оферты, без ссылки на оплату
       // Ссылка на оплату будет создана позже после принятия оферты клиентом
@@ -100,11 +175,14 @@ export class PaymentsService {
         PaymentId: '', // Будет заполнен после создания платежа
       };
     } catch (error) {
-      console.error('Ошибка при создании предзаписи:', error);
-      if (error.response) {
-        console.error('Ответ сервера:', error.response.data);
-        console.error('Статус:', error.response.status);
-      }
+      this.logPaymentFlow('downstream_error', {
+        flowType: 'user',
+        endpoint: '/api/payments/draft',
+        tokenPresent: Boolean(headers.Authorization),
+        downstreamStatus: this.readDownstreamStatus(error),
+        paymentId: '',
+        token: null,
+      });
       throw error;
     }
   }
@@ -113,8 +191,10 @@ export class PaymentsService {
     createPaymentLinkDto: CreatePaymentLinkDto,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _user: UserDto | null = null,
-    jwtToken: string = '',
+    auth: string | CreateLinkAuthOptions = '',
   ) {
+    const { flowType, jwtToken, internalToken } =
+      this.normalizeLinkAuthOptions(auth);
     const { Name, Phone, Email } = createPaymentLinkDto;
     const Amount = createPaymentLinkDto.Amount * 100;
     const Description =
@@ -219,9 +299,15 @@ export class PaymentsService {
     // Отправляем данные в микросервис для сохранения
     const paymentServiceUrl =
       process.env.PAYMENT_SERVICE_URL || 'http://localhost:5001';
+    const saveEndpoint =
+      flowType === 'internal'
+        ? '/api/payments/save-internal'
+        : '/api/payments/save';
+    const headers = this.buildPaymentServiceHeaders({ jwtToken, internalToken });
+
     try {
       await axios.post(
-        `${paymentServiceUrl}/api/payments/save`,
+        `${paymentServiceUrl}${saveEndpoint}`,
         {
           token,
           paymentUrl,
@@ -234,18 +320,31 @@ export class PaymentsService {
           terminal: createPaymentLinkDto.terminal,
         },
         {
-          headers: {
-            Authorization: `Bearer ${jwtToken}`, // Передаем реальный JWT токен пользователя
-          },
+          headers,
         },
       );
+
+      this.logPaymentFlow('downstream_success', {
+        flowType,
+        endpoint: saveEndpoint,
+        tokenPresent: Object.keys(headers).length > 0,
+        downstreamStatus: 200,
+        paymentId: data.PaymentId ?? null,
+        token,
+      });
     } catch (error) {
-      // Логируем ошибку, но не прерываем процесс
-      console.error('Ошибка при сохранении в микросервис:', error);
-      if (error.response) {
-        console.error('Ответ сервера:', error.response.data);
-        console.error('Статус:', error.response.status);
-      }
+      this.logPaymentFlow('downstream_error', {
+        flowType,
+        endpoint: saveEndpoint,
+        tokenPresent: Object.keys(headers).length > 0,
+        downstreamStatus: this.readDownstreamStatus(error),
+        paymentId: data.PaymentId ?? null,
+        token,
+      });
+
+      throw new InternalServerErrorException(
+        'Не удалось завершить создание ссылки на оплату. Попробуйте ещё раз.',
+      );
     }
 
     // Для обычной ссылки на оплату возвращаем только ссылку от банка

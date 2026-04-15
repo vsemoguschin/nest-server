@@ -20,18 +20,25 @@ export class VkAdsTestVariantActionsService {
 
   async pauseVariant(variantId: number) {
     const variant = await this.getVariant(variantId);
-    this.assertHasCampaign(variant);
+    const bannerId = this.resolveBannerId(variant);
+    const campaignId = this.resolveCampaignId(variant);
 
     if (variant.status === 'paused') {
       throw new BadRequestException(`VK Ads test variant is already paused: id=${variantId}`);
     }
 
     try {
-      await this.client.updateCampaignStatus(
-        variant.test.accountIntegrationId,
-        variant.vkCampaignId as number,
-        'blocked',
-      );
+      if (bannerId !== null) {
+        await this.client.updateBanner(variant.test.accountIntegrationId, bannerId, {
+          status: 'blocked',
+        });
+      } else {
+        await this.client.updateCampaignStatus(
+          variant.test.accountIntegrationId,
+          campaignId,
+          'blocked',
+        );
+      }
     } catch (error) {
       await this.logActionFailed(variant, 'pause', error);
       throw error;
@@ -46,7 +53,8 @@ export class VkAdsTestVariantActionsService {
       variant: { connect: { id: variant.id } },
       action: 'variant_paused',
       payloadJson: {
-        vkCampaignId: variant.vkCampaignId,
+        vkBannerId: bannerId,
+        vkCampaignId: campaignId,
       },
     });
 
@@ -55,7 +63,8 @@ export class VkAdsTestVariantActionsService {
 
   async resumeVariant(variantId: number) {
     const variant = await this.getVariant(variantId);
-    this.assertHasCampaign(variant);
+    const bannerId = this.resolveBannerId(variant);
+    const campaignId = this.resolveCampaignId(variant);
 
     if (variant.status !== 'paused') {
       throw new BadRequestException(
@@ -64,11 +73,17 @@ export class VkAdsTestVariantActionsService {
     }
 
     try {
-      await this.client.updateCampaignStatus(
-        variant.test.accountIntegrationId,
-        variant.vkCampaignId as number,
-        'active',
-      );
+      if (bannerId !== null) {
+        await this.client.updateBanner(variant.test.accountIntegrationId, bannerId, {
+          status: 'active',
+        });
+      } else {
+        await this.client.updateCampaignStatus(
+          variant.test.accountIntegrationId,
+          campaignId,
+          'active',
+        );
+      }
     } catch (error) {
       await this.logActionFailed(variant, 'resume', error);
       throw error;
@@ -83,7 +98,8 @@ export class VkAdsTestVariantActionsService {
       variant: { connect: { id: variant.id } },
       action: 'variant_resumed',
       payloadJson: {
-        vkCampaignId: variant.vkCampaignId,
+        vkBannerId: bannerId,
+        vkCampaignId: campaignId,
       },
     });
 
@@ -92,14 +108,15 @@ export class VkAdsTestVariantActionsService {
 
   async updateBudget(variantId: number, budgetLimitDay: number) {
     const variant = await this.getVariant(variantId);
+    const adGroupId = this.resolveAdGroupId(variant);
 
     if (budgetLimitDay <= 0) {
       throw new BadRequestException('budgetLimitDay must be greater than 0');
     }
 
-    if (!variant.vkAdGroupId) {
+    if (!adGroupId) {
       throw new BadRequestException(
-        `VK Ads test variant has no vkAdGroupId: id=${variantId}`,
+        `VK Ads test variant has no audience/ad group id: id=${variantId}`,
       );
     }
 
@@ -109,14 +126,14 @@ export class VkAdsTestVariantActionsService {
     try {
       await this.client.updateAdGroupBudget(
         variant.test.accountIntegrationId,
-        variant.vkAdGroupId,
+        adGroupId,
         newBudget,
       );
     } catch (error) {
       await this.logActionFailed(variant, 'update_budget', error, {
         oldBudget,
         newBudget,
-        vkAdGroupId: variant.vkAdGroupId,
+        vkAdGroupId: adGroupId,
       });
       throw error;
     }
@@ -130,7 +147,7 @@ export class VkAdsTestVariantActionsService {
       variant: { connect: { id: variant.id } },
       action: 'variant_budget_updated',
       payloadJson: {
-        vkAdGroupId: variant.vkAdGroupId,
+        vkAdGroupId: adGroupId,
         oldBudget,
         newBudget,
       },
@@ -149,12 +166,40 @@ export class VkAdsTestVariantActionsService {
     return variant;
   }
 
-  private assertHasCampaign(variant: ActionVariant) {
-    if (!variant.vkCampaignId) {
-      throw new BadRequestException(
-        `VK Ads test variant has no vkCampaignId: id=${variant.id}`,
-      );
+  private resolveBannerId(variant: ActionVariant) {
+    if (variant.vkBannerId) {
+      return variant.vkBannerId;
     }
+
+    return null;
+  }
+
+  private resolveCampaignId(variant: ActionVariant) {
+    if (variant.test.vkCampaignId) {
+      return variant.test.vkCampaignId;
+    }
+
+    if (variant.vkCampaignId) {
+      // Transitional fallback: older variant rows can still carry the campaign id.
+      return variant.vkCampaignId;
+    }
+
+    throw new BadRequestException(
+      `VK Ads test variant has no campaign id: id=${variant.id}`,
+    );
+  }
+
+  private resolveAdGroupId(variant: ActionVariant) {
+    if (variant.audience?.vkAdGroupId) {
+      return variant.audience.vkAdGroupId;
+    }
+
+    if (variant.vkAdGroupId) {
+      // Transitional fallback: older variant rows can still carry the ad group id.
+      return variant.vkAdGroupId;
+    }
+
+    return null;
   }
 
   private async logActionFailed(
@@ -170,8 +215,9 @@ export class VkAdsTestVariantActionsService {
       reason: action,
       payloadJson: {
         action,
+        vkBannerId: variant.vkBannerId,
         vkCampaignId: variant.vkCampaignId,
-        vkAdGroupId: variant.vkAdGroupId,
+        vkAdGroupId: variant.audience?.vkAdGroupId ?? variant.vkAdGroupId,
         errorMessage: this.toShortErrorMessage(error),
         ...payload,
       },

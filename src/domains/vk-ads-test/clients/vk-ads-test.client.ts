@@ -56,6 +56,12 @@ export type VkAdsEntityRef = {
   [key: string]: unknown;
 };
 
+export type VkAdsUploadedContentResponse = {
+  id: number | string;
+  variants?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
 export type VkAdsListResponse<T> = {
   count?: number;
   offset?: number;
@@ -143,8 +149,103 @@ export class VkAdsTestClient {
     );
   }
 
-  async getUrl(integrationId: number, urlId: number | string): Promise<VkAdsUrl> {
+  async getUrl(
+    integrationId: number,
+    urlId: number | string,
+  ): Promise<VkAdsUrl> {
     return this.get<VkAdsUrl>(integrationId, `/api/v2/urls/${urlId}.json`);
+  }
+
+  async uploadVideoContent(
+    integrationId: number,
+    params: {
+      file: Express.Multer.File;
+      width: number;
+      height: number;
+    },
+  ): Promise<VkAdsUploadedContentResponse> {
+    const context = await this.authService.resolveAuthContext(integrationId);
+    const endpoint = '/api/v2/content/video.json';
+    const url = new URL(endpoint, context.baseUrl).toString();
+    const formData = new FormData();
+    const fileType =
+      typeof params.file.mimetype === 'string' && params.file.mimetype.trim()
+        ? params.file.mimetype
+        : 'video/mp4';
+    const fileName =
+      typeof params.file.originalname === 'string' &&
+      params.file.originalname.trim()
+        ? params.file.originalname
+        : 'video.mp4';
+
+    formData.append(
+      'file',
+      new Blob([params.file.buffer], { type: fileType }),
+      fileName,
+    );
+    formData.append(
+      'data',
+      JSON.stringify({
+        width: params.width,
+        height: params.height,
+      }),
+    );
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${context.accessToken}`,
+        },
+        body: formData,
+      });
+    } catch (error) {
+      throw new VkAdsTestClientError({
+        message: `VK Ads request failed: POST ${endpoint}`,
+        method: 'POST',
+        endpoint,
+        rawError: error,
+      });
+    }
+
+    const rawText = await response.text();
+    const parsedBody = this.tryParseJson(rawText);
+
+    if (!response.ok) {
+      const payload = this.asRecord(parsedBody);
+      const nestedError = this.asRecord(payload?.error);
+      const topLevelCode = this.asString(payload?.code);
+      const topLevelMessage = this.asString(payload?.message);
+      throw new VkAdsTestClientError({
+        message:
+          this.asString(nestedError?.message) ||
+          topLevelMessage ||
+          `VK Ads request failed: POST ${endpoint}`,
+        status: response.status,
+        method: 'POST',
+        endpoint,
+        vkErrorCode:
+          this.asString(nestedError?.code) || topLevelCode || undefined,
+        vkErrorMessage:
+          this.asString(nestedError?.message) || topLevelMessage || undefined,
+        fieldErrors: this.parseFieldErrors(nestedError?.fields),
+        rawError: parsedBody,
+      });
+    }
+
+    const body = this.asRecord(parsedBody);
+    if (!body) {
+      throw new VkAdsTestClientError({
+        message: `VK Ads upload response is not a JSON object: POST ${endpoint}`,
+        status: response.status,
+        method: 'POST',
+        endpoint,
+        rawError: parsedBody,
+      });
+    }
+
+    return body as VkAdsUploadedContentResponse;
   }
 
   async createAdPlan(
@@ -312,6 +413,17 @@ export class VkAdsTestClient {
     );
   }
 
+  async getRemarketingSegments(
+    integrationId: number,
+    params?: QueryParams,
+  ): Promise<VkAdsListResponse<JsonObject>> {
+    return this.get<VkAdsListResponse<JsonObject>>(
+      integrationId,
+      '/api/v2/remarketing/segments.json',
+      params,
+    );
+  }
+
   async getAdGroups(
     integrationId: number,
     params?: VkAdsAdGroupsParams,
@@ -397,10 +509,7 @@ export class VkAdsTestClient {
     return this.request<T>(integrationId, 'POST', endpoint, { data });
   }
 
-  private async delete(
-    integrationId: number,
-    endpoint: string,
-  ): Promise<void> {
+  private async delete(integrationId: number, endpoint: string): Promise<void> {
     await this.request<void>(integrationId, 'DELETE', endpoint);
   }
 
@@ -430,7 +539,9 @@ export class VkAdsTestClient {
       offset: 0,
       sorting: '-id',
     });
-    const normalizedAdGroups = this.extractAdGroupRefs(discoveredAdGroups.items);
+    const normalizedAdGroups = this.extractAdGroupRefs(
+      discoveredAdGroups.items,
+    );
 
     this.logger.warn(
       JSON.stringify({
@@ -592,7 +703,9 @@ export class VkAdsTestClient {
     });
   }
 
-  private normalizeParams(params?: QueryParams): Record<string, Primitive> | undefined {
+  private normalizeParams(
+    params?: QueryParams,
+  ): Record<string, Primitive> | undefined {
     if (!params) return undefined;
 
     const normalized: Record<string, Primitive> = {};
@@ -630,7 +743,8 @@ export class VkAdsTestClient {
     const nestedError = this.asRecord(payload?.error);
     const topLevelCode = this.asString(payload?.code);
     const topLevelMessage = this.asString(payload?.message);
-    const vkErrorCode = this.asString(nestedError?.code) || topLevelCode || undefined;
+    const vkErrorCode =
+      this.asString(nestedError?.code) || topLevelCode || undefined;
     const vkErrorMessage =
       this.asString(nestedError?.message) || topLevelMessage || undefined;
     const fieldErrors = this.parseFieldErrors(nestedError?.fields);
@@ -679,7 +793,9 @@ export class VkAdsTestClient {
       error.response?.headers?.['Retry-After'];
 
     const retryAfter =
-      Array.isArray(rawHeader) && rawHeader.length > 0 ? rawHeader[0] : rawHeader;
+      Array.isArray(rawHeader) && rawHeader.length > 0
+        ? rawHeader[0]
+        : rawHeader;
 
     if (typeof retryAfter === 'number' && Number.isFinite(retryAfter)) {
       return retryAfter * 1000;
@@ -716,7 +832,22 @@ export class VkAdsTestClient {
   }
 
   private asRecord(value: unknown): Record<string, unknown> | null {
-    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+    return typeof value === 'object' && value !== null
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private tryParseJson(value: string): unknown {
+    const normalized = value.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(normalized);
+    } catch {
+      return value;
+    }
   }
 
   private asString(value: unknown): string {

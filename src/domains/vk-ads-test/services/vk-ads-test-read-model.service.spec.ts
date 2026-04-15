@@ -10,10 +10,18 @@ jest.mock(
 );
 
 describe('VkAdsTestReadModelService', () => {
-  it('deduplicates campaigns, ad groups and banners by VK ids', async () => {
+  it('prefers test and audience ownership ids and keeps banner grouping by variant placement', async () => {
     const repository = {
-      getTestVariantsForReadModel: jest.fn().mockResolvedValue({
+      getTestForOwnershipReadModel: jest.fn().mockResolvedValue({
         id: 1,
+        vkCampaignId: 101,
+        audiences: [
+          {
+            id: 201,
+            vkAdGroupId: 201,
+            name: 'Audience A',
+          },
+        ],
         variants: [
           createVariant(11, {
             vkCampaignId: 101,
@@ -56,6 +64,45 @@ describe('VkAdsTestReadModelService', () => {
       }),
     ]);
     await expect(service.getBanners(1)).resolves.toHaveLength(2);
+  });
+
+  it('falls back to variant ids when ownership ids are not backfilled yet', async () => {
+    const repository = {
+      getTestForOwnershipReadModel: jest.fn().mockResolvedValue({
+        id: 1,
+        vkCampaignId: null,
+        audiences: [
+          {
+            id: 201,
+            vkAdGroupId: null,
+            name: 'Audience A',
+          },
+        ],
+        variants: [
+          createVariant(11, {
+            vkCampaignId: 101,
+            vkAdGroupId: 201,
+            vkBannerId: 301,
+            creativeName: 'Creative A',
+            audienceName: 'Audience A',
+            budgetLimitDay: '100',
+            launchDate: new Date('2026-04-01T00:00:00.000Z'),
+          }),
+        ],
+      }),
+    };
+    const service = new VkAdsTestReadModelService(repository as any);
+
+    await expect(service.getCampaigns(1)).resolves.toEqual([
+      expect.objectContaining({
+        vkCampaignId: 101,
+      }),
+    ]);
+    await expect(service.getAdGroups(1)).resolves.toEqual([
+      expect.objectContaining({
+        vkAdGroupId: 201,
+      }),
+    ]);
   });
 });
 

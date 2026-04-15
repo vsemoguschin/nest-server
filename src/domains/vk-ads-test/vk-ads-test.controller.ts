@@ -1,5 +1,6 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -7,11 +8,17 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { BuildTestDto } from './dto/build-test.dto';
 import { CreateCreativeDto } from './dto/create-creative.dto';
 import { CreateTestDto } from './dto/create-test.dto';
+import { UploadVideoAssetDto } from './dto/upload-video-asset.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { UpdateCreativeDto } from './dto/update-creative.dto';
 import { UpdateTestDto } from './dto/update-test.dto';
@@ -22,6 +29,7 @@ import { VkAdsTestTestActionsService } from './services/vk-ads-test-test-actions
 import { VkAdsTestVariantActionsService } from './services/vk-ads-test-variant-actions.service';
 import { VkAdsTestVariantsService } from './services/vk-ads-test-variants.service';
 import { VkAdsTestService } from './services/vk-ads-test.service';
+import { VkAdsTestVideoAssetsService } from './services/vk-ads-test-video-assets.service';
 
 @Controller('vk-ads-test/tests')
 export class VkAdsTestController {
@@ -127,10 +135,7 @@ export class VkAdsTestController {
   }
 
   @Post(':id/build')
-  buildTest(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: BuildTestDto,
-  ) {
+  buildTest(@Param('id', ParseIntPipe) id: number, @Body() dto: BuildTestDto) {
     return this.buildService.buildTest(id, dto);
   }
 
@@ -155,9 +160,122 @@ export class VkAdsTestIntegrationsController {
   }
 }
 
+@Controller('vk-ads-test/audiences')
+export class VkAdsTestAudiencesController {
+  constructor(private readonly vkAdsTestService: VkAdsTestService) {}
+
+  @Get()
+  listAudiences(@Query('accountIntegrationId') accountIntegrationId?: string) {
+    const parsedAccountIntegrationId =
+      accountIntegrationId === undefined || accountIntegrationId.trim() === ''
+        ? undefined
+        : Number(accountIntegrationId);
+
+    return this.vkAdsTestService.listAudiences(
+      Number.isNaN(parsedAccountIntegrationId)
+        ? undefined
+        : parsedAccountIntegrationId,
+    );
+  }
+}
+
+@Controller('vk-ads-test/segments')
+export class VkAdsTestSegmentsController {
+  constructor(private readonly vkAdsTestService: VkAdsTestService) {}
+
+  @Get()
+  listSegments(@Query('accountIntegrationId') accountIntegrationId?: string) {
+    const parsedAccountIntegrationId =
+      accountIntegrationId === undefined || accountIntegrationId.trim() === ''
+        ? undefined
+        : Number(accountIntegrationId);
+
+    return this.vkAdsTestService.listAudiences(
+      Number.isNaN(parsedAccountIntegrationId)
+        ? undefined
+        : parsedAccountIntegrationId,
+    );
+  }
+}
+
+@Controller('vk-ads-test/creatives')
+export class VkAdsTestCreativesController {
+  constructor(private readonly vkAdsTestService: VkAdsTestService) {}
+
+  @Patch(':id')
+  updateCreativeById(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCreativeDto,
+  ) {
+    return this.vkAdsTestService.updateCreativeById(id, dto);
+  }
+}
+
+@Controller('vk-ads-test/videos')
+export class VkAdsTestVideosController {
+  constructor(
+    private readonly videoAssetsService: VkAdsTestVideoAssetsService,
+  ) {}
+
+  @Post('upload')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 512 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadVideo(
+    @Body() dto: UploadVideoAssetDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Video file is required');
+    }
+
+    return this.videoAssetsService.uploadVideo(dto, file);
+  }
+
+  @Get()
+  listVideos(
+    @Query('testId') testId?: string,
+    @Query('accountIntegrationId') accountIntegrationId?: string,
+  ) {
+    const parsedTestId =
+      testId === undefined || testId.trim() === '' ? undefined : Number(testId);
+    const parsedAccountIntegrationId =
+      accountIntegrationId === undefined || accountIntegrationId.trim() === ''
+        ? undefined
+        : Number(accountIntegrationId);
+
+    if (
+      (parsedTestId !== undefined && Number.isNaN(parsedTestId)) ||
+      (parsedAccountIntegrationId !== undefined &&
+        Number.isNaN(parsedAccountIntegrationId))
+    ) {
+      return { items: [] };
+    }
+
+    if (
+      parsedTestId === undefined &&
+      parsedAccountIntegrationId === undefined
+    ) {
+      return { items: [] };
+    }
+
+    return this.videoAssetsService.listVideos({
+      testId: parsedTestId,
+      accountIntegrationId: parsedAccountIntegrationId,
+    });
+  }
+}
+
 @Controller('vk-ads-test/variants')
 export class VkAdsTestVariantActionsController {
-  constructor(private readonly actionsService: VkAdsTestVariantActionsService) {}
+  constructor(
+    private readonly actionsService: VkAdsTestVariantActionsService,
+  ) {}
 
   @Post(':variantId/pause')
   pauseVariant(@Param('variantId', ParseIntPipe) variantId: number) {

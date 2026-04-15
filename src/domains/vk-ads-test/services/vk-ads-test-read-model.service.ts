@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
 
 type ReadModelTest = NonNullable<
-  Awaited<ReturnType<VkAdsTestRepository['getTestVariantsForReadModel']>>
+  Awaited<ReturnType<VkAdsTestRepository['getTestForOwnershipReadModel']>>
 >;
 type ReadModelVariant = ReadModelTest['variants'][number];
 
@@ -19,10 +19,12 @@ export class VkAdsTestReadModelService {
   async getCampaigns(testId: number) {
     const test = await this.getTest(testId);
     const grouped = new Map<number, ReadModelVariant[]>();
+    const fallbackCampaignId = test.vkCampaignId ?? null;
 
     for (const variant of test.variants) {
-      if (!variant.vkCampaignId) continue;
-      this.pushGrouped(grouped, variant.vkCampaignId, variant);
+      const vkCampaignId = this.resolveCampaignId(fallbackCampaignId, variant);
+      if (!vkCampaignId) continue;
+      this.pushGrouped(grouped, vkCampaignId, variant);
     }
 
     return Array.from(grouped.entries()).map(([vkCampaignId, variants]) => ({
@@ -41,8 +43,9 @@ export class VkAdsTestReadModelService {
     const grouped = new Map<number, ReadModelVariant[]>();
 
     for (const variant of test.variants) {
-      if (!variant.vkAdGroupId) continue;
-      this.pushGrouped(grouped, variant.vkAdGroupId, variant);
+      const vkAdGroupId = this.resolveAdGroupId(variant);
+      if (!vkAdGroupId) continue;
+      this.pushGrouped(grouped, vkAdGroupId, variant);
     }
 
     return Array.from(grouped.entries()).map(([vkAdGroupId, variants]) => ({
@@ -63,8 +66,9 @@ export class VkAdsTestReadModelService {
     const grouped = new Map<number, ReadModelVariant[]>();
 
     for (const variant of test.variants) {
-      if (!variant.vkBannerId) continue;
-      this.pushGrouped(grouped, variant.vkBannerId, variant);
+      const vkBannerId = variant.vkBannerId;
+      if (!vkBannerId) continue;
+      this.pushGrouped(grouped, vkBannerId, variant);
     }
 
     return Array.from(grouped.entries()).map(([vkBannerId, variants]) => ({
@@ -78,13 +82,34 @@ export class VkAdsTestReadModelService {
   }
 
   private async getTest(testId: number) {
-    const test = await this.repository.getTestVariantsForReadModel(testId);
+    const test = await this.repository.getTestForOwnershipReadModel(testId);
 
     if (!test) {
       throw new NotFoundException(`VK Ads test not found: id=${testId}`);
     }
 
     return test;
+  }
+
+  private resolveCampaignId(
+    fallbackCampaignId: number | null,
+    variant: ReadModelVariant,
+  ) {
+    if (fallbackCampaignId != null) {
+      return fallbackCampaignId;
+    }
+
+    // Transitional fallback: older rows may still only have the campaign id on variant.
+    return variant.vkCampaignId ?? null;
+  }
+
+  private resolveAdGroupId(variant: ReadModelVariant) {
+    if (variant.audience?.vkAdGroupId) {
+      return variant.audience.vkAdGroupId;
+    }
+
+    // Transitional fallback: some historical rows may still rely on variant ownership.
+    return variant.vkAdGroupId ?? null;
   }
 
   private pushGrouped(
