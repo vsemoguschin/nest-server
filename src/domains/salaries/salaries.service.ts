@@ -444,13 +444,13 @@ export class SalariesService {
     // Расчет продаж для каждого пользователя
     const usersWithSales = workSpace.users
       .map((u) => {
-        if (u.fullName.includes('Добротин')) {
-          console.log(u.dops.map((d) => d.saleDate));
-          console.log(
-            u.dops.reduce((a, b) => a + b.price, 0),
-            'ecqrveww',
-          );
-        }
+        // if (u.fullName.includes('Добротин')) {
+        //   console.log(u.dops.map((d) => d.saleDate));
+        //   console.log(
+        //     u.dops.reduce((a, b) => a + b.price, 0),
+        //     'ecqrveww',
+        //   );
+        // }
         let totalSalary = 0;
         const pays = u.salaryPays.reduce((a, b) => a + b.price, 0) || 0;
 

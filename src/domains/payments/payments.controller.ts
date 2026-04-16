@@ -51,6 +51,17 @@ type PaymentListResponse = {
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
+  private getPaymentServiceInternalToken() {
+    const token = process.env.PAYMENT_SERVICE_INTERNAL_TOKEN?.trim();
+    if (!token) {
+      throw new Error(
+        'Missing required environment variable: PAYMENT_SERVICE_INTERNAL_TOKEN',
+      );
+    }
+
+    return token;
+  }
+
   private extractBearerToken(authHeader?: string | string[]) {
     const rawHeader = Array.isArray(authHeader) ? authHeader[0] : authHeader;
     if (!rawHeader?.startsWith('Bearer ')) {
@@ -208,8 +219,7 @@ export class PaymentsController {
     @Query('link') link: string,
     @Query('internalToken') internalToken: string,
   ) {
-    const validToken =
-      process.env.PAYMENT_SERVICE_INTERNAL_TOKEN || 'internal-secret-token';
+    const validToken = this.getPaymentServiceInternalToken();
     if (internalToken !== validToken) {
       throw new BadRequestException('Неверный внутренний токен');
     }
@@ -220,8 +230,7 @@ export class PaymentsController {
   @Public()
   async createPaymentLinkFromDraft(@Body() dto: CreatePaymentLinkFromDraftDto) {
     // Проверка внутреннего токена для межсервисного взаимодействия
-    const internalToken =
-      process.env.PAYMENT_SERVICE_INTERNAL_TOKEN || 'internal-secret-token';
+    const internalToken = this.getPaymentServiceInternalToken();
     if (dto.internalToken !== internalToken) {
       throw new BadRequestException('Неверный внутренний токен');
     }

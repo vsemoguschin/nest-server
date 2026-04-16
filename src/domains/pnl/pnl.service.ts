@@ -653,6 +653,20 @@ export class PnlService {
       easybook_rent: { id: 36, projectId: EASYBOOK_PROJECT_ID },
       easybook_services: { id: 45, projectId: EASYBOOK_PROJECT_ID },
       easybook_cdek: { id: 29, projectId: EASYBOOK_PROJECT_ID },
+      easybook_other_development_expenses: {
+        id: 62,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easybook_communication_internet: {
+        id: 165,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
+      easybook_cardboard: { id: 167, projectId: EASYBOOK_PROJECT_ID },
+      easybook_paper: { id: 166, projectId: EASYBOOK_PROJECT_ID },
+      easybook_material_expenses: {
+        id: 168,
+        projectId: EASYBOOK_PROJECT_ID,
+      },
       easybook_bank_fees: { id: 48, projectId: EASYBOOK_PROJECT_ID },
       easybanya_construction_materials: {
         id: 162,

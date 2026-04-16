@@ -86,7 +86,6 @@ export class UsersService {
         roles: [role.shortName],
         scopes: this.usersAuthSync.getDefaultBookEditorScopes(),
       });
-      console.log({ ...createdUser, role });
       return { ...createdUser, role };
     } catch (error) {
       // Обработка ошибки уникального ограничения

@@ -74,6 +74,7 @@ export class ProductionController {
   async getPredata(@CurrentUser() user: UserDto) {
     return this.productionService.getPredata(user);
   }
+
   @Get('workspaces')
   @Roles('ADMIN', 'G', 'KD', 'DP', 'RP')
   async getWorkSpaces(@CurrentUser() user: UserDto) {
@@ -290,7 +291,13 @@ export class ProductionController {
     // Получаем существующий отчет для получения userId и других полей
     const existingReport = await this.prisma.masterReport.findUnique({
       where: { id: +id },
-      select: { userId: true, metrs: true, els: true, type: true, orderId: true },
+      select: {
+        userId: true,
+        metrs: true,
+        els: true,
+        type: true,
+        orderId: true,
+      },
     });
 
     if (!existingReport) {

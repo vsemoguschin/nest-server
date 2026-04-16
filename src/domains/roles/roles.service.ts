@@ -19,9 +19,7 @@ export class RolesService {
     });
 
     if (existingRole) {
-      console.log(
-        `Роль с shortName "${createRoleDto.shortName}" уже существует.`,
-      );
+      
       throw new ConflictException(
         `Роль с shortName "${createRoleDto.shortName}" уже существует.`,
       );

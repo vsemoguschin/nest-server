@@ -17,6 +17,14 @@ import { UserActivityInterceptor } from './common/interceptors/user-activity.int
 
 dotenv.config();
 
+function assertRequiredEnv(name: string) {
+  if (!process.env[name]?.trim()) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+}
+
+assertRequiredEnv('PAYMENT_SERVICE_INTERNAL_TOKEN');
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // logger: winstonLogger,

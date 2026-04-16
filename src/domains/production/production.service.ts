@@ -47,6 +47,8 @@ export class ProductionService {
           { value: 'logist', label: 'Логист' },
           { value: 'supplie', label: 'Закупки' },
           { value: 'storage', label: 'Склад' },
+          { value: 'washer', label: 'Мойщица' },
+          { value: 'printers', label: 'Печатники' },
           // { value: 'salaries', label: 'Зарплаты' },
         ],
       };

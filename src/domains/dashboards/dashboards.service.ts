@@ -3080,7 +3080,6 @@ export class DashboardsService {
     }
     const dates = generateMonthDates(period);
 
-    console.log(dates);
   }
 
   async getPays(user: UserDto, period: string) {

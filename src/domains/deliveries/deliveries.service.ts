@@ -30,10 +30,8 @@ export class DeliveriesService {
 
   async checkRegisters(period: string) {
     try {
-      // return console.log(days);
       // Resolve all async calls using Promise.all
       const { tracks, sum } = await this.cdekService.getRegisters(period);
-      console.log('total', sum);
 
       const dels = await this.prisma.delivery.findMany({
         where: {
@@ -65,7 +63,6 @@ export class DeliveriesService {
             return { id: p.id, method: p.method, isConfirmed: p.isConfirmed };
           }),
       );
-      console.log(paymentsId);
 
       await this.prisma.payment.updateMany({
         where: {

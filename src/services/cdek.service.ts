@@ -63,7 +63,7 @@ export class CdekService {
   async getOrderInfo(cdek_number: string, token: string): Promise<any> {
     try {
       const entity = await this.getOrderInfoStrict(cdek_number, token);
-      console.log(entity);
+      // console.log(entity);
       return entity;
     } catch (error) {
       this.logger.error(

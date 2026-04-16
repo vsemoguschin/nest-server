@@ -1914,13 +1914,6 @@ export class PlanfactService {
       },
     });
 
-    console.log(`=== ОБНОВЛЕНИЕ КОНТРАГЕНТА ${counterPartyId} ===`);
-    console.log(`Входные данные:`, {
-      incomeExpenseCategoryId: categoriesData.incomeExpenseCategoryId,
-      outcomeExpenseCategoryId: categoriesData.outcomeExpenseCategoryId,
-    });
-    console.log(`Найдено позиций: ${positions.length}`);
-
     // Группируем позиции по типам операций для статистики
     const creditPositions = positions.filter(
       (p) => p.originalOperation?.typeOfOperation === 'Credit',
@@ -1934,12 +1927,6 @@ export class PlanfactService {
           p.originalOperation?.typeOfOperation || '',
         ),
     );
-
-    console.log(`Статистика позиций:`, {
-      Credit: creditPositions.length,
-      Debit: debitPositions.length,
-      Unknown: unknownPositions.length,
-    });
 
     let updatedPositionsCount = 0;
 
@@ -1962,14 +1949,6 @@ export class PlanfactService {
       });
       updatedPositionsCount++;
     }
-
-    console.log(`Результат обновления:`, {
-      totalUpdated: updatedPositionsCount,
-      creditUpdated: creditPositions.length,
-      debitUpdated: debitPositions.length,
-      unknownUpdated: unknownPositions.length,
-    });
-    console.log(`=== КОНЕЦ ОБНОВЛЕНИЯ КОНТРАГЕНТА ${counterPartyId} ===`);
 
     return {
       success: true,
@@ -2002,13 +1981,6 @@ export class PlanfactService {
         `Контрагент с номером счета "${counterPartyAccount}" не найден`,
       );
     }
-
-    console.log(
-      `=== ОБНОВЛЕНИЕ КОНТРАГЕНТА ПО СЧЕТУ ${counterPartyAccount} ===`,
-    );
-    console.log(
-      `Найден контрагент: ID=${counterParty.id}, Title="${counterParty.title}"`,
-    );
 
     // Используем существующий метод с найденным ID
     return this.assignExpenseCategoriesToCounterParty(

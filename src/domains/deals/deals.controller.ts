@@ -99,7 +99,6 @@ export class DealsController {
     @Query('isRegular') isRegular?: string[] | string,
     @Query('boxsize') boxsize?: string[] | string,
   ): Promise<any> {
-    console.log(boxsize);
     if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
         'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',

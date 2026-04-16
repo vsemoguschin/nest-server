@@ -163,7 +163,6 @@ export class WbService {
         },
       );
 
-      console.log(response.data);
       return;
     } catch (error) {
       const axiosError = error as AxiosError;
