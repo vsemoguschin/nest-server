@@ -46,6 +46,7 @@ export class VkAdsTestVariantActionsService {
 
     const updated = await this.repository.updateVariant(variant.id, {
       status: 'paused',
+      runtimePauseReason: 'paused_manually',
     });
 
     await this.repository.logAction({
@@ -91,6 +92,7 @@ export class VkAdsTestVariantActionsService {
 
     const updated = await this.repository.updateVariant(variant.id, {
       status: 'active',
+      runtimePauseReason: null,
     });
 
     await this.repository.logAction({

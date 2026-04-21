@@ -7,11 +7,17 @@ import { Prisma } from '@prisma/client';
 import { CreateAudienceDto } from '../dto/create-audience.dto';
 import { CreateCreativeDto } from '../dto/create-creative.dto';
 import { CreateTestDto } from '../dto/create-test.dto';
+import { LaunchCitiesDto } from '../dto/launch-cities.dto';
 import { UpdateAudienceDto } from '../dto/update-audience.dto';
 import { UpdateCreativeDto } from '../dto/update-creative.dto';
 import { UpdateTestDto } from '../dto/update-test.dto';
 import { VkAdsTestClient } from '../clients/vk-ads-test.client';
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
+import { VkAdsTestCitiesLaunchService } from './vk-ads-test-cities-launch.service';
+import {
+  VkAdsTestRuntimeStatus,
+  VkAdsTestRuntimeStatusService,
+} from './vk-ads-test-runtime-status.service';
 import { VkAdsTestVideoAssetsService } from './vk-ads-test-video-assets.service';
 
 const VK_ADS_TEST_OBJECTIVE = 'socialengagement';
@@ -22,7 +28,9 @@ export class VkAdsTestService {
   constructor(
     private readonly repository: VkAdsTestRepository,
     private readonly client: VkAdsTestClient,
+    private readonly runtimeStatusService: VkAdsTestRuntimeStatusService,
     private readonly videoAssetsService: VkAdsTestVideoAssetsService,
+    private readonly citiesLaunchService: VkAdsTestCitiesLaunchService,
   ) {}
 
   async listIntegrations() {
@@ -88,6 +96,7 @@ export class VkAdsTestService {
 
     const test = await this.repository.createTest({
       accountIntegration: { connect: { id: dto.accountIntegrationId } },
+      flowType: 'vk_ads',
       name: dto.name,
       status: 'draft',
       objective: VK_ADS_TEST_OBJECTIVE,
@@ -111,11 +120,42 @@ export class VkAdsTestService {
     return test;
   }
 
+  async launchCities(dto: LaunchCitiesDto) {
+    return this.citiesLaunchService.launchCities(dto);
+  }
+
   async listTests() {
     const tests = await this.repository.listTests();
+    const runtimeStates =
+      await this.runtimeStatusService.resolveManyTestsRuntimeState(tests);
+    const runtimeStateByTestId = new Map(
+      runtimeStates.map(({ testId, runtimeStatus, runtimeIssue }) => [
+        testId,
+        {
+          runtimeStatus,
+          runtimeIssue,
+        },
+      ]),
+    );
 
-    return tests.map(({ _count, ...test }) => ({
+    return tests.map(({ _count, actionLogs, ...test }) => ({
       ...test,
+      expectedCitiesCount: this.extractExpectedCitiesCount(actionLogs),
+      runtimeStatus:
+        runtimeStateByTestId.get(test.id)?.runtimeStatus ??
+        (test.vkCampaignId == null ? 'unknown' : 'error'),
+      runtimeIssue:
+        runtimeStateByTestId.get(test.id)?.runtimeIssue ?? null,
+      canToggleRuntime:
+        test.vkCampaignId != null &&
+        !this.isRuntimeToggleDisabled(
+          runtimeStateByTestId.get(test.id)?.runtimeStatus ??
+            (test.vkCampaignId == null ? 'unknown' : 'error'),
+        ),
+      flowType:
+        test.flowType === 'cities' || actionLogs.length > 0
+          ? 'cities'
+          : 'vk_ads',
       creativesCount: _count.creatives,
       audiencesCount: _count.audiences,
       variantsCount: _count.variants,
@@ -439,6 +479,34 @@ export class VkAdsTestService {
     return Object.fromEntries(
       Object.entries(value).filter(([, item]) => item !== undefined),
     ) as Partial<T>;
+  }
+
+  private isRuntimeToggleDisabled(runtimeStatus: VkAdsTestRuntimeStatus) {
+    return (
+      runtimeStatus === 'missing' ||
+      runtimeStatus === 'error' ||
+      runtimeStatus === 'unknown'
+    );
+  }
+
+  private extractExpectedCitiesCount(
+    actionLogs: Array<{ payloadJson?: unknown }>,
+  ): number | null {
+    const payload = actionLogs[0]?.payloadJson;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return null;
+    }
+
+    const expectedCitiesCount = (payload as Record<string, unknown>)
+      .expectedCitiesCount;
+    const parsed =
+      typeof expectedCitiesCount === 'number'
+        ? expectedCitiesCount
+        : typeof expectedCitiesCount === 'string'
+          ? Number(expectedCitiesCount)
+          : NaN;
+
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
 
   private formatIntegrationName(

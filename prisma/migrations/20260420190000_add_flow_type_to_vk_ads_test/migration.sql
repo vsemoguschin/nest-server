@@ -1,0 +1,2 @@
+ALTER TABLE "VkAdsTest"
+ADD COLUMN "flowType" TEXT NOT NULL DEFAULT 'vk_ads';

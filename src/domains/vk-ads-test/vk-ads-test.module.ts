@@ -6,15 +6,18 @@ import { VkAdsTestBuildService } from './services/vk-ads-test-build.service';
 import { VkAdsTestBuilderService } from './services/vk-ads-test-builder.service';
 import { VkAdsTestPlacementPlannerService } from './services/vk-ads-test-placement-planner.service';
 import { VkAdsTestReadModelService } from './services/vk-ads-test-read-model.service';
+import { VkAdsTestRuntimeStatusService } from './services/vk-ads-test-runtime-status.service';
 import { VkAdsTestTestActionsService } from './services/vk-ads-test-test-actions.service';
 import { VkAdsTestVariantActionsService } from './services/vk-ads-test-variant-actions.service';
 import { VkAdsTestVariantsService } from './services/vk-ads-test-variants.service';
 import { VkAdsTestVideoAssetsService } from './services/vk-ads-test-video-assets.service';
 import { VkAdsTestService } from './services/vk-ads-test.service';
+import { VkAdsTestCitiesLaunchService } from './services/vk-ads-test-cities-launch.service';
 import {
   VkAdsTestAudiencesController,
   VkAdsTestCreativesController,
   VkAdsTestController,
+  VkAdsTestCitiesController,
   VkAdsTestIntegrationsController,
   VkAdsTestSegmentsController,
   VkAdsTestVideosController,
@@ -26,6 +29,7 @@ import {
     VkAdsTestAudiencesController,
     VkAdsTestCreativesController,
     VkAdsTestController,
+    VkAdsTestCitiesController,
     VkAdsTestIntegrationsController,
     VkAdsTestSegmentsController,
     VkAdsTestVideosController,
@@ -40,10 +44,12 @@ import {
     VkAdsTestBuildService,
     VkAdsTestPlacementPlannerService,
     VkAdsTestReadModelService,
+    VkAdsTestRuntimeStatusService,
     VkAdsTestAuthService,
     VkAdsTestClient,
     VkAdsTestBuilderService,
     VkAdsTestVideoAssetsService,
+    VkAdsTestCitiesLaunchService,
   ],
   exports: [
     VkAdsTestRepository,
@@ -54,10 +60,12 @@ import {
     VkAdsTestBuildService,
     VkAdsTestPlacementPlannerService,
     VkAdsTestReadModelService,
+    VkAdsTestRuntimeStatusService,
     VkAdsTestAuthService,
     VkAdsTestClient,
     VkAdsTestBuilderService,
     VkAdsTestVideoAssetsService,
+    VkAdsTestCitiesLaunchService,
   ],
 })
 export class VkAdsTestModule {}

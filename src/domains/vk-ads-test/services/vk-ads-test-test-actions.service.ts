@@ -3,32 +3,42 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
 import { VkAdsTestClient } from '../clients/vk-ads-test.client';
+import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
 
 type TestActionKind = 'pause' | 'resume';
-type TestActionResultStatus = 'succeeded' | 'failed' | 'skipped';
+type VkRuntimeActionStatus = 'active' | 'blocked';
 
-type TestActionResult = {
-  variantId: number;
-  status: TestActionResultStatus;
-  errorMessage?: string;
+type RuntimeActionTest = {
+  id: number;
+  accountIntegrationId: number;
+  vkCampaignId: number | null;
+  audiences: Array<{
+    id: number;
+    vkAdGroupId: number | null;
+  }>;
+  variants: Array<{
+    id: number;
+    vkBannerId: number | null;
+  }>;
 };
 
-type TestActionReport = {
-  testId: number;
-  action: TestActionKind;
+type RuntimeEntityReport = {
   total: number;
-  attempted: number;
   succeeded: number;
   failed: number;
-  skipped: number;
-  results: TestActionResult[];
 };
 
-type ActionTest = NonNullable<
-  Awaited<ReturnType<VkAdsTestRepository['getTestForActions']>>
->;
+type RuntimeActionReport = {
+  testId: number;
+  action: TestActionKind;
+  campaign: {
+    id: number;
+    status: VkRuntimeActionStatus;
+  };
+  adGroups: RuntimeEntityReport;
+  banners: RuntimeEntityReport;
+};
 
 @Injectable()
 export class VkAdsTestTestActionsService {
@@ -37,158 +47,146 @@ export class VkAdsTestTestActionsService {
     private readonly client: VkAdsTestClient,
   ) {}
 
-  async pauseTest(testId: number) {
-    return this.runTestAction(testId, 'pause', 'active');
+  async pauseTest(testId: number): Promise<RuntimeActionReport> {
+    return this.runTestAction(testId, 'pause');
   }
 
-  async resumeTest(testId: number) {
-    return this.runTestAction(testId, 'resume', 'paused');
+  async resumeTest(testId: number): Promise<RuntimeActionReport> {
+    return this.runTestAction(testId, 'resume');
   }
 
   private async runTestAction(
     testId: number,
     action: TestActionKind,
-    targetStatus: string,
-  ): Promise<TestActionReport> {
-    const test = await this.repository.getTestForActions(testId);
+  ): Promise<RuntimeActionReport> {
+    const test = await this.getTest(testId);
 
-    if (!test) {
-      throw new NotFoundException(`VK Ads test not found: id=${testId}`);
-    }
-
-    const campaignId = this.resolveCampaignId(test);
-    if (!campaignId) {
+    if (test.vkCampaignId == null) {
       throw new BadRequestException(
         `VK Ads test has no vkCampaignId: id=${test.id}`,
       );
     }
 
-    const results: TestActionResult[] = [];
-    const targetVariants = test.variants.filter(
-      (variant) => variant.status === targetStatus,
+    const targetStatus: VkRuntimeActionStatus =
+      action === 'pause' ? 'blocked' : 'active';
+
+    await this.client.updateAdPlan(
+      test.accountIntegrationId,
+      test.vkCampaignId,
+      {
+        status: targetStatus,
+      },
     );
 
-    try {
-      await this.client.updateCampaignStatus(
-        test.accountIntegrationId,
-        campaignId,
-        action === 'pause' ? 'blocked' : 'active',
-      );
-    } catch (error) {
-      for (const variant of targetVariants) {
-        results.push({
-          variantId: variant.id,
-          status: 'failed',
-          errorMessage: this.toShortErrorMessage(error),
-        });
-      }
-      for (const variant of test.variants) {
-        if (variant.status === targetStatus) continue;
-        results.push({
-          variantId: variant.id,
-          status: 'skipped',
-          errorMessage: `variant_status_not_${targetStatus}`,
-        });
-      }
-      return this.finalizeReport(test, action, results);
-    }
+    const adGroups =
+      action === 'pause'
+        ? await this.toggleAdGroups(test, 'blocked')
+        : await this.toggleAdGroups(test, 'active');
+    const banners =
+      action === 'pause'
+        ? await this.toggleBanners(test, 'blocked')
+        : await this.toggleBanners(test, 'active');
 
-    for (const variant of targetVariants) {
-      await this.repository.updateVariant(variant.id, {
-        status: action === 'pause' ? 'paused' : 'active',
-      });
-      results.push({
-        variantId: variant.id,
-        status: 'succeeded',
-      });
-    }
-
-    for (const variant of test.variants) {
-      if (variant.status === targetStatus) continue;
-      results.push({
-        variantId: variant.id,
-        status: 'skipped',
-        errorMessage: `variant_status_not_${targetStatus}`,
-      });
-    }
-
-    return this.finalizeReport(test, action, results, true);
-  }
-
-  private resolveCampaignId(test: ActionTest) {
-    if (test.vkCampaignId) {
-      return test.vkCampaignId;
-    }
-
-    const variantCampaignId = (
-      test.variants.find((variant) => variant.vkCampaignId) as
-        | { vkCampaignId?: number | null }
-        | undefined
-    )?.vkCampaignId;
-
-    if (variantCampaignId) {
-      // Transitional fallback: older rows can still carry campaign id on variant.
-      return variantCampaignId;
-    }
-
-    return null;
-  }
-
-  private async finalizeReport(
-    test: ActionTest,
-    action: TestActionKind,
-    results: TestActionResult[],
-    campaignUpdated = false,
-  ) {
-    const report = this.toReport(test.id, action, results);
-
-    if (campaignUpdated && report.failed === 0) {
-      await this.repository.updateTest(test.id, {
-        status: action === 'pause' ? 'paused' : 'active',
-      });
-
-      await this.repository.logAction({
-        test: { connect: { id: test.id } },
-        action: action === 'pause' ? 'test_paused' : 'test_resumed',
-        payloadJson: this.toReportPayload(report),
-      });
-    }
+    const report: RuntimeActionReport = {
+      testId: test.id,
+      action,
+      campaign: {
+        id: test.vkCampaignId,
+        status: targetStatus,
+      },
+      adGroups,
+      banners,
+    };
 
     await this.repository.logAction({
       test: { connect: { id: test.id } },
-      action: 'test_action_completed',
-      reason: action,
+      action: action === 'pause' ? 'test_paused' : 'test_resumed',
       payloadJson: this.toReportPayload(report),
     });
 
     return report;
   }
 
-  private toReport(testId: number, action: TestActionKind, results: TestActionResult[]): TestActionReport {
+  private async toggleAdGroups(
+    test: RuntimeActionTest,
+    status: VkRuntimeActionStatus,
+  ): Promise<RuntimeEntityReport> {
+    const results = await Promise.all(
+      test.audiences
+        .filter((audience) => audience.vkAdGroupId != null)
+        .map(async (audience) => {
+          const adGroupId = audience.vkAdGroupId as number;
+
+          try {
+            await this.client.updateAdGroup(
+              test.accountIntegrationId,
+              adGroupId,
+              {
+                status,
+              },
+            );
+            return { ok: true };
+          } catch {
+            return { ok: false };
+          }
+        }),
+    );
+
+    return this.toEntityReport(results);
+  }
+
+  private async toggleBanners(
+    test: RuntimeActionTest,
+    status: VkRuntimeActionStatus,
+  ): Promise<RuntimeEntityReport> {
+    const results = await Promise.all(
+      test.variants
+        .filter((variant) => variant.vkBannerId != null)
+        .map(async (variant) => {
+          const bannerId = variant.vkBannerId as number;
+          try {
+            await this.client.updateBanner(
+              test.accountIntegrationId,
+              bannerId,
+              {
+                status,
+              },
+            );
+            return { ok: true };
+          } catch {
+            return { ok: false };
+          }
+        }),
+    );
+
+    return this.toEntityReport(results);
+  }
+
+  private toEntityReport(results: Array<{ ok: boolean }>): RuntimeEntityReport {
     return {
-      testId,
-      action,
       total: results.length,
-      attempted: results.filter((result) => result.status !== 'skipped').length,
-      succeeded: results.filter((result) => result.status === 'succeeded').length,
-      failed: results.filter((result) => result.status === 'failed').length,
-      skipped: results.filter((result) => result.status === 'skipped').length,
-      results,
+      succeeded: results.filter((result) => result.ok).length,
+      failed: results.filter((result) => !result.ok).length,
     };
   }
 
-  private toReportPayload(report: TestActionReport) {
+  private toReportPayload(report: RuntimeActionReport) {
     return {
-      total: report.total,
-      attempted: report.attempted,
-      succeeded: report.succeeded,
-      failed: report.failed,
-      skipped: report.skipped,
+      campaign: report.campaign,
+      adGroups: report.adGroups,
+      banners: report.banners,
     };
   }
 
-  private toShortErrorMessage(error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return message.slice(0, 500);
+  private async getTest(testId: number): Promise<RuntimeActionTest> {
+    const test = (await this.repository.getTestForRuntimeActions(
+      testId,
+    )) as unknown as RuntimeActionTest;
+
+    if (!test) {
+      throw new NotFoundException(`VK Ads test not found: id=${testId}`);
+    }
+
+    return test;
   }
 }

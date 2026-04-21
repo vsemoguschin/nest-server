@@ -111,6 +111,16 @@ export class VkAdsTestRepository {
             variants: true,
           },
         },
+        actionLogs: {
+          where: {
+            action: 'cities_flow_created',
+          },
+          select: {
+            action: true,
+            payloadJson: true,
+          },
+          take: 1,
+        },
       },
     });
   }
@@ -194,8 +204,35 @@ export class VkAdsTestRepository {
           orderBy: { id: 'asc' },
           select: {
             id: true,
-            status: true,
-            vkCampaignId: true,
+            runtimePauseReason: true,
+            vkBannerId: true,
+          },
+        },
+      },
+    });
+  }
+
+  getTestForRuntimeActions(id: number) {
+    return this.prisma.vkAdsTest.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        accountIntegrationId: true,
+        vkCampaignId: true,
+        audiences: {
+          orderBy: { id: 'asc' },
+          select: {
+            id: true,
+            runtimePauseReason: true,
+            vkAdGroupId: true,
+          },
+        },
+        variants: {
+          orderBy: { id: 'asc' },
+          select: {
+            id: true,
+            runtimePauseReason: true,
+            vkBannerId: true,
           },
         },
       },
@@ -246,7 +283,7 @@ export class VkAdsTestRepository {
 
   updateAudience(
     id: number,
-    data: Prisma.VkAdsTestAudienceUpdateInput,
+    data: Prisma.VkAdsTestAudienceUpdateInput | Record<string, any>,
     tx: PrismaTx | PrismaService = this.prisma,
   ) {
     return tx.vkAdsTestAudience.update({
@@ -378,7 +415,7 @@ export class VkAdsTestRepository {
 
   updateVariant(
     id: number,
-    data: Prisma.VkAdsTestVariantUpdateInput,
+    data: Prisma.VkAdsTestVariantUpdateInput | Record<string, any>,
     tx: PrismaTx | PrismaService = this.prisma,
   ) {
     return tx.vkAdsTestVariant.update({
@@ -496,6 +533,7 @@ export class VkAdsTestRepository {
 
     return {
       accountIntegration: { connect: { id: accountIntegrationId } },
+      flowType: raw.flowType ?? 'vk_ads',
       name: raw.name,
       status: raw.status ?? 'draft',
       objective: raw.objective ?? 'socialengagement',
@@ -508,6 +546,8 @@ export class VkAdsTestRepository {
   private normalizeAudienceCreateInput(
     data: Prisma.VkAdsTestAudienceCreateInput | Record<string, any>,
   ): Prisma.VkAdsTestAudienceCreateInput {
+    const raw = data as Record<string, any>;
+
     return {
       test: data.test,
       name: data.name,
@@ -520,6 +560,7 @@ export class VkAdsTestRepository {
       geoJson: data.geoJson,
       interestsJson: data.interestsJson,
       status: data.status ?? 'draft',
+      runtimePauseReason: raw.runtimePauseReason,
     } as Prisma.VkAdsTestAudienceCreateInput;
   }
 
@@ -561,11 +602,12 @@ export class VkAdsTestRepository {
       ref: raw.ref,
       status: raw.status ?? 'draft',
       budgetLimitDay: raw.budgetLimitDay ?? raw.currentBudgetDay ?? 0.01,
+      runtimePauseReason: raw.runtimePauseReason,
       vkCampaignId: raw.vkCampaignId,
       vkAdGroupId: raw.vkAdGroupId,
       vkBannerId: raw.vkBannerId,
       vkPrimaryUrlId: raw.vkPrimaryUrlId,
       launchDate: raw.launchDate,
-    };
+    } as Prisma.VkAdsTestVariantCreateInput;
   }
 }

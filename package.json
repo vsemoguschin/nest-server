@@ -32,6 +32,7 @@
     "seed:check-crm-customer-transition": "ts-node --transpile-only src/seeds/seed-check-crm-customer-transition.ts",
     "seed:print-crm-accounts": "ts-node --transpile-only src/seeds/seed-print-crm-accounts.ts",
     "seed:crm-account-easybook-assistant-group": "ts-node --transpile-only src/seeds/seed-crm-account-easybook-assistant-group.ts",
+    "seed:crm-account-easybook-fairy-group": "ts-node --transpile-only src/seeds/seed-crm-account-easybook-fairy-group.ts",
     "seed:typography-group-users": "ts-node --transpile-only src/seeds/seed-typography-group-users.ts",
     "seed:set-vk-integration-initial-status-account-19-group-235269908": "ts-node --transpile-only src/seeds/seed-set-vk-integration-initial-status-account-19-group-235269908.ts",
     "seed:vk-callback-test": "ts-node --transpile-only src/seeds/seed-vk-callback-test.ts",

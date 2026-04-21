@@ -478,7 +478,8 @@ async function findTemplateBanner(params: {
       };
 
       const banners = await params.client.getBanners(params.integrationId, {
-        fields: 'id,status,ad_group_id',
+        fields:
+          'id,status,ad_group_id,name,moderation_status,content,textblocks,urls',
         _ad_group_id: adGroup.id,
         _status__in: 'active,blocked',
         limit: pageSize,
@@ -498,26 +499,17 @@ async function findTemplateBanner(params: {
           status: typeof item.status === 'string' ? item.status : undefined,
         };
 
-        const rawBanner = await params.client.getBanner(
-          params.integrationId,
-          banner.id,
-          {
-            fields: 'id,name,status,content,textblocks,urls',
-          },
-        );
-        const rawBannerId = asNumber(rawBanner.id);
         const bannerDetails: BannerDetails = {
-          id: rawBannerId ?? banner.id,
-          name: typeof rawBanner.name === 'string' ? rawBanner.name : undefined,
-          status:
-            typeof rawBanner.status === 'string' ? rawBanner.status : undefined,
-          content: asRecord(rawBanner.content) as
+          id: banner.id,
+          name: typeof item.name === 'string' ? item.name : undefined,
+          status: typeof item.status === 'string' ? item.status : undefined,
+          content: asRecord(item.content) as
             | Record<string, BannerFieldValue>
             | undefined,
-          textblocks: asRecord(rawBanner.textblocks) as
+          textblocks: asRecord(item.textblocks) as
             | Record<string, BannerFieldValue>
             | undefined,
-          urls: asRecord(rawBanner.urls) as
+          urls: asRecord(item.urls) as
             | Record<string, BannerFieldValue>
             | undefined,
         };
@@ -533,6 +525,43 @@ async function findTemplateBanner(params: {
           )
         ) {
           return { adGroup, banner: bannerDetails };
+        }
+
+        const rawBanner = await params.client.getBanner(
+          params.integrationId,
+          banner.id,
+          {
+            fields: 'id,name,status,content,textblocks,urls',
+          },
+        );
+        const rawBannerId = asNumber(rawBanner.id);
+        const rawBannerDetails: BannerDetails = {
+          id: rawBannerId ?? banner.id,
+          name: typeof rawBanner.name === 'string' ? rawBanner.name : undefined,
+          status:
+            typeof rawBanner.status === 'string' ? rawBanner.status : undefined,
+          content: asRecord(rawBanner.content) as
+            | Record<string, BannerFieldValue>
+            | undefined,
+          textblocks: asRecord(rawBanner.textblocks) as
+            | Record<string, BannerFieldValue>
+            | undefined,
+          urls: asRecord(rawBanner.urls) as
+            | Record<string, BannerFieldValue>
+            | undefined,
+        };
+
+        const rawPrimaryUrlId = asNumber(rawBannerDetails.urls?.primary?.id);
+        if (
+          rawPrimaryUrlId !== null &&
+          REQUIRED_TEMPLATE_CONTENT_KEYS.every((key) =>
+            Boolean(asNumber(rawBannerDetails.content?.[key]?.id)),
+          ) &&
+          REQUIRED_TEMPLATE_TEXTBLOCK_KEYS.every((key) =>
+            Boolean(rawBannerDetails.textblocks?.[key]?.text),
+          )
+        ) {
+          return { adGroup, banner: rawBannerDetails };
         }
       }
     }

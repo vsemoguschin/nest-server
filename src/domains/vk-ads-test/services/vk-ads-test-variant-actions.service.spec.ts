@@ -26,6 +26,7 @@ describe('VkAdsTestVariantActionsService', () => {
     });
     expect(repository.updateVariant).toHaveBeenCalledWith(10, {
       status: 'paused',
+      runtimePauseReason: 'paused_manually',
     });
     expect(repository.logAction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -50,6 +51,7 @@ describe('VkAdsTestVariantActionsService', () => {
     expect(client.updateCampaignStatus).toHaveBeenCalledWith(5, 401, 'active');
     expect(repository.updateVariant).toHaveBeenCalledWith(10, {
       status: 'active',
+      runtimePauseReason: null,
     });
   });
 

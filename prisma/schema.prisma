@@ -1659,6 +1659,7 @@ model VkAdsTest {
   id                   Int                     @id @default(autoincrement())
   accountIntegrationId Int
   accountIntegration   VkAdsAccountIntegration @relation(fields: [accountIntegrationId], references: [id], onDelete: Restrict)
+  flowType             String                  @default("vk_ads")
   name                 String
   status               String                  @default("draft")
   objective            String
@@ -1697,6 +1698,7 @@ model VkAdsTestAudience {
   includeSegmentIds Json?
   excludeSegmentIds Json?
   status            String    @default("draft")
+  runtimePauseReason String?
   vkAdGroupId       Int?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -1769,6 +1771,7 @@ model VkAdsTestVariant {
   ref            String?
   status         String            @default("draft")
   budgetLimitDay Decimal           @db.Decimal(12, 2)
+  runtimePauseReason String?
   vkCampaignId   Int?
   vkAdGroupId    Int?
   vkBannerId     Int?

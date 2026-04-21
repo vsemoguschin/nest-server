@@ -16,7 +16,7 @@ type PackageInfo = {
   [key: string]: unknown;
 };
 
-type BannerTemplate = {
+export type VkAdsTestBannerTemplate = {
   adGroupId: number;
   bannerId: number;
   banner: Record<string, unknown>;
@@ -104,7 +104,6 @@ export type VkAdsTestBuildOneVariantInput = {
   adGroupName: string;
   bannerName: string;
   objective?: string;
-  sharedUrlId?: number;
   budgetDay?: number | string;
   targetCpl?: number | string;
   scaleStepPercent?: number;
@@ -117,6 +116,8 @@ export type VkAdsTestBuildOneVariantInput = {
   creative: VkAdsTestBuilderCreativeInput;
   ref?: string;
   persistResult?: boolean;
+  sharedUrlId?: number;
+  bannerTemplate?: VkAdsTestBannerTemplate;
   existingIds?: {
     testId: number;
     audienceId: number;
@@ -152,10 +153,19 @@ const DEFAULT_CTA_CODE = 'getPrice';
 const DEFAULT_RUSSIA_REGION_ID = 188;
 const DEFAULT_FULLTIME_HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const VK_ADS_TEST_PADS = [1265106, 2243453];
+const REQUIRED_TEMPLATE_CONTENT_KEYS = [
+  'icon_256x256',
+  'video_portrait_9_16_180s',
+  'video_portrait_9_16_30s',
+] as const;
 
 @Injectable()
 export class VkAdsTestBuilderService {
   private readonly logger = new Logger(VkAdsTestBuilderService.name);
+  private readonly bannerTemplateCache = new Map<
+    string,
+    Promise<VkAdsTestBannerTemplate>
+  >();
 
   constructor(
     private readonly client: VkAdsTestClient,
@@ -233,10 +243,9 @@ export class VkAdsTestBuilderService {
         'VK Ads createAdPlan response does not contain numeric ad_groups[0].id',
       );
     }
-    const template = await this.resolveBannerTemplate(
-      input.integrationId,
-      packageId,
-    );
+    const template =
+      input.bannerTemplate ??
+      (await this.getCachedBannerTemplate(input.integrationId, packageId));
     const videoAsset = await this.resolveVideoAsset(input);
     const bannerPayload = this.buildBannerPayload({
       name: input.bannerName,
@@ -444,6 +453,71 @@ export class VkAdsTestBuilderService {
     });
   }
 
+  async prepareBannerTemplate(integrationId: number, packageId?: number) {
+    const resolvedPackageId = packageId ?? DEFAULT_PACKAGE_ID;
+    return this.getCachedBannerTemplate(integrationId, resolvedPackageId);
+  }
+
+  async createBannerFromResolvedTemplate(params: {
+    integrationId: number;
+    adGroupId: number;
+    name: string;
+    primaryUrlId: number;
+    template: VkAdsTestBannerTemplate;
+    creative: VkAdsTestBuildOneVariantInput['creative'];
+  }): Promise<number> {
+    const bannerPayload = this.buildBannerPayloadFromResolvedTemplate(params);
+
+    this.logBannerPayload({
+      variantKey: params.name,
+      payload: bannerPayload,
+      templateBannerId: params.template.bannerId,
+    });
+
+    const banner = await this.client.createBanner(
+      params.integrationId,
+      params.adGroupId,
+      bannerPayload,
+    );
+
+    return this.extractCreatedBannerId(banner);
+  }
+
+  buildBannerPayloadFromResolvedTemplate(params: {
+    name: string;
+    primaryUrlId: number;
+    template: VkAdsTestBannerTemplate;
+    creative: VkAdsTestBuildOneVariantInput['creative'];
+  }): Record<string, unknown> {
+    const templateBanner = this.requireRecord(
+      params.template.banner,
+      'VK Ads banner template must be an object',
+    );
+    const templateContent = this.requireRecord(
+      templateBanner.content,
+      'VK Ads banner template is missing content',
+    );
+    const templateTextblocks = this.requireRecord(
+      templateBanner.textblocks,
+      'VK Ads banner template is missing textblocks',
+    );
+
+    return {
+      name: params.name,
+      status: 'blocked',
+      urls: {
+        primary: {
+          id: params.primaryUrlId,
+        },
+      },
+      content: this.cloneTemplateContent(templateContent),
+      textblocks: this.buildBannerTextblocksFromTemplate(
+        templateTextblocks,
+        params.creative,
+      ),
+    };
+  }
+
   private async resolvePackage(
     integrationId: number,
     packageId: number,
@@ -545,7 +619,7 @@ export class VkAdsTestBuilderService {
     name: string;
     primaryUrlId: number;
     creative: VkAdsTestBuildOneVariantInput['creative'];
-    template: BannerTemplate;
+    template: VkAdsTestBannerTemplate;
     videoContentId: number;
     videoSlotProfile: VideoSlotProfile;
   }): Record<string, unknown> {
@@ -569,6 +643,19 @@ export class VkAdsTestBuilderService {
       templateBanner.textblocks,
       'VK Ads banner template is missing textblocks',
     );
+
+    if (
+      !REQUIRED_TEMPLATE_CONTENT_KEYS.every(
+        (key) => {
+          const record = this.asRecord(templateContent[key]);
+          return this.asNumber(record?.id) !== null;
+        },
+      )
+    ) {
+      throw new Error(
+        'VK Ads banner template is missing required video content slots for package 3127',
+      );
+    }
 
     const content = this.buildBannerContentFromTemplate(
       templateContent,
@@ -951,29 +1038,45 @@ export class VkAdsTestBuilderService {
   private async resolveBannerTemplate(
     integrationId: number,
     packageId: number,
-  ): Promise<BannerTemplate> {
+  ): Promise<VkAdsTestBannerTemplate> {
     const adGroups = await this.loadAdGroupsForPackage(
       integrationId,
       packageId,
     );
 
     for (const adGroup of adGroups) {
-      const bannerIds = await this.loadBannerIdsForAdGroup(
+      const banners = await this.loadBannerCandidatesForAdGroup(
         integrationId,
         adGroup.id,
       );
 
-      for (const bannerId of bannerIds) {
-        const banner = await this.client.getBanner(integrationId, bannerId, {
+      for (const banner of banners) {
+        if (this.isUsableBannerTemplate(banner)) {
+          return {
+            adGroupId: adGroup.id,
+            bannerId: this.requireNumber(
+              banner.id,
+              'VK Ads banner template item does not contain numeric id',
+            ),
+            banner,
+          };
+        }
+
+        const bannerId = this.asNumber(banner.id);
+        if (bannerId === null) {
+          continue;
+        }
+
+        const bannerDetails = await this.client.getBanner(integrationId, bannerId, {
           fields:
             'id,ad_group_id,name,status,moderation_status,content,textblocks,urls',
         });
 
-        if (this.isUsableBannerTemplate(banner)) {
+        if (this.isUsableBannerTemplate(bannerDetails)) {
           return {
             adGroupId: adGroup.id,
             bannerId,
-            banner,
+            banner: bannerDetails,
           };
         }
       }
@@ -1023,31 +1126,48 @@ export class VkAdsTestBuilderService {
     return result;
   }
 
-  private async loadBannerIdsForAdGroup(
+  private getCachedBannerTemplate(
+    integrationId: number,
+    packageId: number,
+  ): Promise<VkAdsTestBannerTemplate> {
+    const cacheKey = `${integrationId}:${packageId}`;
+    const cached = this.bannerTemplateCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const promise = this.resolveBannerTemplate(integrationId, packageId).catch(
+      (error) => {
+        this.bannerTemplateCache.delete(cacheKey);
+        throw error;
+      },
+    );
+    this.bannerTemplateCache.set(cacheKey, promise);
+    return promise;
+  }
+
+  private async loadBannerCandidatesForAdGroup(
     integrationId: number,
     adGroupId: number,
-  ): Promise<number[]> {
+  ): Promise<Record<string, unknown>[]> {
     const limit = 100;
-    const ids: number[] = [];
+    const items: Record<string, unknown>[] = [];
 
     for (let offset = 0; ; offset += limit) {
       const response = await this.client.getBanners(integrationId, {
         _ad_group_id: adGroupId,
         _status__in: 'active,blocked',
-        fields: 'id,ad_group_id,status,moderation_status',
+        fields:
+          'id,ad_group_id,name,status,moderation_status,content,textblocks,urls',
         limit,
         offset,
         sorting: '-id',
       });
 
-      ids.push(
+      items.push(
         ...(response.items ?? [])
-          .map((item) => {
-            const record = this.asRecord(item);
-            const id = this.asNumber(record?.id);
-            return id === null ? null : id;
-          })
-          .filter((item): item is number => item !== null),
+          .map((item) => this.asRecord(item))
+          .filter((item): item is Record<string, unknown> => item !== undefined),
       );
 
       if ((response.items?.length ?? 0) < limit) {
@@ -1055,7 +1175,7 @@ export class VkAdsTestBuilderService {
       }
     }
 
-    return ids;
+    return items;
   }
 
   private isUsableBannerTemplate(banner: Record<string, unknown>): boolean {
@@ -1079,7 +1199,12 @@ export class VkAdsTestBuilderService {
     return (
       this.asNumber(primary?.id) !== null &&
       content !== undefined &&
-      Object.keys(content).length > 0 &&
+      REQUIRED_TEMPLATE_CONTENT_KEYS.every(
+        (key) => {
+          const record = this.asRecord(content[key]);
+          return this.asNumber(record?.id) !== null;
+        },
+      ) &&
       textblocks !== undefined &&
       this.asRecord(textblocks.title_40_vkads) !== undefined &&
       this.asRecord(textblocks.text_2000) !== undefined &&
@@ -1164,6 +1289,29 @@ export class VkAdsTestBuilderService {
       }
 
       content[key] = { id: videoContentId };
+    }
+
+    return content;
+  }
+
+  private cloneTemplateContent(
+    templateContent: Record<string, unknown>,
+  ): Record<string, { id: number }> {
+    const content: Record<string, { id: number }> = {};
+
+    for (const [key, value] of Object.entries(templateContent)) {
+      const record = this.requireRecord(
+        value,
+        `VK Ads banner template content.${key} must be an object`,
+      );
+      const id = this.asNumber(record.id);
+      if (id === null) {
+        throw new Error(
+          `VK Ads banner template content.${key} is missing numeric id`,
+        );
+      }
+
+      content[key] = { id };
     }
 
     return content;
