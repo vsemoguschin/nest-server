@@ -46,6 +46,7 @@ export class BoardsController {
     'ROD',
     'DP',
     'ROV',
+    'ROP',
     'MOP',
     'MOV',
     'DIZ',
@@ -92,6 +93,7 @@ export class BoardsController {
     'ROD',
     'DP',
     'ROV',
+    'ROP',
     'MOP',
     'MOV',
     'DIZ',
@@ -138,6 +140,7 @@ export class BoardsController {
     'ROD',
     'DP',
     'ROV',
+    'ROP',
     'MOP',
     'MOV',
     'DIZ',
@@ -184,6 +187,7 @@ export class BoardsController {
     'ROD',
     'DP',
     'ROV',
+    'ROP',
     'MOP',
     'MOV',
     'DIZ',
@@ -248,6 +252,7 @@ export class BoardsController {
     'ROD',
     'DP',
     'ROV',
+    'ROP',
     'MOP',
     'MOV',
     'DIZ',
@@ -271,6 +276,7 @@ export class BoardsController {
     'ROD',
     'DP',
     'ROV',
+    'ROP',
     'MOP',
     'MOV',
     'DIZ',
@@ -315,6 +321,7 @@ export class BoardsController {
     'ROD',
     'DP',
     'ROV',
+    'ROP',
     'MOP',
     'MOV',
     'DIZ',
@@ -335,7 +342,7 @@ export class BoardsController {
   }
 
   /** Добавить пользователя на доску */
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'ROP', 'LOGIST')
   @Post('users/:userId')
   addUser(
     @Param('userId', ParseIntPipe) userId: number,
@@ -345,7 +352,7 @@ export class BoardsController {
   }
 
   /** Удалить пользователя с доски */
-  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'LOGIST')
+  @Roles('ADMIN', 'G', 'KD', 'DO', 'ROD', 'DP', 'ROV', 'ROP', 'LOGIST')
   @Delete('users/:userId')
   removeUser(
     @Param('userId', ParseIntPipe) userId: number,
