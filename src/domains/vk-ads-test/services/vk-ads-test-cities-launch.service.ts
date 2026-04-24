@@ -88,6 +88,9 @@ export class VkAdsTestCitiesLaunchService {
         reusedDraftTestId: existingTest ? existingTest.id : null,
         startBudget: dto.startBudget,
         landingUrl: dto.landingUrl,
+        sex: dto.sex ?? null,
+        ageFrom: dto.ageFrom ?? null,
+        ageTo: dto.ageTo ?? null,
       },
     });
 
@@ -108,6 +111,9 @@ export class VkAdsTestCitiesLaunchService {
       accountIntegrationId: dto.accountIntegrationId,
       landingUrl: dto.landingUrl,
       startBudget: dto.startBudget,
+      sex: dto.sex ?? null,
+      ageFrom: dto.ageFrom ?? null,
+      ageTo: dto.ageTo ?? null,
       videoAsset: {
         id: videoAsset.id,
         vkContentId: videoAsset.vkContentId,
@@ -138,6 +144,9 @@ export class VkAdsTestCitiesLaunchService {
     accountIntegrationId: number;
     landingUrl: string;
     startBudget: number;
+    sex: 'male' | 'female' | null;
+    ageFrom: number | null;
+    ageTo: number | null;
     videoAsset: {
       id: number;
       vkContentId: number;
@@ -169,6 +178,23 @@ export class VkAdsTestCitiesLaunchService {
 
     for (const [index, city] of params.cities.entries()) {
       const creativeCopy = this.buildCityCreativeCopy(city.label);
+      const targetings = this.buildAudienceTargetings([city.id], {
+        sex: params.sex,
+        ageFrom: params.ageFrom,
+        ageTo: params.ageTo,
+      });
+      this.logger.warn(
+        JSON.stringify({
+          scope: 'vk-ads-test-cities-launch',
+          event:
+            index === 0
+              ? 'createAdPlan.payload'
+              : 'createAdGroup.payload',
+          cityId: city.id,
+          cityName: city.label,
+          targetings,
+        }),
+      );
       const creative = await this.repository.createCreative({
         test: { connect: { id: params.testId } },
         name: creativeCopy.title,
@@ -185,6 +211,9 @@ export class VkAdsTestCitiesLaunchService {
         status: 'active',
         runtimePauseReason: 'paused_by_test',
         geoJson: [city.id] as Prisma.InputJsonValue,
+        sex: params.sex ?? undefined,
+        ageFrom: params.ageFrom ?? undefined,
+        ageTo: params.ageTo ?? undefined,
       });
 
       const cityRef = this.buildCityRef({
@@ -204,7 +233,7 @@ export class VkAdsTestCitiesLaunchService {
             packageId: VK_ADS_TEST_PACKAGE_ID,
             budgetDay: params.startBudget,
             ref: cityRef,
-            targetings: this.buildAudienceTargetings([city.id]),
+            targetings,
             adGroupName: city.label,
           }),
           sharedUrl.id,
@@ -271,9 +300,9 @@ export class VkAdsTestCitiesLaunchService {
             packageId: VK_ADS_TEST_PACKAGE_ID,
             budgetDay: params.startBudget,
             cityName: city.label,
-            cityId: city.id,
             ref: cityRef,
             bannerPayload,
+            targetings,
           }),
         );
         adGroupId = this.requireNumber(
@@ -379,9 +408,9 @@ export class VkAdsTestCitiesLaunchService {
     packageId: number;
     budgetDay: number;
     cityName: string;
-    cityId: number;
     ref: string;
     bannerPayload: Record<string, unknown>;
+    targetings: Record<string, unknown>;
   }): Record<string, unknown> {
     return {
       ad_plan_id: params.adPlanId,
@@ -392,7 +421,7 @@ export class VkAdsTestCitiesLaunchService {
       budget_limit_day: params.budgetDay,
       enable_utm: true,
       utm: `ref=${encodeURIComponent(params.ref)}`,
-      targetings: this.buildAudienceTargetings([params.cityId]),
+      targetings: params.targetings,
       banners: [params.bannerPayload],
     };
   }
@@ -406,8 +435,15 @@ export class VkAdsTestCitiesLaunchService {
     return `city_${params.cityId}_vat_${params.testId}_${params.audienceId}_${params.creativeId}`;
   }
 
-  private buildAudienceTargetings(cityIds: number[]): Record<string, unknown> {
-    return {
+  private buildAudienceTargetings(
+    cityIds: number[],
+    params?: {
+      sex?: 'male' | 'female' | null;
+      ageFrom?: number | null;
+      ageTo?: number | null;
+    },
+  ): Record<string, unknown> {
+    const targetings: Record<string, unknown> = {
       geo: {
         regions: cityIds.length ? [...cityIds] : [DEFAULT_RUSSIA_REGION_ID],
       },
@@ -423,10 +459,37 @@ export class VkAdsTestCitiesLaunchService {
       },
       pads: [...VK_ADS_TEST_PADS],
     };
+
+    if (params?.sex) {
+      targetings.sex = [params.sex];
+    }
+
+    if (params?.ageFrom != null && params?.ageTo != null) {
+      targetings.age = {
+        age_list: this.buildAgeList(params.ageFrom, params.ageTo),
+      };
+    }
+
+    return targetings;
   }
 
   private buildHours() {
     return Array.from({ length: 24 }, (_, hour) => hour);
+  }
+
+  private buildAgeList(ageFrom: number, ageTo: number): number[] {
+    if (ageFrom > ageTo) {
+      throw new BadRequestException(
+        'ageFrom must be less than or equal to ageTo',
+      );
+    }
+
+    const result: number[] = [];
+    for (let age = ageFrom; age <= ageTo; age += 1) {
+      result.push(age);
+    }
+
+    return result;
   }
 
   private buildCityCreativeCopy(cityName: string) {

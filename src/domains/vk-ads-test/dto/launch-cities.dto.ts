@@ -2,15 +2,18 @@ import { Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
+  IsIn,
   IsInt,
   IsNumber,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUrl,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
+import { IsAgeToGreaterOrEqualAgeFrom } from './age-range.validator';
 
 export class LaunchCityDto {
   @Type(() => Number)
@@ -45,6 +48,27 @@ export class LaunchCitiesDto {
   @IsNumber()
   @Min(0.01)
   startBudget: number;
+
+  @IsOptional()
+  @IsIn(['male', 'female'])
+  sex?: 'male' | 'female';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(12)
+  @Max(75)
+  ageFrom?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(12)
+  @Max(75)
+  @IsAgeToGreaterOrEqualAgeFrom({
+    message: 'ageFrom must be less than or equal to ageTo',
+  })
+  ageTo?: number;
 
   @IsOptional()
   @Type(() => Number)
