@@ -261,7 +261,10 @@ export class TasksController {
     includeUnchanged = false,
   ): OrderAuditChange[] {
     const dtoObj = (dto ?? {}) as Record<string, unknown>;
-    const dtoPayload = this.toPlainJson(dtoObj) as Record<string, unknown> | null;
+    const dtoPayload = this.toPlainJson(dtoObj) as Record<
+      string,
+      unknown
+    > | null;
     if (!dtoPayload || typeof dtoPayload !== 'object') {
       return [];
     }
@@ -307,7 +310,10 @@ export class TasksController {
     return String(value);
   }
 
-  private buildOrderUpdateComment(orderLabel: string, changes: OrderAuditChange[]) {
+  private buildOrderUpdateComment(
+    orderLabel: string,
+    changes: OrderAuditChange[],
+  ) {
     if (!changes.length) {
       return `Обновлён заказ ${orderLabel} (без изменений)`;
     }
@@ -410,6 +416,7 @@ export class TasksController {
     'MASTER',
     'RP',
     'PACKER',
+    'PRINTER',
     'FRZ',
     'GUEST',
   )
@@ -495,6 +502,7 @@ export class TasksController {
     'MASTER',
     'RP',
     'PACKER',
+    'PRINTER',
     'FRZ',
     'GUEST',
   )
@@ -519,6 +527,7 @@ export class TasksController {
     'MASTER',
     'RP',
     'PACKER',
+    'PRINTER',
     'FRZ',
     'GUEST',
   )
@@ -599,6 +608,7 @@ export class TasksController {
     'MASTER',
     'RP',
     'PACKER',
+    'PRINTER',
     'FRZ',
     'GUEST',
   )
@@ -970,7 +980,8 @@ export class TasksController {
     @CurrentUser() user: UserDto,
   ) {
     const created = await this.tasksService.createOrderForTask(taskId, dto);
-    const orderTitle = this.resolveOrderTitle(created) ?? this.resolveOrderTitle(dto);
+    const orderTitle =
+      this.resolveOrderTitle(created) ?? this.resolveOrderTitle(dto);
     const orderLabel = orderTitle ?? `#${created.id}`;
     const createdData = this.toPlainJson(dto);
     await this.audit.log({
@@ -1023,6 +1034,7 @@ export class TasksController {
     'GUEST',
     'MASTER',
     'PACKER',
+    'PRINTER',
   )
   async updateOrder(
     @Param('orderId', ParseIntPipe) orderId: number,
@@ -1059,9 +1071,13 @@ export class TasksController {
         }) as any,
       });
 
-      const dealId = this.resolveOrderDealId(updated) ?? this.resolveOrderDealId(current);
+      const dealId =
+        this.resolveOrderDealId(updated) ?? this.resolveOrderDealId(current);
       if (dealId) {
-        const summaryComment = this.buildOrderUpdateComment(orderLabel, changes);
+        const summaryComment = this.buildOrderUpdateComment(
+          orderLabel,
+          changes,
+        );
         await this.dealAudit.createDealAudit(
           dealId,
           'Обновление заказа',

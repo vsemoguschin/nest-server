@@ -56,6 +56,7 @@ export class BoardsController {
     'RP',
     'FRZ',
     'PACKER',
+    'PRINTER',
     'GUEST',
   )
   @Get(':id/kanban')
@@ -103,6 +104,7 @@ export class BoardsController {
     'RP',
     'FRZ',
     'PACKER',
+    'PRINTER',
     'GUEST',
   )
   @Get(':id/kanban-filters')
@@ -150,6 +152,7 @@ export class BoardsController {
     'RP',
     'FRZ',
     'PACKER',
+    'PRINTER',
     'GUEST',
   )
   @Get(':id/kanban-columns')
@@ -197,6 +200,7 @@ export class BoardsController {
     'RP',
     'FRZ',
     'PACKER',
+    'PRINTER',
     'GUEST',
   )
   @Get(':boardId/kanban/columns/:columnId')
@@ -261,6 +265,7 @@ export class BoardsController {
     'MASTER',
     'RP',
     'PACKER',
+    'PRINTER',
     'GUEST',
   )
   @Get()
@@ -285,6 +290,7 @@ export class BoardsController {
     'MASTER',
     'RP',
     'PACKER',
+    'PRINTER',
     'FRZ',
     'GUEST',
   )

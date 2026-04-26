@@ -26,6 +26,14 @@ import {
   CreateLogistShiftsDto,
   LogistShiftResponseDto,
 } from './dto/logist-shift.dto';
+import {
+  CreateWasherShiftsDto,
+  WasherShiftResponseDto,
+} from './dto/washer-shift.dto';
+import {
+  CreatePrinterShiftsDto,
+  PrinterShiftResponseDto,
+} from './dto/printer-shift.dto';
 import { CreateFrezerReportDto } from './dto/create-frezer-report.dto';
 import { UpdateFrezerReportDto } from './dto/update-frezer-report.dto';
 const KAITEN_TOKEN = process.env.KAITEN_TOKEN;
@@ -35,6 +43,11 @@ export class ProductionService {
   constructor(private prisma: PrismaService) {}
 
   async getPredata(user: UserDto) {
+    if (['PRINTER'].includes(user.role.shortName)) {
+      return {
+        tabs: [{ value: 'printers', label: 'Печатники' }],
+      };
+    }
     if (['ADMIN', 'G', 'KD', 'DP', 'RP'].includes(user.role.shortName)) {
       return {
         tabs: [
@@ -1985,6 +1998,28 @@ export class ProductionService {
     );
   }
 
+  async getWashers(user: UserDto) {
+    const userSearch = user.role.shortName === 'DP' ? user.id : { gt: 0 };
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: {
+          shortName: { in: ['DP'] },
+        },
+        id: userSearch,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        deletedAt: true,
+        washerShifts: true,
+      },
+    });
+    return users.filter(
+      (u) => u.deletedAt === null || u.washerShifts.length > 0,
+    );
+  }
+
   async getlogistShifts(
     logistId: number,
     from: string,
@@ -2018,53 +2053,219 @@ export class ProductionService {
     logistId: number,
     dto: CreateLogistShiftsDto,
   ): Promise<LogistShiftResponseDto[]> {
+    return this.replaceShifts({
+      userId: logistId,
+      dto,
+      cost: 2900,
+      model: 'logistShift',
+      notFoundMessage: 'logist not found',
+    });
+  }
+
+  async getWasherShifts(
+    washerId: number,
+    from: string,
+    to: string,
+  ): Promise<WasherShiftResponseDto[]> {
+    const washer = await this.prisma.user.findUnique({
+      where: { id: washerId },
+      select: {
+        id: true,
+        role: {
+          select: {
+            shortName: true,
+          },
+        },
+      },
+    });
+    if (!washer || washer.role.shortName !== 'DP') {
+      throw new BadRequestException('washer not found');
+    }
+
+    return this.prisma.washerShift.findMany({
+      where: {
+        userId: washerId,
+        shift_date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      select: {
+        id: true,
+        shift_date: true,
+        userId: true,
+        cost: true,
+      },
+    });
+  }
+
+  async createWasherShifts(
+    washerId: number,
+    dto: CreateWasherShiftsDto,
+  ): Promise<WasherShiftResponseDto[]> {
+    return this.replaceShifts({
+      userId: washerId,
+      dto,
+      cost: 1900,
+      model: 'washerShift',
+      notFoundMessage: 'washer not found',
+      requiredRole: 'DP',
+    });
+  }
+
+  async getPrinters(user: UserDto) {
+    const userSearch = user.role.shortName === 'PRINTER' ? user.id : { gt: 0 };
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: {
+          shortName: { in: ['PRINTER'] },
+        },
+        id: userSearch,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        deletedAt: true,
+        printerShifts: true,
+      },
+    });
+    return users.filter(
+      (u) => u.deletedAt === null || u.printerShifts.length > 0,
+    );
+  }
+
+  async getPrinterShifts(
+    printerId: number,
+    from: string,
+    to: string,
+  ): Promise<PrinterShiftResponseDto[]> {
+    const printer = await this.prisma.user.findUnique({
+      where: { id: printerId },
+      select: {
+        id: true,
+        role: {
+          select: {
+            shortName: true,
+          },
+        },
+      },
+    });
+    if (!printer || printer.role.shortName !== 'PRINTER') {
+      throw new BadRequestException('printer not found');
+    }
+
+    return this.prisma.printerShift.findMany({
+      where: {
+        userId: printerId,
+        shift_date: {
+          gte: from,
+          lte: to,
+        },
+      },
+      select: {
+        id: true,
+        shift_date: true,
+        userId: true,
+        cost: true,
+      },
+    });
+  }
+
+  async createPrinterShifts(
+    printerId: number,
+    dto: CreatePrinterShiftsDto,
+  ): Promise<PrinterShiftResponseDto[]> {
+    return this.replaceShifts({
+      userId: printerId,
+      dto,
+      cost: 2000,
+      model: 'printerShift',
+      notFoundMessage: 'printer not found',
+      requiredRole: 'PRINTER',
+    });
+  }
+
+  private async replaceShifts(
+    params: {
+      userId: number;
+      dto: CreateLogistShiftsDto | CreateWasherShiftsDto | CreatePrinterShiftsDto;
+      cost: number;
+      model: 'logistShift' | 'washerShift' | 'printerShift';
+      notFoundMessage: string;
+      requiredRole?: string;
+    },
+  ): Promise<
+    | LogistShiftResponseDto[]
+    | WasherShiftResponseDto[]
+    | PrinterShiftResponseDto[]
+  > {
+    const { userId, dto, cost, model, notFoundMessage, requiredRole } = params;
     const { shiftDates, period } = dto;
 
-    const invalidShiftDates = shiftDates.filter(
-      (shift_date) => !shift_date.startsWith(period),
+    const invalidShiftDate = shiftDates.find(
+      (shiftDate) => !shiftDate.startsWith(`${period}-`),
     );
-    if (invalidShiftDates.length > 0) {
+
+    if (invalidShiftDate) {
       throw new BadRequestException(
-        `Даты смен должны быть в периоде ${period}: ${invalidShiftDates.join(', ')}`,
+        `Дата смены ${invalidShiftDate} не относится к периоду ${period}`,
       );
     }
 
-    const logist = await this.prisma.user.findUnique({
-      where: { id: logistId },
+    const employee = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: {
+          select: {
+            shortName: true,
+          },
+        },
+      },
     });
-    if (!logist) {
-      throw new BadRequestException('logist not found');
+    if (
+      !employee ||
+      (requiredRole && employee.role?.shortName !== requiredRole)
+    ) {
+      throw new BadRequestException(notFoundMessage);
     }
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.logistShift.deleteMany({
+      // TODO: заменить временный any на типобезопасный доступ к delegate Prisma.
+      const shiftModel = (tx as any)[model];
+
+      await shiftModel.deleteMany({
         where: {
-          userId: logistId,
+          userId,
           shift_date: {
             startsWith: period,
           },
         },
       });
 
-      const shifts = await Promise.all(
-        shiftDates.map((shift_date) =>
-          tx.logistShift.create({
-            data: {
-              shift_date,
-              userId: logistId,
-              cost: 2900,
-            },
-            select: {
-              id: true,
-              shift_date: true,
-              userId: true,
-              cost: true,
-            },
-          }),
-        ),
-      );
+      await shiftModel.createMany({
+        data: shiftDates.map((shift_date) => ({
+          shift_date,
+          userId,
+          cost,
+        })),
+      });
 
-      return shifts;
+      return shiftModel.findMany({
+        where: {
+          userId,
+          shift_date: {
+            startsWith: period,
+          },
+        },
+        select: {
+          id: true,
+          shift_date: true,
+          userId: true,
+          cost: true,
+        },
+      });
     });
   }
 }

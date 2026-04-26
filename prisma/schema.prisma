@@ -156,6 +156,8 @@ model User {
   masterShifts        MasterShift[]
   packerShifts        PackerShift[]
   logistShifts        LogistShift[]
+  washerShifts        WasherShift[]
+  printerShifts       PrinterShift[]
   otherReport         OtherReport[]
   frezerReports       FrezerReport[]
 
@@ -741,6 +743,28 @@ model LogistShift {
 
   userId Int
   user   User @relation(fields: [userId], references: [id])
+}
+
+model WasherShift {
+  id         Int    @id @default(autoincrement())
+  shift_date String //2025-05-01
+  cost       Int    @default(0)
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  @@index([userId, shift_date])
+}
+
+model PrinterShift {
+  id         Int    @id @default(autoincrement())
+  shift_date String //2025-05-01
+  cost       Int    @default(0)
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  @@index([userId, shift_date])
 }
 
 model OtherReport {

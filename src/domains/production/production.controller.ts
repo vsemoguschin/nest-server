@@ -24,6 +24,15 @@ import { CreatePackerReportDto } from './dto/create-packer-report.dto';
 import { PackerShiftResponseDto } from './dto/packer-shift.dto';
 import { UpdatePackerReportDto } from './dto/update-packer-report.dto';
 import { CreatePackerShiftsDto } from './dto/create-packer-shifts.dto';
+import { CreateLogistShiftsDto } from './dto/logist-shift.dto';
+import {
+  CreatePrinterShiftsDto,
+  PrinterShiftResponseDto,
+} from './dto/printer-shift.dto';
+import {
+  CreateWasherShiftsDto,
+  WasherShiftResponseDto,
+} from './dto/washer-shift.dto';
 import {
   CreateMasterRepairReportDto,
   UpdateMasterRepairReportDto,
@@ -65,6 +74,7 @@ export class ProductionController {
     'KD',
     'DP',
     'RP',
+    'PRINTER',
     'MASTER',
     'LOGIST',
     'PACKER',
@@ -766,9 +776,83 @@ export class ProductionController {
   @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'LOGIST')
   async createLogistShifts(
     @Param('logistId', ParseIntPipe) logistId: number,
-    @Body() dto: CreatePackerShiftsDto,
+    @Body() dto: CreateLogistShiftsDto,
   ): Promise<PackerShiftResponseDto[]> {
     return this.productionService.createLogistShifts(logistId, dto);
+  }
+
+  // WASHER
+
+  @Get('washers')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP')
+  async getWashers(@CurrentUser() user: UserDto) {
+    return this.productionService.getWashers(user);
+  }
+
+  @Get('washer/:washerId/shifts')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP')
+  async getWasherShifts(
+    @Param('washerId', ParseIntPipe) washerId: number,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ): Promise<WasherShiftResponseDto[]> {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.productionService.getWasherShifts(washerId, from, to);
+  }
+
+  @Post('washers/:washerId/shifts')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP')
+  async createWasherShifts(
+    @Param('washerId', ParseIntPipe) washerId: number,
+    @Body() dto: CreateWasherShiftsDto,
+  ): Promise<WasherShiftResponseDto[]> {
+    return this.productionService.createWasherShifts(washerId, dto);
+  }
+
+  // PRINTER
+
+  @Get('printers')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PRINTER')
+  async getPrinters(@CurrentUser() user: UserDto) {
+    return this.productionService.getPrinters(user);
+  }
+
+  @Get('printer/:printerId/shifts')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PRINTER')
+  async getPrinterShifts(
+    @Param('printerId', ParseIntPipe) printerId: number,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ): Promise<PrinterShiftResponseDto[]> {
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      throw new BadRequestException(
+        'Параметр from обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      throw new BadRequestException(
+        'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
+      );
+    }
+    return this.productionService.getPrinterShifts(printerId, from, to);
+  }
+
+  @Post('printers/:printerId/shifts')
+  @Roles('ADMIN', 'G', 'KD', 'DP', 'RP', 'PRINTER')
+  async createPrinterShifts(
+    @Param('printerId', ParseIntPipe) printerId: number,
+    @Body() dto: CreatePrinterShiftsDto,
+  ): Promise<PrinterShiftResponseDto[]> {
+    return this.productionService.createPrinterShifts(printerId, dto);
   }
 
   // FRZ ---------------------

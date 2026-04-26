@@ -37,7 +37,8 @@
     "seed:set-vk-integration-initial-status-account-19-group-235269908": "ts-node --transpile-only src/seeds/seed-set-vk-integration-initial-status-account-19-group-235269908.ts",
     "seed:vk-callback-test": "ts-node --transpile-only src/seeds/seed-vk-callback-test.ts",
     "seed:find-task-order-master-report": "ts-node --transpile-only src/seeds/seed-find-task-order-master-report.ts",
-    "seed:merge-expense-categories-subscriptions": "ts-node --transpile-only src/seeds/seed-merge-expense-categories-subscriptions.ts"
+    "seed:merge-expense-categories-subscriptions": "ts-node --transpile-only src/seeds/seed-merge-expense-categories-subscriptions.ts",
+    "transfer:users-to-printer": "ts-node --transpile-only -r tsconfig-paths/register src/scripts/transfer-users-to-printer.ts"
   },
   "dependencies": {
     "@nestjs/cache-manager": "^3.0.1",
