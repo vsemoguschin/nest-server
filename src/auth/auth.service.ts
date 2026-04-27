@@ -159,19 +159,19 @@ export class AuthService {
         `AUTH_PROJECTION_ENSURE_FAILED userId=${userId} message=CRM user has no active role for auth projection sync`,
       );
     } else {
-      try {
-        await this.usersAuthSync.ensureAuthProjection({
+      void this.usersAuthSync
+        .ensureAuthProjection({
           userId,
           roles: [roleShortName],
           scopes: this.usersAuthSync.getDefaultBookEditorScopes(),
           initiatorId: userId,
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.warn(
+            `AUTH_PROJECTION_ENSURE_FAILED userId=${userId} message=${message} bridgeTicketIssued=true`,
+          );
         });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.warn(
-          `AUTH_PROJECTION_ENSURE_FAILED userId=${userId} message=${message} bridgeTicketIssued=true`,
-        );
-      }
     }
 
     const secret = (process.env.BOOK_EDITOR_BRIDGE_SECRET || '').trim();
