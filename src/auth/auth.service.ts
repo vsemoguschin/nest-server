@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Cron } from '@nestjs/schedule';
@@ -153,26 +153,25 @@ export class AuthService {
     }
 
     const roleShortName = crmUser.role?.deletedAt ? '' : String(crmUser.role?.shortName || '').trim();
-    if (!roleShortName) {
-      throw new ServiceUnavailableException({
-        code: 'AUTH_PROJECTION_ENSURE_FAILED',
-        message: `CRM user ${userId} has no active role for auth projection sync`,
-      });
-    }
 
-    try {
-      await this.usersAuthSync.ensureAuthProjection({
-        userId,
-        roles: [roleShortName],
-        scopes: this.usersAuthSync.getDefaultBookEditorScopes(),
-        initiatorId: userId,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new ServiceUnavailableException({
-        code: 'AUTH_PROJECTION_ENSURE_FAILED',
-        message: `Failed to ensure auth projection for book-editor: ${message}`,
-      });
+    if (!roleShortName) {
+      this.logger.warn(
+        `AUTH_PROJECTION_ENSURE_FAILED userId=${userId} message=CRM user has no active role for auth projection sync`,
+      );
+    } else {
+      try {
+        await this.usersAuthSync.ensureAuthProjection({
+          userId,
+          roles: [roleShortName],
+          scopes: this.usersAuthSync.getDefaultBookEditorScopes(),
+          initiatorId: userId,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `AUTH_PROJECTION_ENSURE_FAILED userId=${userId} message=${message} bridgeTicketIssued=true`,
+        );
+      }
     }
 
     const secret = (process.env.BOOK_EDITOR_BRIDGE_SECRET || '').trim();
