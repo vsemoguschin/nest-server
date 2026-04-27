@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Cron } from '@nestjs/schedule';
@@ -9,6 +9,7 @@ import { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
 import { add } from 'date-fns';
+import { UsersAuthSyncService } from '../domains/users/users-auth-sync.service';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +22,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly usersAuthSync: UsersAuthSyncService,
   ) {}
   // Метод для проверки пользователя (например, по email и паролю)
   async validateUser(
@@ -133,6 +135,46 @@ export class AuthService {
   }
 
   async createBookEditorBridgeToken(user: Pick<User, 'id'>, returnTo?: string) {
+    const userId = String(user.id);
+    const crmUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        role: {
+          select: {
+            shortName: true,
+            deletedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!crmUser || crmUser.deletedAt) {
+      throw new UnauthorizedException('Пользователь CRM не найден или деактивирован');
+    }
+
+    const roleShortName = crmUser.role?.deletedAt ? '' : String(crmUser.role?.shortName || '').trim();
+    if (!roleShortName) {
+      throw new ServiceUnavailableException({
+        code: 'AUTH_PROJECTION_ENSURE_FAILED',
+        message: `CRM user ${userId} has no active role for auth projection sync`,
+      });
+    }
+
+    try {
+      await this.usersAuthSync.ensureAuthProjection({
+        userId,
+        roles: [roleShortName],
+        scopes: this.usersAuthSync.getDefaultBookEditorScopes(),
+        initiatorId: userId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ServiceUnavailableException({
+        code: 'AUTH_PROJECTION_ENSURE_FAILED',
+        message: `Failed to ensure auth projection for book-editor: ${message}`,
+      });
+    }
+
     const secret = (process.env.BOOK_EDITOR_BRIDGE_SECRET || '').trim();
     if (!secret) {
       throw new UnauthorizedException('BOOK_EDITOR_BRIDGE_SECRET не настроен');
@@ -169,7 +211,7 @@ export class AuthService {
       token,
       tokenType: 'Bearer',
       expiresIn,
-      userId: String(user.id),
+      userId,
       returnTo: safeReturnTo,
     };
   }

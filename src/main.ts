@@ -29,6 +29,7 @@ async function bootstrap() {
     // logger: winstonLogger,
     // bufferLogs: true
   });
+  app.enableShutdownHooks();
 
   // app.useLogger(winstonLogger);
   app.set('trust proxy', true);

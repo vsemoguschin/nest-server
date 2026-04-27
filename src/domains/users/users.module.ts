@@ -17,6 +17,6 @@ import { UsersAuthSyncService } from './users-auth-sync.service';
     TaskFilesService,
     UsersAuthSyncService,
   ],
-  exports: [UsersService],
+  exports: [UsersService, UsersAuthSyncService],
 })
 export class UsersModule {}
