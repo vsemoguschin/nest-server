@@ -813,6 +813,13 @@ export class ReportsService {
                   },
                 },
               },
+              include: {
+                deal: {
+                  include: {
+                    client: true,
+                  },
+                },
+              },
             },
             payments: {
               where: {
@@ -873,6 +880,13 @@ export class ReportsService {
                   reservation: false,
                   status: {
                     not: 'Возврат',
+                  },
+                },
+              },
+              include: {
+                deal: {
+                  include: {
+                    client: true,
                   },
                 },
               },
@@ -1034,12 +1048,13 @@ export class ReportsService {
 
       const dealSales = dateDeals.reduce((a, b) => a + b.price, 0);
       const regularDeals = dateDeals.filter((d) => d.client?.isRegular);
-      const regularSales = regularDeals.reduce(
-        (a, b) => a + b.price + b.dops.reduce((a, b) => a + b.price, 0),
-        0,
-      );
+      const regularDealSales = regularDeals.reduce((a, b) => a + b.price, 0);
       const regularDealsCount = regularDeals.length;
       const dateDops = r.group!.dops.filter((d) => d.saleDate === date);
+      const regularDopSales = dateDops
+        .filter((dop) => dop.deal.client?.isRegular)
+        .reduce((a, b) => a + b.price, 0);
+      const regularSales = regularDealSales + regularDopSales;
 
       const dopSales = dateDops.reduce((a, b) => a + b.price, 0);
       const totalSales = dopSales + dealSales;
@@ -1081,8 +1096,6 @@ export class ReportsService {
       const conversionMaketDayToDay = calls
         ? +((maketsDayToDay / calls) * 100).toFixed(2)
         : 0;
-
-      // console.log(callCost);
 
       return {
         id:

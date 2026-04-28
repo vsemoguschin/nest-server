@@ -71,6 +71,14 @@ export class LaunchCitiesDto {
   ageTo?: number;
 
   @IsOptional()
+  @IsString()
+  adTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  adText?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

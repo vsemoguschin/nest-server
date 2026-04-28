@@ -18,6 +18,7 @@ import { CreateAudienceDto } from './dto/create-audience.dto';
 import { BuildTestDto } from './dto/build-test.dto';
 import { CreateCreativeDto } from './dto/create-creative.dto';
 import { LaunchCitiesDto } from './dto/launch-cities.dto';
+import { UpdateCitiesSettingsDto } from './dto/update-cities-settings.dto';
 import { CreateTestDto } from './dto/create-test.dto';
 import { UploadVideoAssetDto } from './dto/upload-video-asset.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
@@ -26,6 +27,7 @@ import { UpdateTestDto } from './dto/update-test.dto';
 import { UpdateVariantBudgetDto } from './dto/update-variant-budget.dto';
 import { VkAdsTestBuildService } from './services/vk-ads-test-build.service';
 import { VkAdsTestCitiesLaunchService } from './services/vk-ads-test-cities-launch.service';
+import { VkAdsTestCitiesSettingsService } from './services/vk-ads-test-cities-settings.service';
 import { VkAdsTestReadModelService } from './services/vk-ads-test-read-model.service';
 import { VkAdsTestTestActionsService } from './services/vk-ads-test-test-actions.service';
 import { VkAdsTestVariantActionsService } from './services/vk-ads-test-variant-actions.service';
@@ -277,11 +279,20 @@ export class VkAdsTestVideosController {
 export class VkAdsTestCitiesController {
   constructor(
     private readonly citiesLaunchService: VkAdsTestCitiesLaunchService,
+    private readonly citiesSettingsService: VkAdsTestCitiesSettingsService,
   ) {}
 
   @Post('launch')
   launchCities(@Body() dto: LaunchCitiesDto) {
     return this.citiesLaunchService.launchCities(dto);
+  }
+
+  @Patch(':testId/settings')
+  updateCitiesSettings(
+    @Param('testId', ParseIntPipe) testId: number,
+    @Body() dto: UpdateCitiesSettingsDto,
+  ) {
+    return this.citiesSettingsService.updateSettings(testId, dto);
   }
 }
 

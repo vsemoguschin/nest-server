@@ -353,6 +353,17 @@ export class VkAdsTestClient {
     });
   }
 
+  async massActionAdGroups(
+    integrationId: number,
+    items: VkAdsEntityWritePayload[],
+  ): Promise<void> {
+    await this.postArray<void>(
+      integrationId,
+      '/api/v2/ad_groups/mass_action.json',
+      items,
+    );
+  }
+
   async getAdGroup(
     integrationId: number,
     adGroupId: number | string,
@@ -507,6 +518,21 @@ export class VkAdsTestClient {
     data?: JsonObject,
   ): Promise<T> {
     return this.request<T>(integrationId, 'POST', endpoint, { data });
+  }
+
+  private async postArray<T>(
+    integrationId: number,
+    endpoint: string,
+    data: unknown[],
+  ): Promise<T> {
+    const context = await this.authService.resolveAuthContext(integrationId);
+    const http = this.getHttp(context);
+    const config: AxiosRequestConfig = {
+      method: 'POST',
+      url: endpoint,
+      data,
+    };
+    return this.requestWithRetry<T>(http, config, context);
   }
 
   private async delete(integrationId: number, endpoint: string): Promise<void> {

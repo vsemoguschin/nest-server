@@ -13,6 +13,7 @@ import { VkAdsTestVariantsService } from './services/vk-ads-test-variants.servic
 import { VkAdsTestVideoAssetsService } from './services/vk-ads-test-video-assets.service';
 import { VkAdsTestService } from './services/vk-ads-test.service';
 import { VkAdsTestCitiesLaunchService } from './services/vk-ads-test-cities-launch.service';
+import { VkAdsTestCitiesSettingsService } from './services/vk-ads-test-cities-settings.service';
 import {
   VkAdsTestAudiencesController,
   VkAdsTestCreativesController,
@@ -50,6 +51,7 @@ import {
     VkAdsTestBuilderService,
     VkAdsTestVideoAssetsService,
     VkAdsTestCitiesLaunchService,
+    VkAdsTestCitiesSettingsService,
   ],
   exports: [
     VkAdsTestRepository,
@@ -66,6 +68,7 @@ import {
     VkAdsTestBuilderService,
     VkAdsTestVideoAssetsService,
     VkAdsTestCitiesLaunchService,
+    VkAdsTestCitiesSettingsService,
   ],
 })
 export class VkAdsTestModule {}

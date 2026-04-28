@@ -239,6 +239,46 @@ export class VkAdsTestRepository {
     });
   }
 
+  getTestForCitiesSettings(id: number) {
+    return this.prisma.vkAdsTest.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        vkCampaignId: true,
+        accountIntegrationId: true,
+        flowType: true,
+        status: true,
+        startBudget: true,
+        audiences: {
+          where: {
+            vkAdGroupId: { not: null },
+            status: { notIn: ['archived', 'deleted'] },
+          },
+          orderBy: { id: 'asc' },
+          select: {
+            id: true,
+            vkAdGroupId: true,
+            sex: true,
+            ageFrom: true,
+            ageTo: true,
+            status: true,
+          },
+        },
+      },
+    });
+  }
+
+  updateAudiencesCitiesSettings(
+    audienceIds: number[],
+    data: { sex?: string | null; ageFrom?: number | null; ageTo?: number | null },
+    tx: PrismaTx | PrismaService = this.prisma,
+  ) {
+    return tx.vkAdsTestAudience.updateMany({
+      where: { id: { in: audienceIds } },
+      data,
+    });
+  }
+
   getTestVariantsForReadModel(id: number) {
     return this.prisma.vkAdsTest.findUnique({
       where: { id },

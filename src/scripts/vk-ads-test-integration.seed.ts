@@ -2,8 +2,8 @@ import 'dotenv/config';
 
 import { PrismaService } from '../prisma/prisma.service';
 
-const TARGET_ACCOUNT_ID = 1;
-const TARGET_TOKEN_ENV_KEY = 'VK_ADS_BOOK_TOKEN';
+const TARGET_ACCOUNT_ID = 18;
+const TARGET_TOKEN_ENV_KEY = 'VK_ADS_TOKEN';
 
 function isCreateMode(): boolean {
   return process.env.VK_ADS_TEST_CREATE_INTEGRATION?.trim() === '1';

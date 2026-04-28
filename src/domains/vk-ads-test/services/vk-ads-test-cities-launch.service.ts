@@ -111,6 +111,8 @@ export class VkAdsTestCitiesLaunchService {
       accountIntegrationId: dto.accountIntegrationId,
       landingUrl: dto.landingUrl,
       startBudget: dto.startBudget,
+      adTitleTemplate: dto.adTitle ?? null,
+      adTextTemplate: dto.adText ?? null,
       sex: dto.sex ?? null,
       ageFrom: dto.ageFrom ?? null,
       ageTo: dto.ageTo ?? null,
@@ -144,6 +146,8 @@ export class VkAdsTestCitiesLaunchService {
     accountIntegrationId: number;
     landingUrl: string;
     startBudget: number;
+    adTitleTemplate: string | null;
+    adTextTemplate: string | null;
     sex: 'male' | 'female' | null;
     ageFrom: number | null;
     ageTo: number | null;
@@ -177,7 +181,7 @@ export class VkAdsTestCitiesLaunchService {
     let campaignId: number | null = null;
 
     for (const [index, city] of params.cities.entries()) {
-      const creativeCopy = this.buildCityCreativeCopy(city.label);
+      const creativeCopy = this.buildCityCreativeCopy(city.label, params.adTitleTemplate, params.adTextTemplate);
       const targetings = this.buildAudienceTargetings([city.id], {
         sex: params.sex,
         ageFrom: params.ageFrom,
@@ -492,11 +496,14 @@ export class VkAdsTestCitiesLaunchService {
     return result;
   }
 
-  private buildCityCreativeCopy(cityName: string) {
+  private buildCityCreativeCopy(cityName: string, titleTemplate: string | null, textTemplate: string | null) {
     const label = cityName.trim();
+    const applyTemplate = (template: string | null) =>
+      (template ?? '').replace(/\$\{city\}/g, label);
+
     return {
-      title: `Фотокниги ${label}`,
-      text: `Ты из ${label}? Мы делаем стильные фотокниги из твоих фотографий в телефоне, чтобы сохранить на память!\n\nЖми "Узнать цену" и расскажем подробнее!`,
+      title: applyTemplate(titleTemplate),
+      text: applyTemplate(textTemplate),
     };
   }
 

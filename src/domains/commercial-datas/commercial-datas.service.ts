@@ -1912,6 +1912,7 @@ export class CommercialDatasService {
         b2bTop: [],
       };
     }
+    //серега
     const group = await this.prisma.group.findFirst({
       where: {
         id: groupId,

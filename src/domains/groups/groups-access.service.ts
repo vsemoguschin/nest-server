@@ -32,7 +32,7 @@ export class GroupsAccessService {
       user.groupId === 26 &&
       (user.role.shortName === 'MOV' || user.role.shortName === 'ROV')
     ) {
-      scope.id = { in: [17, 19, 26] };
+      scope.id = { in: [17, 19, 26, 28, 29] };
     }
 
     if (
@@ -50,7 +50,7 @@ export class GroupsAccessService {
       scope.id = { in: [18, 3, 17, 19, 24, 26] };
     }
     if (user.groupId !== 3 && user.role.shortName === 'DO') {
-      scope.id = { in: [2, 16, user.groupId] };
+      scope.id = { in: [2, 16, 28, 29, user.groupId] };
     }
     //Ведение неон + руководитель
     if (user.workSpaceId === 4 && user.role.shortName === 'ROV') {
