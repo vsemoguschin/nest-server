@@ -2106,7 +2106,7 @@ export class ProductionService {
     return this.replaceShifts({
       userId: washerId,
       dto,
-      cost: 1900,
+      cost: 2000,
       model: 'washerShift',
       notFoundMessage: 'washer not found',
       requiredRole: 'DP',
