@@ -118,6 +118,16 @@ const validateIndicatorsPeriodQuery = (
     throw new BadRequestException('periodFrom не может быть больше periodTo');
   }
 
+  const [fromYear, fromMonth] = parsedPeriodFrom.split('-').map(Number);
+  const [toYear, toMonth] = parsedPeriodTo.split('-').map(Number);
+  const monthsDiff = (toYear - fromYear) * 12 + (toMonth - fromMonth);
+
+  if (monthsDiff > 11) {
+    throw new BadRequestException(
+      'Диапазон indicators не может превышать 12 месяцев',
+    );
+  }
+
   return {
     period: undefined,
     periodFrom: parsedPeriodFrom,
