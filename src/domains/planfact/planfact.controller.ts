@@ -23,6 +23,7 @@ import { CreateOperationDto } from './dto/create-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
+import { IndicatorsBaseQueryDto } from './dto/indicators-base-query.dto';
 import type { Response } from 'express';
 
 const normalizeQueryValue = (
@@ -82,6 +83,46 @@ const validateRangeOrPeriod = (
       'Параметр to обязателен и должен быть в формате YYYY-MM-DD (например, 2025-01-01).',
     );
   }
+};
+
+const validateIndicatorsPeriodQuery = (
+  period: string | undefined,
+  periodFrom: string | undefined,
+  periodTo: string | undefined,
+) => {
+  const parsedPeriod = parseOptionalPeriod(period);
+  const parsedPeriodFrom = parseOptionalPeriod(periodFrom);
+  const parsedPeriodTo = parseOptionalPeriod(periodTo);
+
+  if (parsedPeriod) {
+    if (parsedPeriodFrom || parsedPeriodTo) {
+      throw new BadRequestException(
+        'Используйте либо period, либо periodFrom/periodTo',
+      );
+    }
+
+    return {
+      period: parsedPeriod,
+      periodFrom: undefined,
+      periodTo: undefined,
+    };
+  }
+
+  if (!parsedPeriodFrom || !parsedPeriodTo) {
+    throw new BadRequestException(
+      'Для indicators нужно передать либо period, либо periodFrom и periodTo в формате YYYY-MM',
+    );
+  }
+
+  if (parsedPeriodFrom > parsedPeriodTo) {
+    throw new BadRequestException('periodFrom не может быть больше periodTo');
+  }
+
+  return {
+    period: undefined,
+    periodFrom: parsedPeriodFrom,
+    periodTo: parsedPeriodTo,
+  };
 };
 
 const parseIdList = (
@@ -353,6 +394,73 @@ export class PlanfactController {
       // expenseCategoryId,
       // typeOfOperation,
     });
+  }
+
+  @Get('indicators/expense-categories')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async getIndicatorsExpenseCategories(
+    @Query('period') period?: string,
+    @Query('periodFrom') periodFrom?: string,
+    @Query('periodTo') periodTo?: string,
+    @Query('accountId') accountId?: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    const parsedPeriods = validateIndicatorsPeriodQuery(
+      period,
+      periodFrom,
+      periodTo,
+    );
+
+    const query: IndicatorsBaseQueryDto = {
+      ...parsedPeriods,
+      accountId: parseOptionalAccountId(accountId),
+      projectId: parseOptionalProjectId(projectId),
+    };
+
+    return this.planfactService.getIndicatorsExpenseCategories(query);
+  }
+
+  @Get('indicators/counter-parties')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async getIndicatorsCounterParties(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('period') period?: string,
+    @Query('accountId') accountId?: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    validateRangeOrPeriod(from, to, period);
+
+    const query: IndicatorsBaseQueryDto = {
+      period: parseOptionalPeriod(period),
+      accountId: parseOptionalAccountId(accountId),
+      projectId: parseOptionalProjectId(projectId),
+    };
+
+    return this.planfactService.getIndicatorsCounterParties(query);
+  }
+
+  @Get('indicators/profit-summary')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async getIndicatorsProfitSummary(
+    @Query('period') period?: string,
+    @Query('accountId') accountId?: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    const parsedPeriod = parseOptionalPeriod(period);
+    if (!parsedPeriod) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01)',
+      );
+    }
+
+    const query: IndicatorsBaseQueryDto = {
+      period: parsedPeriod,
+      accountId: parseOptionalAccountId(accountId),
+      projectId: parseOptionalProjectId(projectId),
+    };
+
+    return this.planfactService.getIndicatorsProfitSummary(query);
   }
 
   @Post('operation')

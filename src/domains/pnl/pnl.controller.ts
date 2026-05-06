@@ -118,4 +118,66 @@ export class PnlController {
     }
     return await this.pnlService.getDdsData(period);
   }
+
+  @Get('dds-detail')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async getDdsDetail(
+    @Query('period') period: string,
+    @Query('expenseCategoryId') expenseCategoryId: string,
+    @Query('projectId') projectId?: string,
+    @Query('typeOfOperation') typeOfOperation?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '200',
+  ) {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new BadRequestException(
+        'Параметр period обязателен и должен быть в формате YYYY-MM (например, 2025-01).',
+      );
+    }
+
+    const parsedExpenseCategoryId = Number(expenseCategoryId);
+    if (!Number.isInteger(parsedExpenseCategoryId) || parsedExpenseCategoryId <= 0) {
+      throw new BadRequestException(
+        'Параметр expenseCategoryId обязателен и должен быть положительным числом.',
+      );
+    }
+
+    let parsedProjectId: number | undefined;
+    if (projectId !== undefined) {
+      parsedProjectId = Number(projectId);
+      if (!Number.isInteger(parsedProjectId) || parsedProjectId <= 0) {
+        throw new BadRequestException(
+          'Параметр projectId должен быть положительным числом.',
+        );
+      }
+    }
+
+    if (typeOfOperation && !['Debit', 'Credit'].includes(typeOfOperation)) {
+      throw new BadRequestException(
+        'Параметр typeOfOperation должен быть одним из: Debit, Credit.',
+      );
+    }
+
+    const parsedPage = Number(page);
+    const parsedLimit = Number(limit);
+    if (!Number.isInteger(parsedPage) || parsedPage <= 0) {
+      throw new BadRequestException(
+        'Параметр page должен быть положительным целым числом.',
+      );
+    }
+    if (!Number.isInteger(parsedLimit) || parsedLimit <= 0 || parsedLimit > 500) {
+      throw new BadRequestException(
+        'Параметр limit должен быть положительным целым числом не больше 500.',
+      );
+    }
+
+    return this.pnlService.getDdsDetail({
+      period,
+      expenseCategoryId: parsedExpenseCategoryId,
+      projectId: parsedProjectId,
+      typeOfOperation,
+      page: parsedPage,
+      limit: parsedLimit,
+    });
+  }
 }

@@ -29,6 +29,29 @@ export class PnlService {
     private readonly commercialDatasService: CommercialDatasService,
   ) {}
 
+  private buildDdsDetailWhere({
+    period,
+    expenseCategoryId,
+    projectId,
+    typeOfOperation,
+  }: {
+    period: string;
+    expenseCategoryId: number;
+    projectId?: number;
+    typeOfOperation?: string;
+  }) {
+    return {
+      expenseCategoryId,
+      ...(typeof projectId === 'number' ? { projectId } : {}),
+      originalOperation: {
+        operationDate: {
+          startsWith: period,
+        },
+        ...(typeOfOperation ? { typeOfOperation } : {}),
+      },
+    };
+  }
+
   private async getIncomeDatas(
     periods: string[],
     groupSearch: { gt: number } | { in: number[] },
@@ -557,6 +580,107 @@ export class PnlService {
 
   private buildDdsValueKey(categoryId: number, projectId?: number) {
     return `${categoryId}:${projectId ?? 'none'}`;
+  }
+
+  async getDdsDetail({
+    period,
+    expenseCategoryId,
+    projectId,
+    typeOfOperation,
+    page,
+    limit,
+  }: {
+    period: string;
+    expenseCategoryId: number;
+    projectId?: number;
+    typeOfOperation?: string;
+    page: number;
+    limit: number;
+  }) {
+    const where = this.buildDdsDetailWhere({
+      period,
+      expenseCategoryId,
+      projectId,
+      typeOfOperation,
+    });
+
+    const [positions, totalCount, totalAggregate] = await Promise.all([
+      this.prisma.operationPosition.findMany({
+        where,
+        orderBy: [
+          {
+            originalOperation: {
+              operationDate: 'desc',
+            },
+          },
+          {
+            id: 'desc',
+          },
+        ],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          amount: true,
+          counterParty: {
+            select: {
+              title: true,
+            },
+          },
+          project: {
+            select: {
+              name: true,
+            },
+          },
+          originalOperation: {
+            select: {
+              operationId: true,
+              operationDate: true,
+              payPurpose: true,
+              description: true,
+              account: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.operationPosition.count({ where }),
+      this.prisma.operationPosition.aggregate({
+        where,
+        _sum: {
+          amount: true,
+        },
+      }),
+    ]);
+
+    const totalPages = totalCount === 0 ? 1 : Math.ceil(totalCount / limit);
+
+    return {
+      items: positions.map((position) => ({
+        operationId: position.originalOperation?.operationId ?? '',
+        operationDate: position.originalOperation?.operationDate ?? '',
+        accountName: position.originalOperation?.account?.name ?? '',
+        counterpartyName: position.counterParty?.title ?? '',
+        projectName: position.project?.name ?? 'Общая деятельность',
+        amount: position.amount,
+        payPurpose:
+          position.originalOperation?.payPurpose ||
+          position.originalOperation?.description ||
+          '',
+      })),
+      totalAmount: Math.round((totalAggregate._sum.amount ?? 0) * 100) / 100,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+    };
   }
 
   async getDdsData(period: string) {

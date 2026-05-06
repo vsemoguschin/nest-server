@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import axios from 'axios';
@@ -12,6 +13,14 @@ import { CreateOperationDto } from './dto/create-operation.dto';
 import { CreateExpenseCategoryDto } from './dto/expense-category-create.dto';
 import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { CreateCounterPartyDto } from './dto/counterparty-create.dto';
+import type {
+  IndicatorsBaseQueryDto,
+  IndicatorsDonutItemDto,
+  IndicatorsDonutResponseDto,
+  IndicatorsDonutSliceDto,
+  IndicatorsProfitSummaryItemDto,
+  IndicatorsProfitSummaryResponseDto,
+} from './dto/indicators-base-query.dto';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 
 const tbankProxy = 'socks5h://127.0.0.1:1080';
@@ -86,6 +95,14 @@ export interface OriginalOperationType {
   category: string;
 }
 
+type IndicatorsMetrics = {
+  income: number;
+  expense: number;
+  netProfit: number;
+  profitability: number;
+  dividends: number;
+};
+
 interface ExtendedPrismaClient {
   originalOperationFromTbank: {
     findMany: (args: unknown) => Promise<OriginalOperationType[]>;
@@ -95,6 +112,8 @@ interface ExtendedPrismaClient {
 
 @Injectable()
 export class PlanfactService {
+  private readonly logger = new Logger(PlanfactService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly dashboardsService: DashboardsService,
@@ -805,6 +824,9 @@ export class PlanfactService {
 
     if (typeOfOperation) {
       if (typeOfOperation === 'Transfer') {
+        this.logger.log(
+          `[original-operations] applying transfer filter via real accounts: realAccountNumbersCount=${realAccountNumbers.length}, expenseCategoryId=${expenseCategoryId?.join(',') ?? 'none'}, projectId=${projectId ?? 'none'}`,
+        );
         if (realAccountNumbers.length > 0) {
           conditions.push({
             counterPartyAccount: {
@@ -817,18 +839,24 @@ export class PlanfactService {
           });
         }
       } else {
+        this.logger.log(
+          `[original-operations] applying type filter with transfer exclusion: typeOfOperation=${typeOfOperation}, expenseCategoryId=${expenseCategoryId?.join(',') ?? 'none'}, projectId=${projectId ?? 'none'}, realAccountNumbersCount=${realAccountNumbers.length}`,
+        );
         conditions.push({
           typeOfOperation,
         });
-        if (realAccountNumbers.length > 0) {
-          conditions.push({
-            NOT: {
-              counterPartyAccount: {
-                in: realAccountNumbers,
-              },
-            },
-          });
-        }
+        // if (realAccountNumbers.length > 0) {
+        //   this.logger.log(
+        //     `[original-operations] excluding operations where counterPartyAccount belongs to real accounts for typeOfOperation=${typeOfOperation}`,
+        //   );
+        //   conditions.push({
+        //     NOT: {
+        //       counterPartyAccount: {
+        //         in: realAccountNumbers,
+        //       },
+        //     },
+        //   });
+        // }
       }
     }
 
@@ -915,6 +943,370 @@ export class PlanfactService {
         isTransferOperation: !!isTransferOperation,
       };
     });
+  }
+
+  private isTransferLikeOperation(
+    operation: {
+      counterPartyAccount?: string | null;
+      payPurpose?: string | null;
+    },
+    realAccountNumbers: string[],
+  ) {
+    const counterPartyAccount = operation.counterPartyAccount || undefined;
+    const payPurpose = operation.payPurpose || '';
+
+    return Boolean(
+      (counterPartyAccount &&
+        realAccountNumbers.includes(counterPartyAccount)) ||
+        payPurpose.includes('Возврат д/с с депозита "Овернайт"') ||
+        payPurpose.includes('Внутренний перевод на депозит "Овернайт"'),
+    );
+  }
+
+  private createEmptyIndicatorsMetrics(): IndicatorsMetrics {
+    return {
+      income: 0,
+      expense: 0,
+      netProfit: 0,
+      profitability: 0,
+      dividends: 0,
+    };
+  }
+
+  private roundIndicatorsMetrics(metrics: IndicatorsMetrics): IndicatorsMetrics {
+    const income = Number.parseFloat(metrics.income.toFixed(2));
+    const expense = Number.parseFloat(metrics.expense.toFixed(2));
+    const netProfit = Number.parseFloat((income - expense).toFixed(2));
+    const profitability = Number.parseFloat(
+      (income !== 0 ? (netProfit / income) * 100 : 0).toFixed(2),
+    );
+    const dividends = Number.parseFloat(metrics.dividends.toFixed(2));
+
+    return {
+      income,
+      expense,
+      netProfit,
+      profitability,
+      dividends,
+    };
+  }
+
+  private getProfitPeriodWindow(selectedPeriod: string, monthsCount = 4): string[] {
+    const [year, month] = selectedPeriod.split('-').map(Number);
+    const periods: string[] = [];
+
+    for (let offset = monthsCount - 1; offset >= 0; offset--) {
+      const date = new Date(year, month - 1 - offset, 1);
+      periods.push(
+        `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+      );
+    }
+
+    return periods;
+  }
+
+  private formatPeriodLabel(period: string) {
+    const [year, month] = period.split('-').map(Number);
+    return new Intl.DateTimeFormat('ru-RU', {
+      month: 'short',
+      year: 'numeric',
+    }).format(new Date(year, month - 1, 1));
+  }
+
+  private getIndicatorsPeriods({
+    period,
+    periodFrom,
+    periodTo,
+  }: IndicatorsBaseQueryDto): string[] {
+    if (period) {
+      return [period];
+    }
+
+    if (!periodFrom || !periodTo) {
+      return [];
+    }
+
+    const [fromYear, fromMonth] = periodFrom.split('-').map(Number);
+    const [toYear, toMonth] = periodTo.split('-').map(Number);
+    const periods: string[] = [];
+    const cursor = new Date(fromYear, fromMonth - 1, 1);
+    const end = new Date(toYear, toMonth - 1, 1);
+
+    while (cursor <= end) {
+      periods.push(
+        `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`,
+      );
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    return periods;
+  }
+
+  private async getIndicatorsOperations(query: IndicatorsBaseQueryDto) {
+    const realAccountNumbers = await this.getRealAccountNumbers();
+    const where = this.buildIndicatorsWhere(query);
+    const operations = await this.prisma.originalOperationFromTbank.findMany({
+      where,
+      include: {
+        operationPositions: {
+          include: {
+            counterParty: true,
+            expenseCategory: true,
+          },
+        },
+      },
+    });
+
+    return {
+      operations,
+      realAccountNumbers,
+    };
+  }
+
+  private accumulateIndicatorsMetrics(
+    metrics: IndicatorsMetrics,
+    operation: { typeOfOperation: string },
+    positions: Array<{
+      amount: number;
+      expenseCategory?: { name: string } | null;
+    }>,
+  ) {
+    for (const position of positions) {
+      if (operation.typeOfOperation === 'Credit') {
+        metrics.income += position.amount;
+      } else if (operation.typeOfOperation === 'Debit') {
+        metrics.expense += position.amount;
+
+        if (position.expenseCategory?.name === 'Дивиденды') {
+          metrics.dividends += position.amount;
+        }
+      }
+    }
+  }
+
+  private buildIndicatorsWhere({
+    period,
+    periodFrom,
+    periodTo,
+    accountId,
+    projectId,
+  }: IndicatorsBaseQueryDto) {
+    const where: Record<string, unknown> = {};
+    const positionConditions: Record<string, unknown>[] = [];
+    const periods = this.getIndicatorsPeriods({ period, periodFrom, periodTo });
+
+    if (periods.length === 1) {
+      where.operationDate = {
+        startsWith: periods[0],
+      };
+    } else if (periods.length > 1) {
+      where.OR = periods.map((periodValue) => ({
+        operationDate: {
+          startsWith: periodValue,
+        },
+      }));
+    }
+
+    if (accountId) {
+      where.accountId = accountId;
+    }
+
+    if (projectId) {
+      positionConditions.push({
+        projectId,
+      });
+    }
+
+    if (positionConditions.length > 0) {
+      where.operationPositions = {
+        some:
+          positionConditions.length === 1
+            ? positionConditions[0]
+            : { AND: positionConditions },
+      };
+    }
+
+    return where;
+  }
+
+  private toSortedDonutItems(
+    itemsMap: Map<number | null, { title: string; amount: number }>,
+  ): IndicatorsDonutSliceDto {
+    const items: IndicatorsDonutItemDto[] = Array.from(itemsMap.entries())
+      .map(([id, item]) => ({
+        id,
+        title: item.title,
+        amount: Number.parseFloat(item.amount.toFixed(2)),
+      }))
+      .filter((item) => item.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+
+    const total = Number.parseFloat(
+      items.reduce((sum, item) => sum + item.amount, 0).toFixed(2),
+    );
+
+    return {
+      total,
+      items,
+    };
+  }
+
+  private addIndicatorsDonutAmount(
+    targetMap: Map<number | null, { title: string; amount: number }>,
+    id: number | null,
+    title: string,
+    amount: number,
+  ) {
+    const existing = targetMap.get(id);
+    if (existing) {
+      existing.amount += amount;
+    } else {
+      targetMap.set(id, {
+        title,
+        amount,
+      });
+    }
+  }
+
+  private async getIndicatorsDonutData(
+    query: IndicatorsBaseQueryDto,
+    groupBy: 'expenseCategory' | 'counterParty',
+  ): Promise<IndicatorsDonutResponseDto> {
+    const { operations, realAccountNumbers } =
+      await this.getIndicatorsOperations(query);
+    const periods = this.getIndicatorsPeriods(query);
+
+    const debitMap = new Map<number | null, { title: string; amount: number }>();
+    const creditMap = new Map<number | null, { title: string; amount: number }>();
+    const monthlyMaps = new Map<
+      string,
+      {
+        debit: Map<number | null, { title: string; amount: number }>;
+        credit: Map<number | null, { title: string; amount: number }>;
+      }
+    >(
+      periods.map((periodValue) => [
+        periodValue,
+        {
+          debit: new Map<number | null, { title: string; amount: number }>(),
+          credit: new Map<number | null, { title: string; amount: number }>(),
+        },
+      ]),
+    );
+
+    for (const operation of operations) {
+      if (
+        operation.typeOfOperation !== 'Debit' &&
+        operation.typeOfOperation !== 'Credit'
+      ) {
+        continue;
+      }
+
+      if (this.isTransferLikeOperation(operation, realAccountNumbers)) {
+        continue;
+      }
+
+      const operationPeriod = operation.operationDate.slice(0, 7);
+      const monthlyTarget = monthlyMaps.get(operationPeriod);
+      if (!monthlyTarget) {
+        continue;
+      }
+
+      const relevantPositions = operation.operationPositions.filter(
+        (position) =>
+          !query.projectId || position.projectId === query.projectId,
+      );
+      if (relevantPositions.length === 0) {
+        continue;
+      }
+
+      const targetMap =
+        operation.typeOfOperation === 'Debit' ? debitMap : creditMap;
+      const monthlyTargetMap =
+        operation.typeOfOperation === 'Debit'
+          ? monthlyTarget.debit
+          : monthlyTarget.credit;
+
+      for (const position of relevantPositions) {
+        if (groupBy === 'expenseCategory') {
+          const expenseCategoryId = position.expenseCategoryId ?? null;
+          const expenseCategoryTitle = position.expenseCategory?.name;
+
+          if (expenseCategoryId === null || !expenseCategoryTitle) {
+            this.addIndicatorsDonutAmount(
+              targetMap,
+              null,
+              'Нераспределённые',
+              position.amount,
+            );
+            this.addIndicatorsDonutAmount(
+              monthlyTargetMap,
+              null,
+              'Нераспределённые',
+              position.amount,
+            );
+            continue;
+          }
+
+          this.addIndicatorsDonutAmount(
+            targetMap,
+            expenseCategoryId,
+            expenseCategoryTitle,
+            position.amount,
+          );
+          this.addIndicatorsDonutAmount(
+            monthlyTargetMap,
+            expenseCategoryId,
+            expenseCategoryTitle,
+            position.amount,
+          );
+          continue;
+        }
+
+        if (!position.counterPartyId || !position.counterParty) {
+          continue;
+        }
+
+        this.addIndicatorsDonutAmount(
+          targetMap,
+          position.counterPartyId,
+          position.counterParty.title,
+          position.amount,
+        );
+        this.addIndicatorsDonutAmount(
+          monthlyTargetMap,
+          position.counterPartyId,
+          position.counterParty.title,
+          position.amount,
+        );
+      }
+    }
+
+    return {
+      meta: {
+        period: query.period,
+        periodFrom: query.periodFrom,
+        periodTo: query.periodTo,
+        accountId: query.accountId,
+        projectId: query.projectId,
+        currency: 'RUB',
+      },
+      debit: this.toSortedDonutItems(debitMap),
+      credit: this.toSortedDonutItems(creditMap),
+      monthly: periods.map((periodValue) => {
+        const monthMaps = monthlyMaps.get(periodValue) ?? {
+          debit: new Map<number | null, { title: string; amount: number }>(),
+          credit: new Map<number | null, { title: string; amount: number }>(),
+        };
+
+        return {
+          period: periodValue,
+          label: this.formatPeriodLabel(periodValue),
+          debit: this.toSortedDonutItems(monthMaps.debit),
+          credit: this.toSortedDonutItems(monthMaps.credit),
+        };
+      }),
+    };
   }
 
   private applyDistributionFilter<T extends OriginalOperationType>(
@@ -1098,6 +1490,10 @@ export class PlanfactService {
         searchText,
       },
       realAccountNumbers,
+    );
+
+    this.logger.log(
+      `[original-operations] request params: from=${from ?? 'none'}, to=${to ?? 'none'}, period=${period ?? 'none'}, page=${page}, limit=${limit}, accountId=${accountId ?? 'none'}, projectId=${projectId ?? 'none'}, distributionFilter=${distributionFilter ?? 'none'}, counterPartyId=${counterPartyId?.join(',') ?? 'none'}, expenseCategoryId=${expenseCategoryId?.join(',') ?? 'none'}, typeOfOperation=${typeOfOperation ?? 'none'}, searchText=${searchText ?? 'none'}`,
     );
 
     // Получаем все операции без пагинации для фильтрации
@@ -1291,6 +1687,93 @@ export class PlanfactService {
 
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer as ArrayBuffer);
+  }
+
+  async getIndicatorsExpenseCategories(
+    query: IndicatorsBaseQueryDto,
+  ): Promise<IndicatorsDonutResponseDto> {
+    return this.getIndicatorsDonutData(query, 'expenseCategory');
+  }
+
+  async getIndicatorsCounterParties(
+    query: IndicatorsBaseQueryDto,
+  ): Promise<IndicatorsDonutResponseDto> {
+    return this.getIndicatorsDonutData(query, 'counterParty');
+  }
+
+  async getIndicatorsProfitSummary(
+    query: IndicatorsBaseQueryDto,
+  ): Promise<IndicatorsProfitSummaryResponseDto> {
+    const selectedPeriod = query.period;
+    if (!selectedPeriod) {
+      throw new BadRequestException('Параметр period обязателен');
+    }
+
+    const periods = this.getProfitPeriodWindow(selectedPeriod);
+    const monthlyResults = await Promise.all(
+      periods.map(async (period) => {
+        const { operations, realAccountNumbers } =
+          await this.getIndicatorsOperations({
+            ...query,
+            period,
+          });
+
+        const metrics = this.createEmptyIndicatorsMetrics();
+
+        for (const operation of operations) {
+          if (
+            operation.typeOfOperation !== 'Debit' &&
+            operation.typeOfOperation !== 'Credit'
+          ) {
+            continue;
+          }
+
+          if (this.isTransferLikeOperation(operation, realAccountNumbers)) {
+            continue;
+          }
+
+          const relevantPositions = operation.operationPositions.filter(
+            (position) =>
+              !query.projectId || position.projectId === query.projectId,
+          );
+
+          if (relevantPositions.length === 0) {
+            continue;
+          }
+
+          this.accumulateIndicatorsMetrics(metrics, operation, relevantPositions);
+        }
+
+        const roundedMetrics = this.roundIndicatorsMetrics(metrics);
+
+        return {
+          period,
+          label: this.formatPeriodLabel(period),
+          ...roundedMetrics,
+        } satisfies IndicatorsProfitSummaryItemDto;
+      }),
+    );
+
+    const selectedItem =
+      monthlyResults.find((item) => item.period === selectedPeriod) ??
+      monthlyResults[monthlyResults.length - 1];
+
+    return {
+      meta: {
+        period: selectedPeriod,
+        accountId: query.accountId,
+        projectId: query.projectId,
+        currency: 'RUB',
+      },
+      summary: {
+        income: selectedItem?.income ?? 0,
+        expense: selectedItem?.expense ?? 0,
+        netProfit: selectedItem?.netProfit ?? 0,
+        profitability: selectedItem?.profitability ?? 0,
+        dividends: selectedItem?.dividends ?? 0,
+      },
+      items: monthlyResults,
+    };
   }
 
   async getOriginalOperationsTotals({
