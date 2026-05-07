@@ -95,6 +95,52 @@ export interface OriginalOperationType {
   category: string;
 }
 
+type StatementPeriodRange = {
+  period: string;
+  fromDate: Date;
+  toDate: Date;
+};
+
+type StatementAccountRequest = {
+  id?: number | string;
+  name: string;
+  accountNumber: string;
+  openingKey?: string;
+  closingKey?: string;
+  inflowKey?: string;
+  outflowKey?: string;
+};
+
+type DdsReportProjectCategoryItem = {
+  categoryId: number | string;
+  categoryName: string;
+  income: number;
+  expense: number;
+  total: number;
+};
+
+type DdsReportProjectItem = {
+  projectId: number | string;
+  projectName: string;
+  totalIncome: number;
+  totalExpense: number;
+  categories: DdsReportProjectCategoryItem[];
+};
+
+type DdsReportUnassignedItem = {
+  label: string;
+  income: number;
+  expense: number;
+  total: number;
+};
+
+type DdsReportDetailSectionType =
+  | 'project'
+  | 'project-income'
+  | 'project-expense'
+  | 'unassigned'
+  | 'transfers';
+
 type IndicatorsMetrics = {
   income: number;
   expense: number;
@@ -2610,11 +2656,7 @@ export class PlanfactService {
     return this.assignProjectsToCounterParty(counterParty.id, projectsData);
   }
 
-  async fetchStatementBalancesByPeriod(period: string) {
-    if (!tToken) {
-      throw new Error('TB_TOKEN не установлен в переменных окружения');
-    }
-
+  private buildStatementPeriodRange(period: string): StatementPeriodRange {
     const [year, month] = period.split('-').map(Number);
     if (
       !Number.isInteger(year) ||
@@ -2629,7 +2671,6 @@ export class PlanfactService {
 
     const monthString = String(month).padStart(2, '0');
     const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    // Границы строим в московском времени, чтобы не сдвигать период на UTC+0.
     const fromDate = new Date(
       `${year}-${monthString}-01T00:00:00.000+03:00`,
     );
@@ -2639,6 +2680,48 @@ export class PlanfactService {
         '0',
       )}T23:59:59.999+03:00`,
     );
+
+    return {
+      period,
+      fromDate,
+      toDate,
+    };
+  }
+
+  private async fetchTbankStatementBalanceForAccount(
+    account: StatementAccountRequest,
+    range: StatementPeriodRange,
+  ) {
+    const response = await axios.get(
+      'https://business.tbank.ru/openapi/api/v1/statement',
+      {
+        proxy: false,
+        // httpAgent: tbankProxyAgent,
+        // httpsAgent: tbankProxyAgent,
+        headers: {
+          Authorization: 'Bearer ' + tToken,
+          'Content-Type': 'application/json',
+        },
+        params: {
+          accountNumber: account.accountNumber,
+          operationStatus: 'Transaction',
+          from: range.fromDate.toISOString(),
+          to: range.toDate.toISOString(),
+          withBalances: true,
+          limit: 1,
+        },
+        maxBodyLength: Infinity,
+      },
+    );
+
+    return response.data;
+  }
+
+  async fetchStatementBalancesByPeriod(period: string) {
+    if (!tToken) {
+      throw new Error('TB_TOKEN не установлен в переменных окружения');
+    }
+    const range = this.buildStatementPeriodRange(period);
 
     const accounts = [
       {
@@ -2677,26 +2760,9 @@ export class PlanfactService {
 
     const results = await Promise.all(
       accounts.map(async (account) => {
-        const response = await axios.get(
-          'https://business.tbank.ru/openapi/api/v1/statement',
-          {
-            proxy: false,
-            // httpAgent: tbankProxyAgent,
-            // httpsAgent: tbankProxyAgent,
-            headers: {
-              Authorization: 'Bearer ' + tToken,
-              'Content-Type': 'application/json',
-            },
-            params: {
-              accountNumber: account.accountNumber,
-              operationStatus: 'Transaction',
-              from: fromDate.toISOString(),
-              to: toDate.toISOString(),
-              withBalances: true,
-              limit: 1,
-            },
-            maxBodyLength: Infinity,
-          },
+        const response = await this.fetchTbankStatementBalanceForAccount(
+          account,
+          range,
         );
 
         // console.log('T-Bank statement balances:', {
@@ -2721,10 +2787,479 @@ export class PlanfactService {
     );
 
     return {
-      period,
-      from: fromDate.toISOString(),
-      to: toDate.toISOString(),
+      period: range.period,
+      from: range.fromDate.toISOString(),
+      to: range.toDate.toISOString(),
       results,
+    };
+  }
+
+  async fetchDdsReportStatementBalancesByPeriod(period: string) {
+    if (!tToken) {
+      throw new Error('TB_TOKEN не установлен в переменных окружения');
+    }
+
+    const range = this.buildStatementPeriodRange(period);
+    const realAccounts = await this.prisma.planFactAccount.findMany({
+      where: {
+        isReal: true,
+      },
+      orderBy: {
+        id: 'asc',
+      },
+      select: {
+        id: true,
+        name: true,
+        accountNumber: true,
+      },
+    });
+
+    const accounts = await Promise.all(
+      realAccounts.map(async (account) => {
+        const data = await this.fetchTbankStatementBalanceForAccount(
+          {
+            id: account.id,
+            name: account.name,
+            accountNumber: account.accountNumber,
+          },
+          range,
+        );
+
+        const balances = data?.balances ?? {};
+        const balanceBegin = Number(balances.balanceBegin ?? 0);
+        const balanceEnd = Number(balances.balanceEnd ?? 0);
+        const inflow = Number(balances.credit ?? 0);
+        const outflow = Number(balances.debit ?? 0);
+
+        return {
+          id: account.id,
+          name: account.name,
+          accountNumber: account.accountNumber,
+          balanceBegin: Number.isFinite(balanceBegin) ? balanceBegin : 0,
+          balanceEnd: Number.isFinite(balanceEnd) ? balanceEnd : 0,
+          inflow: Number.isFinite(inflow) ? inflow : 0,
+          outflow: Number.isFinite(outflow) ? outflow : 0,
+        };
+      }),
+    );
+
+    const totals = accounts.reduce(
+      (acc, account) => {
+        acc.balanceBegin += account.balanceBegin;
+        acc.balanceEnd += account.balanceEnd;
+        acc.inflow += account.inflow;
+        acc.outflow += account.outflow;
+        return acc;
+      },
+      {
+        balanceBegin: 0,
+        balanceEnd: 0,
+        inflow: 0,
+        outflow: 0,
+      },
+    );
+
+    return {
+      period: range.period,
+      from: range.fromDate.toISOString(),
+      to: range.toDate.toISOString(),
+      accounts: accounts.map((account) => ({
+        ...account,
+        balanceBegin: Number.parseFloat(account.balanceBegin.toFixed(2)),
+        balanceEnd: Number.parseFloat(account.balanceEnd.toFixed(2)),
+        inflow: Number.parseFloat(account.inflow.toFixed(2)),
+        outflow: Number.parseFloat(account.outflow.toFixed(2)),
+      })),
+      totals: {
+        balanceBegin: Number.parseFloat(totals.balanceBegin.toFixed(2)),
+        balanceEnd: Number.parseFloat(totals.balanceEnd.toFixed(2)),
+        inflow: Number.parseFloat(totals.inflow.toFixed(2)),
+        outflow: Number.parseFloat(totals.outflow.toFixed(2)),
+        netCashFlow: Number.parseFloat(
+          (totals.inflow - totals.outflow).toFixed(2),
+        ),
+      },
+    };
+  }
+
+  async fetchDdsReportProjectCategoryTotalsByPeriod(period: string) {
+    const roundAmount = (value: number) =>
+      Number.parseFloat(value.toFixed(2));
+    const noProjectKey = 'no-project';
+    const noProjectName = 'Без проекта';
+    const noCategoryKey = 'uncategorized';
+    const noCategoryName = 'Без статьи';
+
+    const realAccountNumbers = await this.getRealAccountNumbers();
+    const operations = await this.prisma.originalOperationFromTbank.findMany({
+      where: {
+        operationDate: {
+          startsWith: period,
+        },
+      },
+      include: {
+        operationPositions: {
+          include: {
+            expenseCategory: true,
+            project: true,
+          },
+        },
+      },
+      orderBy: {
+        operationDate: 'asc',
+      },
+    });
+
+    const projectsMap = new Map<
+      string,
+      {
+        projectId: number | string;
+        projectName: string;
+        totalIncome: number;
+        totalExpense: number;
+        categories: Map<
+          string,
+          {
+            categoryId: number | string;
+            categoryName: string;
+            income: number;
+            expense: number;
+          }
+        >;
+      }
+    >();
+    const transfersMap = new Map<
+      string,
+      {
+        categoryId: number | string;
+        categoryName: string;
+        income: number;
+        expense: number;
+      }
+    >();
+    const unassignedItemsMap = new Map<
+      string,
+      {
+        label: string;
+        income: number;
+        expense: number;
+      }
+    >();
+
+    for (const operation of operations) {
+      const relevantPositions = operation.operationPositions;
+
+      if (relevantPositions.length === 0) {
+        continue;
+      }
+
+      const isTransferOperation = this.isTransferLikeOperation(
+        operation,
+        realAccountNumbers,
+      );
+
+      for (const position of relevantPositions) {
+        const income =
+          operation.typeOfOperation === 'Credit' ? position.amount : 0;
+        const expense =
+          operation.typeOfOperation === 'Debit' ? position.amount : 0;
+
+        if (income === 0 && expense === 0) {
+          continue;
+        }
+
+        if (isTransferOperation) {
+          const categoryKey = position.expenseCategoryId
+            ? String(position.expenseCategoryId)
+            : noCategoryKey;
+          const categoryName = position.expenseCategory?.name || noCategoryName;
+          const existingTransfer = transfersMap.get(categoryKey);
+
+          if (existingTransfer) {
+            existingTransfer.income += income;
+            existingTransfer.expense += expense;
+          } else {
+            transfersMap.set(categoryKey, {
+              categoryId: position.expenseCategoryId ?? noCategoryKey,
+              categoryName,
+              income,
+              expense,
+            });
+          }
+          continue;
+        }
+
+        if (!position.expenseCategoryId || !position.expenseCategory) {
+          const existingUnassigned = unassignedItemsMap.get(noCategoryKey);
+          if (existingUnassigned) {
+            existingUnassigned.income += income;
+            existingUnassigned.expense += expense;
+          } else {
+            unassignedItemsMap.set(noCategoryKey, {
+              label: noCategoryName,
+              income,
+              expense,
+            });
+          }
+          continue;
+        }
+
+        const projectKey = position.projectId
+          ? String(position.projectId)
+          : noProjectKey;
+        const projectName = position.project?.name || noProjectName;
+        const categoryKey = String(position.expenseCategoryId);
+
+        let projectEntry = projectsMap.get(projectKey);
+        if (!projectEntry) {
+          projectEntry = {
+            projectId: position.projectId ?? noProjectKey,
+            projectName,
+            totalIncome: 0,
+            totalExpense: 0,
+            categories: new Map(),
+          };
+          projectsMap.set(projectKey, projectEntry);
+        }
+
+        projectEntry.totalIncome += income;
+        projectEntry.totalExpense += expense;
+
+        const existingCategory = projectEntry.categories.get(categoryKey);
+        if (existingCategory) {
+          existingCategory.income += income;
+          existingCategory.expense += expense;
+        } else {
+          projectEntry.categories.set(categoryKey, {
+            categoryId: position.expenseCategoryId,
+            categoryName: position.expenseCategory.name,
+            income,
+            expense,
+          });
+        }
+      }
+    }
+
+    const projects: DdsReportProjectItem[] = Array.from(projectsMap.values())
+      .map((project) => ({
+        projectId: project.projectId,
+        projectName: project.projectName,
+        totalIncome: roundAmount(project.totalIncome),
+        totalExpense: roundAmount(project.totalExpense),
+        categories: Array.from(project.categories.values())
+          .map((category) => ({
+            categoryId: category.categoryId,
+            categoryName: category.categoryName,
+            income: roundAmount(category.income),
+            expense: roundAmount(category.expense),
+            total: roundAmount(category.income - category.expense),
+          }))
+          .sort((a, b) => a.categoryName.localeCompare(b.categoryName, 'ru')),
+      }))
+      .sort((a, b) => {
+        if (a.projectId === noProjectKey) {
+          return 1;
+        }
+        if (b.projectId === noProjectKey) {
+          return -1;
+        }
+        return a.projectName.localeCompare(b.projectName, 'ru');
+      });
+
+    const unassignedItems: DdsReportUnassignedItem[] = Array.from(
+      unassignedItemsMap.values(),
+    ).map((item) => ({
+      label: item.label,
+      income: roundAmount(item.income),
+      expense: roundAmount(item.expense),
+      total: roundAmount(item.income - item.expense),
+    }));
+
+    const transferCategories: DdsReportProjectCategoryItem[] = Array.from(
+      transfersMap.values(),
+    )
+      .map((category) => ({
+        categoryId: category.categoryId,
+        categoryName: category.categoryName,
+        income: roundAmount(category.income),
+        expense: roundAmount(category.expense),
+        total: roundAmount(category.income - category.expense),
+      }))
+      .sort((a, b) => a.categoryName.localeCompare(b.categoryName, 'ru'));
+
+    return {
+      period,
+      projects,
+      unassigned: {
+        total: roundAmount(
+          unassignedItems.reduce((sum, item) => sum + item.total, 0),
+        ),
+        items: unassignedItems,
+      },
+      transfers: {
+        totalIncome: roundAmount(
+          transferCategories.reduce((sum, item) => sum + item.income, 0),
+        ),
+        totalExpense: roundAmount(
+          transferCategories.reduce((sum, item) => sum + item.expense, 0),
+        ),
+        categories: transferCategories,
+      },
+    };
+  }
+
+  async fetchDdsReportDetails({
+    period,
+    sectionType,
+    projectId,
+    categoryId,
+    typeOfOperation,
+    page,
+    limit,
+  }: {
+    period: string;
+    sectionType: DdsReportDetailSectionType;
+    projectId?: string;
+    categoryId?: string;
+    typeOfOperation?: 'Credit' | 'Debit';
+    page: number;
+    limit: number;
+  }) {
+    const realAccountNumbers = await this.getRealAccountNumbers();
+    const noProjectKey = 'no-project';
+    const noCategoryKey = 'uncategorized';
+
+    const operations = await this.prisma.originalOperationFromTbank.findMany({
+      where: {
+        operationDate: {
+          startsWith: period,
+        },
+      },
+      include: {
+        account: {
+          select: {
+            name: true,
+          },
+        },
+        operationPositions: {
+          include: {
+            expenseCategory: true,
+            project: true,
+          },
+        },
+      },
+      orderBy: {
+        operationDate: 'desc',
+      },
+    });
+
+    const detailItems = operations.flatMap((operation) => {
+      const isTransferOperation = this.isTransferLikeOperation(
+        operation,
+        realAccountNumbers,
+      );
+
+      if (sectionType === 'transfers' && !isTransferOperation) {
+        return [];
+      }
+
+      if (sectionType !== 'transfers' && isTransferOperation) {
+        return [];
+      }
+
+      if (typeOfOperation && operation.typeOfOperation !== typeOfOperation) {
+        return [];
+      }
+
+      return operation.operationPositions
+        .filter((position) => {
+          if (
+            (sectionType === 'project' ||
+              sectionType === 'project-income' ||
+              sectionType === 'project-expense') &&
+            !position.expenseCategoryId
+          ) {
+            return false;
+          }
+
+          if (sectionType === 'project' && projectId !== undefined) {
+            const positionProjectId = position.projectId
+              ? String(position.projectId)
+              : noProjectKey;
+            if (positionProjectId !== String(projectId)) {
+              return false;
+            }
+          }
+
+          if (
+            (sectionType === 'project-income' ||
+              sectionType === 'project-expense') &&
+            projectId !== undefined
+          ) {
+            const positionProjectId = position.projectId
+              ? String(position.projectId)
+              : noProjectKey;
+            if (positionProjectId !== String(projectId)) {
+              return false;
+            }
+          }
+
+          if (sectionType === 'project-income') {
+            if (operation.typeOfOperation !== 'Credit') {
+              return false;
+            }
+          }
+
+          if (sectionType === 'project-expense') {
+            if (operation.typeOfOperation !== 'Debit') {
+              return false;
+            }
+          }
+
+          if (sectionType === 'unassigned') {
+            return !position.expenseCategoryId;
+          }
+
+          if (categoryId !== undefined) {
+            const positionCategoryId = position.expenseCategoryId
+              ? String(position.expenseCategoryId)
+              : noCategoryKey;
+            if (positionCategoryId !== String(categoryId)) {
+              return false;
+            }
+          }
+
+          return true;
+        })
+        .map((position) => ({
+          operationId: operation.operationId,
+          operationDate: operation.operationDate,
+          accountName: operation.account?.name || '—',
+          counterpartyName: operation.counterPartyTitle || '—',
+          projectName: position.project?.name || 'Без проекта',
+          amount: Number(position.amount ?? 0),
+          payPurpose: operation.payPurpose || '',
+          typeOfOperation: operation.typeOfOperation,
+        }));
+    });
+
+    const totalAmount = detailItems.reduce((sum, item) => sum + item.amount, 0);
+    const total = detailItems.length;
+    const totalPages = total === 0 ? 1 : Math.ceil(total / limit);
+    const startIndex = (page - 1) * limit;
+    const paginatedItems = detailItems.slice(startIndex, startIndex + limit);
+
+    return {
+      items: paginatedItems,
+      totalAmount: Number.parseFloat(totalAmount.toFixed(2)),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
     };
   }
 }

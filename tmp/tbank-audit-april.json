@@ -1,0 +1,354 @@
+{
+  "generatedAt": "2026-05-07T17:36:25.716Z",
+  "period": {
+    "from": "2026-05-01",
+    "to": "2026-05-30"
+  },
+  "accountId": 1,
+  "filters": {},
+  "checkedAccounts": [
+    {
+      "accountId": 1,
+      "accountName": "Основной счет 7213",
+      "accountNumber": "40802810800000977213"
+    }
+  ],
+  "totals": {
+    "apiCount": 392,
+    "dbCount": 389,
+    "matchedCount": 389,
+    "apiOnlyCount": 3,
+    "dbOnlyCount": 0
+  },
+  "accountReports": [
+    {
+      "accountId": 1,
+      "accountName": "Основной счет 7213",
+      "accountNumber": "40802810800000977213",
+      "apiCount": 392,
+      "dbCount": 389,
+      "matchedCount": 389,
+      "apiOnlyCount": 3,
+      "dbOnlyCount": 0,
+      "apiOnly": [
+        {
+          "operationId": "841649e7-0ef1-0078-8bb3-e3d73ec64e81",
+          "operationDate": "2026-05-07T17:14:27Z",
+          "amount": 5370,
+          "typeOfOperation": "Credit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Пополнение по операции СБП 8461684113. Терминал Easyneon-SBP",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "api-only"
+        },
+        {
+          "operationId": "85b3e20a-4085-00e2-b016-952c34e745ed",
+          "operationDate": "2026-05-07T17:14:36Z",
+          "amount": 483.3,
+          "typeOfOperation": "Debit",
+          "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+          "payPurpose": "Перевод собственных средств. НДС не облагается",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "api-only"
+        },
+        {
+          "operationId": "9890a04c-764c-0032-80c3-e30d8b7b4c9d",
+          "operationDate": "2026-05-07T17:22:16Z",
+          "amount": 37.59,
+          "typeOfOperation": "Debit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Плата за пополнение по операции СБП 8461684113. Терминал Easyneon-SBP. Договор 7015221745",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "api-only"
+        }
+      ],
+      "dbOnly": [],
+      "matchesPreview": [
+        {
+          "operationId": "1e21e64f-d404-00fb-a5b2-da854d873e0a",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 580.5,
+          "typeOfOperation": "Debit",
+          "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+          "payPurpose": "Перевод собственных средств. НДС не облагается",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "58e0be3c-6047-001b-ada7-aff50ede0a06",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 822.37,
+          "typeOfOperation": "Debit",
+          "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+          "payPurpose": "Перевод собственных средств. НДС не облагается",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "24ff6825-9b37-007c-ac20-4cd837668d27",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 6450.01,
+          "typeOfOperation": "Credit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Перевод средств по договору 7035739486 от 09.07.2021г. (Easyneon) по реестру операций от 30.04.2026. Сумма комиссии 178 руб. 99 коп. НДС не облагается.",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "0cbe7c72-3ae4-0093-821a-67a471625b50",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 9137.52,
+          "typeOfOperation": "Credit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Перевод средств по договору 7035739486 от 09.07.2021г. (Easyneon-SBP) по реестру операций от 30.04.2026. Сумма комиссии 287 руб. 48 коп., в т.ч. НДС 22% 51 руб. 84 коп.",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "0c34f6ae-9a01-0000-b329-7984ff1515b4",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 220.05,
+          "typeOfOperation": "Debit",
+          "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+          "payPurpose": "Перевод собственных средств. НДС не облагается",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "94ca352b-ddd3-008b-924d-91d860badb87",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 2445,
+          "typeOfOperation": "Credit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Пополнение по операции СБП 8423681228. Терминал Easyneon-SBP",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "2ffecd65-d98d-00bb-ad4e-c56ae129a361",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 17.12,
+          "typeOfOperation": "Debit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Плата за пополнение по операции СБП 8423681228. Терминал Easyneon-SBP. Договор 7015221745",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "f2320e78-ff8f-001f-872b-150e5aa0b99d",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 5937,
+          "typeOfOperation": "Credit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Пополнение по операции СБП 8423698409. Терминал Easyneon-SBP",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "e24e9772-cc65-00eb-8d3a-d933ea0fde56",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 534.33,
+          "typeOfOperation": "Debit",
+          "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+          "payPurpose": "Перевод собственных средств. НДС не облагается",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "bfec415c-28c1-004e-afad-1c0a50e9a0ee",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 41.56,
+          "typeOfOperation": "Debit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Плата за пополнение по операции СБП 8423698409. Терминал Easyneon-SBP. Договор 7015221745",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "8204d5fa-dddd-005f-b142-a6f4d0093ef7",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 3300,
+          "typeOfOperation": "Credit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Пополнение по операции СБП 8423734521. Терминал Easyneon-SBP",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "b2188c0e-07cf-001a-9b8c-563afc92de80",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 297,
+          "typeOfOperation": "Debit",
+          "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+          "payPurpose": "Перевод собственных средств. НДС не облагается",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "7093e58e-6e27-0075-9dfb-00d49890b0f9",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 23.1,
+          "typeOfOperation": "Debit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Плата за пополнение по операции СБП 8423734521. Терминал Easyneon-SBP. Договор 7015221745",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "1711e629-10b3-0093-9322-20519a6e001f",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 380.7,
+          "typeOfOperation": "Debit",
+          "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+          "payPurpose": "Перевод собственных средств. НДС не облагается",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "d49e5b15-1657-00c5-a78b-272f40aa5dab",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 4230,
+          "typeOfOperation": "Credit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Пополнение по операции СБП 8424742687. Терминал Easyneon-SBP",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "f9128208-4551-0028-9b83-cf6eb0a1edf8",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 29.61,
+          "typeOfOperation": "Debit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Плата за пополнение по операции СБП 8424742687. Терминал Easyneon-SBP. Договор 7015221745",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "d24826aa-6282-0054-8b86-3a1885864f2b",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 2845,
+          "typeOfOperation": "Credit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Пополнение по операции СБП 8424817786. Терминал Easyneon-SBP",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "d0d28238-841f-008b-af71-95c49bf31250",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 256.05,
+          "typeOfOperation": "Debit",
+          "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+          "payPurpose": "Перевод собственных средств. НДС не облагается",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "a5bbc694-f94a-00e7-9009-c926ac828049",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 19.92,
+          "typeOfOperation": "Debit",
+          "counterParty": "АО \"ТБанк\"",
+          "payPurpose": "Плата за пополнение по операции СБП 8424817786. Терминал Easyneon-SBP. Договор 7015221745",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        },
+        {
+          "operationId": "d51cf1e0-c992-0026-8278-4b2b12dd762f",
+          "operationDate": "2026-05-03T21:00:56Z",
+          "amount": 389.97,
+          "typeOfOperation": "Debit",
+          "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+          "payPurpose": "Перевод собственных средств. НДС не облагается",
+          "accountId": 1,
+          "accountName": "Основной счет 7213",
+          "accountNumber": "40802810800000977213",
+          "source": "match"
+        }
+      ]
+    }
+  ],
+  "discrepancies": [
+    {
+      "operationId": "841649e7-0ef1-0078-8bb3-e3d73ec64e81",
+      "operationDate": "2026-05-07T17:14:27Z",
+      "amount": 5370,
+      "typeOfOperation": "Credit",
+      "counterParty": "АО \"ТБанк\"",
+      "payPurpose": "Пополнение по операции СБП 8461684113. Терминал Easyneon-SBP",
+      "accountId": 1,
+      "accountName": "Основной счет 7213",
+      "accountNumber": "40802810800000977213",
+      "source": "api-only"
+    },
+    {
+      "operationId": "85b3e20a-4085-00e2-b016-952c34e745ed",
+      "operationDate": "2026-05-07T17:14:36Z",
+      "amount": 483.3,
+      "typeOfOperation": "Debit",
+      "counterParty": "ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ МАЗУНИН МАКСИМ ЕВГЕНЬЕВИЧ",
+      "payPurpose": "Перевод собственных средств. НДС не облагается",
+      "accountId": 1,
+      "accountName": "Основной счет 7213",
+      "accountNumber": "40802810800000977213",
+      "source": "api-only"
+    },
+    {
+      "operationId": "9890a04c-764c-0032-80c3-e30d8b7b4c9d",
+      "operationDate": "2026-05-07T17:22:16Z",
+      "amount": 37.59,
+      "typeOfOperation": "Debit",
+      "counterParty": "АО \"ТБанк\"",
+      "payPurpose": "Плата за пополнение по операции СБП 8461684113. Терминал Easyneon-SBP. Договор 7015221745",
+      "accountId": 1,
+      "accountName": "Основной счет 7213",
+      "accountNumber": "40802810800000977213",
+      "source": "api-only"
+    }
+  ]
+}
