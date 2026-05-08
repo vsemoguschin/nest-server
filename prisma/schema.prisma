@@ -901,7 +901,9 @@ model AutoCategoryRule {
   operationType     String // Тип операции: входящая/исходящая/перевод и т.п.
   accountIds        Int[] // ID счетов, на которые будет применяться правило
   counterPartyIds   Int[] // ID контрагентов, на которые будет применяться правило
-  expenseCategoryId Int // ID категории расходов, которую назначать при совпадении
+  expenseCategoryId Int // ID категории расходов (обязательно)
+  projectId         Int? // ID проекта для назначения (необязательно)
+  effectiveFrom     String? // YYYY-MM-DD: применять только к операциям с operationDate >= effectiveFrom; null = бессрочно
   createdAt         DateTime @default(now()) // Дата создания
   updatedAt         DateTime @updatedAt
 
@@ -942,6 +944,7 @@ model OriginalOperationFromTbank {
   typeOfOperation      String
   category             String
   description          String
+  comment              String?
   payPurpose           String
   accountAmount        Float
   counterPartyAccount  String

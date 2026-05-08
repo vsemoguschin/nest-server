@@ -73,6 +73,7 @@ export interface OriginalOperationType {
   operationId: string;
   operationDate: string;
   accountAmount: number;
+  comment?: string | null;
   payPurpose?: string;
   description?: string;
   counterPartyAccount?: string | null;
@@ -127,6 +128,14 @@ type DdsReportProjectItem = {
   categories: DdsReportProjectCategoryItem[];
 };
 
+type DdsReportDividendsItem = {
+  categoryId: number;
+  categoryName: string;
+  income: number;
+  expense: number;
+  total: number;
+};
+
 type DdsReportUnassignedItem = {
   label: string;
   income: number;
@@ -149,10 +158,24 @@ type IndicatorsMetrics = {
   dividends: number;
 };
 
+type IndicatorsOrderMetrics = {
+  available: boolean;
+  bookedOrdersTotalPrice: number | null;
+  sentOrdersTotalPrice: number | null;
+  sentFromBookedPercent: number | null;
+};
+
+type IndicatorsMonthlyOrderMetrics = {
+  bookedOrdersTotalPrice: number | null;
+  sentOrdersTotalPrice: number | null;
+  sentFromBookedPercent: number | null;
+};
+
 interface ExtendedPrismaClient {
   originalOperationFromTbank: {
     findMany: (args: unknown) => Promise<OriginalOperationType[]>;
     findUnique: (args: unknown) => Promise<OriginalOperationType>;
+    update: (args: unknown) => Promise<OriginalOperationType>;
   };
 }
 
@@ -830,7 +853,7 @@ export class PlanfactService {
       });
     }
 
-    if (!period) {
+    if (!period && from && to) {
       conditions.push({
         operationDate: {
           gte: from,
@@ -1037,6 +1060,265 @@ export class PlanfactService {
     };
   }
 
+  private roundOrderAmount(value: number) {
+    return Number.parseFloat(value.toFixed(2));
+  }
+
+  private buildZeroOrderMetrics(
+    periods: string[],
+  ): {
+    orders: IndicatorsOrderMetrics;
+    monthly: IndicatorsMonthlyOrderMetrics[];
+  } {
+    return {
+      orders: {
+        available: true,
+        bookedOrdersTotalPrice: 0,
+        sentOrdersTotalPrice: 0,
+        sentFromBookedPercent: 0,
+      },
+      monthly: periods.map(() => ({
+        bookedOrdersTotalPrice: 0,
+        sentOrdersTotalPrice: 0,
+        sentFromBookedPercent: 0,
+      })),
+    };
+  }
+
+  private async getOrderMetricGroupIds(projectId?: number) {
+    const groups = await this.prisma.group.findMany({
+      where: {
+        deletedAt: null,
+        ...(projectId
+          ? {
+              projectId,
+            }
+          : {
+              projectId: {
+                not: null,
+              },
+            }),
+      },
+      select: {
+        id: true,
+      },
+      orderBy: {
+        id: 'asc',
+      },
+    });
+
+    return groups.map((group) => group.id);
+  }
+
+  private getDealOrderTotal(deal: { price?: number | null; dops?: Array<{ price?: number | null }> }) {
+    const price = deal.price ?? 0;
+    const dopsPrice = (deal.dops ?? []).reduce(
+      (acc, dop) => acc + (dop.price ?? 0),
+      0,
+    );
+
+    return price + dopsPrice;
+  }
+
+  private buildPercentFromBooked(
+    bookedOrdersTotalPrice: number | null,
+    sentOrdersTotalPrice: number | null,
+  ) {
+    if (bookedOrdersTotalPrice === null || sentOrdersTotalPrice === null) {
+      return null;
+    }
+
+    if (bookedOrdersTotalPrice === 0) {
+      return 0;
+    }
+
+    return this.roundOrderAmount(
+      (sentOrdersTotalPrice / bookedOrdersTotalPrice) * 100,
+    );
+  }
+
+  private async getIndicatorsOrderMetrics(
+    query: IndicatorsBaseQueryDto,
+    periods: string[],
+  ): Promise<{
+    orders: IndicatorsOrderMetrics;
+    monthly: IndicatorsMonthlyOrderMetrics[];
+  }> {
+    const groupIds = await this.getOrderMetricGroupIds(query.projectId);
+    if (!groupIds.length) {
+      return this.buildZeroOrderMetrics(periods);
+    }
+
+    const periodFilters = periods.map((period) => ({
+      saleDate: {
+        startsWith: period,
+      },
+    }));
+
+    const bookedDealsPromise = this.prisma.deal.findMany({
+      where: {
+        deletedAt: null,
+        reservation: false,
+        groupId: {
+          in: groupIds,
+        },
+        ...(periodFilters.length === 1
+          ? periodFilters[0]
+          : {
+              OR: periodFilters,
+            }),
+      },
+      select: {
+        price: true,
+        saleDate: true,
+        dops: {
+          select: {
+            price: true,
+          },
+        },
+      },
+      orderBy: {
+        saleDate: 'asc',
+      },
+    });
+
+    const deliveryFilters = periods.map((period) => ({
+      date: {
+        startsWith: period,
+      },
+    }));
+
+    const sentDeliveriesPromise = this.prisma.delivery.findMany({
+      where: {
+        purpose: 'Заказ',
+        deal: {
+          groupId: {
+            in: groupIds,
+          },
+          status: {
+            not: 'Возврат',
+          },
+          reservation: false,
+          deletedAt: null,
+        },
+        ...(deliveryFilters.length === 1
+          ? deliveryFilters[0]
+          : {
+              OR: deliveryFilters,
+            }),
+      },
+      select: {
+        id: true,
+        dealId: true,
+        date: true,
+        deal: {
+          select: {
+            price: true,
+            dops: {
+              select: {
+                price: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    });
+
+    const [bookedDeals, sentDeliveries] = await Promise.all([
+      bookedDealsPromise,
+      sentDeliveriesPromise,
+    ]);
+
+    const monthlyBookedTotals = new Map<string, number>(
+      periods.map((period) => [period, 0]),
+    );
+    let bookedOrdersTotalPrice = 0;
+    for (const deal of bookedDeals) {
+      const dealPeriod = deal.saleDate?.slice(0, 7);
+      if (!dealPeriod || !monthlyBookedTotals.has(dealPeriod)) {
+        continue;
+      }
+
+      const total = this.getDealOrderTotal(deal);
+      bookedOrdersTotalPrice += total;
+      monthlyBookedTotals.set(
+        dealPeriod,
+        (monthlyBookedTotals.get(dealPeriod) ?? 0) + total,
+      );
+    }
+
+    const monthlySentTotals = new Map<
+      string,
+      {
+        total: number;
+        seenDealIds: Set<number>;
+      }
+    >(
+      periods.map((period) => [
+        period,
+        {
+          total: 0,
+          seenDealIds: new Set<number>(),
+        },
+      ]),
+    );
+
+    const seenDealIds = new Set<number>();
+    let sentOrdersTotalPrice = 0;
+    for (const delivery of sentDeliveries) {
+      const deliveryPeriod = delivery.date?.slice(0, 7);
+      const monthlyTotals =
+        deliveryPeriod && monthlySentTotals.has(deliveryPeriod)
+          ? monthlySentTotals.get(deliveryPeriod)
+          : null;
+      if (!monthlyTotals) {
+        continue;
+      }
+
+      const total = this.getDealOrderTotal(delivery.deal);
+
+      if (!seenDealIds.has(delivery.dealId)) {
+        seenDealIds.add(delivery.dealId);
+        sentOrdersTotalPrice += total;
+      }
+
+      if (!monthlyTotals.seenDealIds.has(delivery.dealId)) {
+        monthlyTotals.seenDealIds.add(delivery.dealId);
+        monthlyTotals.total += total;
+      }
+    }
+
+    const bookedRounded = this.roundOrderAmount(bookedOrdersTotalPrice);
+    const sentRounded = this.roundOrderAmount(sentOrdersTotalPrice);
+
+    return {
+      orders: {
+        available: true,
+        bookedOrdersTotalPrice: bookedRounded,
+        sentOrdersTotalPrice: sentRounded,
+        sentFromBookedPercent: this.buildPercentFromBooked(
+          bookedRounded,
+          sentRounded,
+        ),
+      },
+      monthly: periods.map((period) => {
+        const booked = this.roundOrderAmount(
+          monthlyBookedTotals.get(period) ?? 0,
+        );
+        const sent = this.roundOrderAmount(
+          monthlySentTotals.get(period)?.total ?? 0,
+        );
+
+        return {
+          bookedOrdersTotalPrice: booked,
+          sentOrdersTotalPrice: sent,
+          sentFromBookedPercent: this.buildPercentFromBooked(booked, sent),
+        };
+      }),
+    };
+  }
+
   private getProfitPeriodWindow(selectedPeriod: string, monthsCount = 4): string[] {
     const [year, month] = selectedPeriod.split('-').map(Number);
     const periods: string[] = [];
@@ -1217,10 +1499,16 @@ export class PlanfactService {
   private async getIndicatorsDonutData(
     query: IndicatorsBaseQueryDto,
     groupBy: 'expenseCategory' | 'counterParty',
+    includeOrders = false,
   ): Promise<IndicatorsDonutResponseDto> {
-    const { operations, realAccountNumbers } =
-      await this.getIndicatorsOperations(query);
     const periods = this.getIndicatorsPeriods(query);
+    const [operationsData, orderMetrics] = await Promise.all([
+      this.getIndicatorsOperations(query),
+      includeOrders
+        ? this.getIndicatorsOrderMetrics(query, periods)
+        : Promise.resolve(this.buildZeroOrderMetrics(periods)),
+    ]);
+    const { operations, realAccountNumbers } = operationsData;
 
     const debitMap = new Map<number | null, { title: string; amount: number }>();
     const creditMap = new Map<number | null, { title: string; amount: number }>();
@@ -1339,10 +1627,16 @@ export class PlanfactService {
       },
       debit: this.toSortedDonutItems(debitMap),
       credit: this.toSortedDonutItems(creditMap),
-      monthly: periods.map((periodValue) => {
+      ...(includeOrders ? { orders: orderMetrics.orders } : {}),
+      monthly: periods.map((periodValue, index) => {
         const monthMaps = monthlyMaps.get(periodValue) ?? {
           debit: new Map<number | null, { title: string; amount: number }>(),
           credit: new Map<number | null, { title: string; amount: number }>(),
+        };
+        const periodOrderMetrics = orderMetrics.monthly[index] ?? {
+          bookedOrdersTotalPrice: 0,
+          sentOrdersTotalPrice: 0,
+          sentFromBookedPercent: 0,
         };
 
         return {
@@ -1350,6 +1644,7 @@ export class PlanfactService {
           label: this.formatPeriodLabel(periodValue),
           debit: this.toSortedDonutItems(monthMaps.debit),
           credit: this.toSortedDonutItems(monthMaps.credit),
+          ...(includeOrders ? { orders: periodOrderMetrics } : {}),
         };
       }),
     };
@@ -1602,6 +1897,124 @@ export class PlanfactService {
     };
   }
 
+  async getOriginalOperation(operationId: string) {
+    const operation = await (
+      this.prisma as unknown as ExtendedPrismaClient
+    ).originalOperationFromTbank.findUnique({
+      where: {
+        operationId,
+      },
+      include: {
+        account: {
+          select: {
+            id: true,
+            name: true,
+            accountNumber: true,
+            isReal: true,
+          },
+        },
+        operationPositions: {
+          include: {
+            counterParty: {
+              include: {
+                incomeExpenseCategory: true,
+                outcomeExpenseCategory: true,
+                incomeProject: true,
+                outcomeProject: true,
+              },
+            },
+            expenseCategory: true,
+            project: true,
+          },
+        },
+      },
+    });
+
+    if (!operation) {
+      throw new NotFoundException(
+        `Оригинальная операция ${operationId} не найдена`,
+      );
+    }
+
+    const realAccountNumbers = await this.getRealAccountNumbers();
+    const operationWithTransferFlag = this.addTransferFlags(
+      [operation],
+      realAccountNumbers,
+    )[0];
+
+    const operationCounterParty =
+      operation.counterPartyAccount || operation.counterPartyTitle
+        ? await this.prisma.counterParty.findFirst({
+            where: operation.counterPartyAccount
+              ? {
+                  account: operation.counterPartyAccount,
+                }
+              : operation.counterPartyTitle
+                ? {
+                    title: operation.counterPartyTitle,
+                  }
+                : undefined,
+            include: {
+              incomeExpenseCategory: true,
+              outcomeExpenseCategory: true,
+              incomeProject: true,
+              outcomeProject: true,
+            },
+          })
+        : null;
+
+    return {
+      ...operationWithTransferFlag,
+      operationCounterParty,
+    };
+  }
+
+  async updateOriginalOperationComment(
+    operationId: string,
+    comment: string | null,
+  ) {
+    const normalizedComment = comment?.trim() || null;
+
+    const operation = await (
+      this.prisma as unknown as ExtendedPrismaClient
+    ).originalOperationFromTbank.update({
+      where: {
+        operationId,
+      },
+      data: {
+        comment: normalizedComment,
+      },
+      include: {
+        account: {
+          select: {
+            id: true,
+            name: true,
+            accountNumber: true,
+            isReal: true,
+          },
+        },
+        operationPositions: {
+          include: {
+            counterParty: {
+              include: {
+                incomeExpenseCategory: true,
+                outcomeExpenseCategory: true,
+                incomeProject: true,
+                outcomeProject: true,
+              },
+            },
+            expenseCategory: true,
+            project: true,
+          },
+        },
+      },
+    });
+
+    const realAccountNumbers = await this.getRealAccountNumbers();
+
+    return this.addTransferFlags([operation], realAccountNumbers)[0];
+  }
+
   async exportOriginalOperations({
     from,
     to,
@@ -1738,13 +2151,13 @@ export class PlanfactService {
   async getIndicatorsExpenseCategories(
     query: IndicatorsBaseQueryDto,
   ): Promise<IndicatorsDonutResponseDto> {
-    return this.getIndicatorsDonutData(query, 'expenseCategory');
+    return this.getIndicatorsDonutData(query, 'expenseCategory', true);
   }
 
   async getIndicatorsCounterParties(
     query: IndicatorsBaseQueryDto,
   ): Promise<IndicatorsDonutResponseDto> {
-    return this.getIndicatorsDonutData(query, 'counterParty');
+    return this.getIndicatorsDonutData(query, 'counterParty', false);
   }
 
   async getIndicatorsProfitSummary(
@@ -2885,6 +3298,8 @@ export class PlanfactService {
   async fetchDdsReportProjectCategoryTotalsByPeriod(period: string) {
     const roundAmount = (value: number) =>
       Number.parseFloat(value.toFixed(2));
+    const dividendsCategoryId = 138;
+    const dividendsCategoryName = 'Дивиденды';
     const noProjectKey = 'no-project';
     const noProjectName = 'Без проекта';
     const noCategoryKey = 'uncategorized';
@@ -2945,6 +3360,12 @@ export class PlanfactService {
         expense: number;
       }
     >();
+    const dividends = {
+      categoryId: dividendsCategoryId,
+      categoryName: dividendsCategoryName,
+      income: 0,
+      expense: 0,
+    };
 
     for (const operation of operations) {
       const relevantPositions = operation.operationPositions;
@@ -3001,6 +3422,12 @@ export class PlanfactService {
               expense,
             });
           }
+          continue;
+        }
+
+        if (position.expenseCategoryId === dividendsCategoryId) {
+          dividends.income += income;
+          dividends.expense += expense;
           continue;
         }
 
@@ -3090,6 +3517,13 @@ export class PlanfactService {
     return {
       period,
       projects,
+      dividends: {
+        categoryId: dividends.categoryId,
+        categoryName: dividends.categoryName,
+        income: roundAmount(dividends.income),
+        expense: roundAmount(dividends.expense),
+        total: roundAmount(dividends.income - dividends.expense),
+      } satisfies DdsReportDividendsItem,
       unassigned: {
         total: roundAmount(
           unassignedItems.reduce((sum, item) => sum + item.total, 0),
@@ -3239,6 +3673,7 @@ export class PlanfactService {
           projectName: position.project?.name || 'Без проекта',
           amount: Number(position.amount ?? 0),
           payPurpose: operation.payPurpose || '',
+          comment: operation.comment || null,
           typeOfOperation: operation.typeOfOperation,
         }));
     });

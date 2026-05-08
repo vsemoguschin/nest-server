@@ -22,19 +22,22 @@ export class AutoCategoryRulesController {
       priority?: number;
       name: string;
       description?: string;
-      keywords: string[];
+      keywords?: string[];
       operationType: 'Debit' | 'Credit' | 'Any';
       accountIds?: number[];
       counterPartyIds?: number[];
       expenseCategoryId: number;
+      projectId?: number | null;
+      effectiveFrom?: string | null;
     },
   ) {
     return this.service.create(body);
   }
 
   @Get()
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query('counterPartyId') counterPartyId?: string) {
+    const cpId = counterPartyId ? Number(counterPartyId) : undefined;
+    return this.service.findAll(cpId);
   }
 
   @Get(':id')
@@ -56,6 +59,8 @@ export class AutoCategoryRulesController {
       accountIds?: number[];
       counterPartyIds?: number[];
       expenseCategoryId?: number;
+      projectId?: number | null;
+      effectiveFrom?: string | null;
     },
   ) {
     return this.service.update(Number(id), body);
@@ -84,9 +89,10 @@ export class AutoCategoryRulesController {
     @Body()
     body: {
       operationType: 'Debit' | 'Credit' | 'Any';
-      keywords: string[];
+      keywords?: string[];
       accountIds?: number[];
       counterPartyIds?: number[];
+      effectiveFrom?: string | null;
     },
     @Query('take') take?: string,
     @Query('skip') skip?: string,

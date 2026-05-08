@@ -4,7 +4,6 @@ import 'tsconfig-paths/register';
 import axios, { AxiosError } from 'axios';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { SocksProxyAgent } from 'socks-proxy-agent';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
 import { TbankSyncService } from '../services/tbank-sync.service';
@@ -13,12 +12,7 @@ const prisma = new PrismaClient();
 
 const T_ENDPOINT = 'https://business.tbank.ru/openapi/api/v1/statement';
 const TB_TOKEN = process.env.TB_TOKEN;
-
-// Прокси нужен для запросов к T-Bank API
-const tbankProxy = 'socks5h://127.0.0.1:1080';
-const tbankProxyAgent = tbankProxy
-  ? new SocksProxyAgent(tbankProxy)
-  : undefined;
+const tbankProxy = 'disabled';
 
 if (!TB_TOKEN) {
   console.error('TB_TOKEN не задан');
@@ -173,17 +167,6 @@ async function resolveProjectIds() {
   };
 }
 
-function getProjectIdForAccount(
-  accountId: number,
-  projects: { generalId: number; easyneonId: number; easybookId: number },
-) {
-  return accountId === 1
-    ? projects.easyneonId
-    : accountId === 3
-      ? projects.easybookId
-      : projects.generalId;
-}
-
 function normalizeApiOpsForTbankSync(apiOps: ApiOperation[]) {
   return apiOps.map((op) => ({
     operationId: op.operationId,
@@ -213,17 +196,23 @@ async function applyDbApiDiffForAccount(params: {
   tbankSyncService: TbankSyncService;
   projectIds: { generalId: number; easyneonId: number; easybookId: number };
 }) {
-  const { account, dbOnlyRows, apiOnlyOps, tbankSyncService, projectIds } = params;
+  const { account, dbOnlyRows, apiOnlyOps, tbankSyncService, projectIds } =
+    params;
   const dbOnlyIds = dbOnlyRows.map((row) => row.id);
 
   let createdCount = 0;
   if (apiOnlyOps.length > 0) {
     const normalized = normalizeApiOpsForTbankSync(apiOnlyOps);
-    const projectId = getProjectIdForAccount(account.id, projectIds);
+    const defaultProjectId =
+      account.id === 1
+        ? projectIds.easyneonId
+        : account.id === 3
+          ? projectIds.easybookId
+          : projectIds.generalId;
     const result = await tbankSyncService.saveOriginalOperations(
       normalized,
       account.id,
-      projectId,
+      defaultProjectId,
     );
     createdCount = result.savedCount;
   }

@@ -17,6 +17,13 @@ export type IndicatorsDonutSliceDto = {
   items: IndicatorsDonutItemDto[];
 };
 
+export type IndicatorsOrderMetricsDto = {
+  available: boolean;
+  bookedOrdersTotalPrice: number | null;
+  sentOrdersTotalPrice: number | null;
+  sentFromBookedPercent: number | null;
+};
+
 export type IndicatorsDonutResponseDto = {
   meta: {
     period?: string;
@@ -28,11 +35,17 @@ export type IndicatorsDonutResponseDto = {
   };
   debit: IndicatorsDonutSliceDto;
   credit: IndicatorsDonutSliceDto;
+  orders?: IndicatorsOrderMetricsDto;
   monthly: Array<{
     period: string;
     label: string;
     debit: IndicatorsDonutSliceDto;
     credit: IndicatorsDonutSliceDto;
+    orders?: {
+      bookedOrdersTotalPrice: number | null;
+      sentOrdersTotalPrice: number | null;
+      sentFromBookedPercent: number | null;
+    };
   }>;
 };
 

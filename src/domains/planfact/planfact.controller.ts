@@ -70,8 +70,10 @@ const validateRangeOrPeriod = (
   from: string | undefined,
   to: string | undefined,
   period: string | undefined,
+  searchText?: string,
 ) => {
   if (period) return;
+  if (searchText) return;
 
   if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
     throw new BadRequestException(
@@ -212,7 +214,7 @@ export class PlanfactController {
     @Query('period') period?: string,
   ) {
     // Убрана обязательность accountId
-    validateRangeOrPeriod(from, to, period);
+    validateRangeOrPeriod(from, to, period, searchText);
     if (page < 1) {
       throw new BadRequestException('Параметр page должен быть больше 0');
     }
@@ -483,6 +485,24 @@ export class PlanfactController {
   @Roles('ADMIN', 'G', 'KD', 'BUKH')
   async deleteOperation(@Param('operationId') operationId: string) {
     return this.planfactService.deleteOperation(operationId);
+  }
+
+  @Get('original-operation/:operationId')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async getOriginalOperation(@Param('operationId') operationId: string) {
+    return this.planfactService.getOriginalOperation(operationId);
+  }
+
+  @Patch('original-operation/:operationId/comment')
+  @Roles('ADMIN', 'G', 'KD', 'BUKH')
+  async updateOriginalOperationComment(
+    @Param('operationId') operationId: string,
+    @Body() body: { comment: string | null },
+  ) {
+    return this.planfactService.updateOriginalOperationComment(
+      operationId,
+      body.comment,
+    );
   }
 
   @Patch('original-operation/:operationId/positions')

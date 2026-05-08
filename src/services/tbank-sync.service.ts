@@ -3,6 +3,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AutoCategoryRulesService } from '../domains/auto-category-rules/auto-category-rules.service';
 import { TelegramService } from './telegram.service';
 import axios from 'axios';
+import { SocksProxyAgent } from 'socks-proxy-agent';
+
+const tbankProxy = 'socks5h://127.0.0.1:1080';
+const tbankProxyAgent = tbankProxy
+  ? new SocksProxyAgent(tbankProxy)
+  : undefined;
 
 interface OperationFromApi {
   operationId: string;
@@ -49,6 +55,10 @@ interface ReconcileOperationsResult {
     errorMessage?: string;
   }>;
 }
+
+type SaveOriginalOperationsOptions = {
+  verbose?: boolean;
+};
 
 @Injectable()
 export class TbankSyncService {
@@ -107,22 +117,6 @@ export class TbankSyncService {
     return chunks;
   }
 
-  // Функция для определения категории на основе условий
-  private determineExpenseCategory(
-    typeOfOperation: string,
-    category: string,
-  ): { incomeCategoryId: number | null; outcomeCategoryId: number | null } {
-    const incomeCategoryId: number | null = null;
-    let outcomeCategoryId: number | null = null;
-
-    // Оставляем только правило комиссии (не по payPurpose)
-    if (typeOfOperation === 'Debit' && category === 'fee') {
-      outcomeCategoryId = 48;
-    }
-
-    return { incomeCategoryId, outcomeCategoryId };
-  }
-
   private async notifyAdmins(text: string) {
     // Send only in production to avoid spam in dev
     if (this.env !== 'production') return;
@@ -138,86 +132,23 @@ export class TbankSyncService {
     }
   }
 
-  async getOrCreateCounterParty(
-    counterPartyData: {
-      account: string;
-      inn: string;
-      kpp: string;
-      name: string;
-      bankName: string;
-      bankBic: string;
-    },
-    incomeExpenseCategoryId?: number | null,
-    outcomeExpenseCategoryId?: number | null,
-  ) {
+  async getOrCreateCounterParty(counterPartyData: {
+    account: string;
+    inn: string;
+    kpp: string;
+    name: string;
+    bankName: string;
+    bankBic: string;
+  }) {
     const existingCounterParty = await this.prisma.counterParty.findFirst({
       where: { account: counterPartyData.account },
-      include: {
-        incomeExpenseCategory: true,
-        outcomeExpenseCategory: true,
-        incomeProject: true,
-        outcomeProject: true,
-      },
     });
 
     if (existingCounterParty) {
-      // Если у контрагента нет категории и мы определили категорию, присваиваем её
-      const updateData: {
-        incomeExpenseCategoryId?: number;
-        outcomeExpenseCategoryId?: number;
-      } = {};
-      let categoryAssigned = false;
-
-      if (
-        !existingCounterParty.incomeExpenseCategory &&
-        incomeExpenseCategoryId
-      ) {
-        updateData.incomeExpenseCategoryId = incomeExpenseCategoryId;
-        categoryAssigned = true;
-      }
-
-      if (
-        !existingCounterParty.outcomeExpenseCategory &&
-        outcomeExpenseCategoryId
-      ) {
-        updateData.outcomeExpenseCategoryId = outcomeExpenseCategoryId;
-        categoryAssigned = true;
-      }
-
-      if (categoryAssigned) {
-        const updatedCounterParty = await this.prisma.counterParty.update({
-          where: { id: existingCounterParty.id },
-          data: updateData,
-          include: {
-            incomeExpenseCategory: true,
-            outcomeExpenseCategory: true,
-            incomeProject: true,
-            outcomeProject: true,
-          },
-        });
-
-        const categoryInfo: string[] = [];
-        if (updateData.incomeExpenseCategoryId) {
-          categoryInfo.push(
-            `входящая категория ${updateData.incomeExpenseCategoryId}`,
-          );
-        }
-        if (updateData.outcomeExpenseCategoryId) {
-          categoryInfo.push(
-            `исходящая категория ${updateData.outcomeExpenseCategoryId}`,
-          );
-        }
-
-        this.logger.log(
-          `Контрагенту "${existingCounterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
-        );
-
-        return updatedCounterParty;
-      }
       return existingCounterParty;
     }
 
-    const counterParty = await this.prisma.counterParty.create({
+    return this.prisma.counterParty.create({
       data: {
         title: counterPartyData.name || 'Неизвестный контрагент',
         type: 'Получатель',
@@ -227,32 +158,8 @@ export class TbankSyncService {
         bankBic: counterPartyData.bankBic || '',
         bankName: counterPartyData.bankName || '',
         contrAgentGroup: 'Контрагенты без группы',
-        incomeExpenseCategoryId: incomeExpenseCategoryId || null,
-        outcomeExpenseCategoryId: outcomeExpenseCategoryId || null,
-      },
-      include: {
-        incomeExpenseCategory: true,
-        outcomeExpenseCategory: true,
-        incomeProject: true,
-        outcomeProject: true,
       },
     });
-
-    if (incomeExpenseCategoryId || outcomeExpenseCategoryId) {
-      const categoryInfo: string[] = [];
-      if (incomeExpenseCategoryId) {
-        categoryInfo.push(`входящая категория ${incomeExpenseCategoryId}`);
-      }
-      if (outcomeExpenseCategoryId) {
-        categoryInfo.push(`исходящая категория ${outcomeExpenseCategoryId}`);
-      }
-
-      this.logger.log(
-        `Новому контрагенту "${counterParty.title}" присвоена ${categoryInfo.join(' и ')}`,
-      );
-    }
-
-    return counterParty;
   }
 
   async fetchOperationsFromTbank(
@@ -300,6 +207,8 @@ export class TbankSyncService {
           'https://business.tbank.ru/openapi/api/v1/statement',
           {
             proxy: false,
+            // httpAgent: tbankProxyAgent,
+            // httpsAgent: tbankProxyAgent,
             headers: {
               Authorization: 'Bearer ' + tToken,
               'Content-Type': 'application/json',
@@ -339,8 +248,8 @@ export class TbankSyncService {
   async saveOriginalOperations(
     operations: OperationFromApi[],
     accountId: number,
-    projectId: number,
-    options?: { verbose?: boolean },
+    defaultProjectId: number,
+    options?: SaveOriginalOperationsOptions,
   ) {
     let savedCount = 0;
     let lastOperationDate = '';
@@ -356,7 +265,9 @@ export class TbankSyncService {
       keywords: string[];
       accountIds: number[];
       counterPartyIds: number[];
-      expenseCategoryId: number;
+      expenseCategoryId: number | null;
+      projectId: number | null;
+      effectiveFrom: string | null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }> = await (this.prisma as any).autoCategoryRule.findMany({
       where: { enabled: true },
@@ -371,6 +282,8 @@ export class TbankSyncService {
         accountIds: true,
         counterPartyIds: true,
         expenseCategoryId: true,
+        projectId: true,
+        effectiveFrom: true,
       },
     });
 
@@ -397,8 +310,20 @@ export class TbankSyncService {
       op: OperationFromApi,
       opAccountId: number,
       opCounterPartyId: number | null,
-    ): number | null => {
+    ): {
+      ruleId: number;
+      expenseCategoryId: number | null;
+      projectId: number | null;
+    } | null => {
       for (const rule of rules) {
+        // Проверка периода действия правила
+        if (
+          rule.effectiveFrom &&
+          op.operationDate.slice(0, 10) < rule.effectiveFrom.slice(0, 10)
+        ) {
+          continue;
+        }
+
         // Проверка типа операции
         if (
           rule.operationType !== 'Any' &&
@@ -416,110 +341,62 @@ export class TbankSyncService {
 
         // Проверка контрагентов (если указаны в правиле)
         if (rule.counterPartyIds && rule.counterPartyIds.length > 0) {
-          if (
-            !opCounterPartyId ||
-            !rule.counterPartyIds.includes(opCounterPartyId)
-          ) {
+          if (!opCounterPartyId || !rule.counterPartyIds.includes(opCounterPartyId)) {
             continue;
           }
         }
 
-        // Проверка ключевых слов
-        if (matchInOrder(op.payPurpose || '', rule.keywords)) {
-          return rule.expenseCategoryId; // первый матч
+        // Проверка ключевых слов (если keywords пустые — условие пропускается)
+        if (rule.keywords && rule.keywords.length > 0) {
+          if (!matchInOrder(op.payPurpose || '', rule.keywords)) {
+            continue;
+          }
         }
+
+        return {
+          ruleId: rule.id,
+          expenseCategoryId: rule.expenseCategoryId,
+          projectId: rule.projectId,
+        }; // первый матч
       }
       return null;
     };
 
     for (const op of operations) {
       try {
-        // Определяем категорию на основе условий перед созданием контрагента
-        let incomeCategoryId: number | null = null;
-        let outcomeCategoryIdFromRules: number | null = null;
-        const { outcomeCategoryId } = this.determineExpenseCategory(
-          op.typeOfOperation,
-          op.category,
-        );
-
-        // Первая попытка применения правил БД (без учета контрагента, т.к. он еще не создан)
-        // Применяем только правила без фильтра по контрагентам
-        const matchedCategoryIdWithoutCounterParty = applyRules(
+        let matchedExpenseCategoryId: number | null = null;
+        const matchedWithoutCounterParty = applyRules(
           op,
           accountId,
           null, // counterPartyId еще неизвестен
         );
-        if (matchedCategoryIdWithoutCounterParty) {
-          if (op.typeOfOperation === 'Credit') {
-            incomeCategoryId = matchedCategoryIdWithoutCounterParty;
-          } else if (op.typeOfOperation === 'Debit') {
-            outcomeCategoryIdFromRules = matchedCategoryIdWithoutCounterParty;
-          }
+        if (matchedWithoutCounterParty) {
+          matchedExpenseCategoryId =
+            matchedWithoutCounterParty.expenseCategoryId;
         }
 
-        // Проверка на начало counterPartyTitle с ООО/ИП/etc (только для Credit операций)
-        if (
-          !incomeCategoryId &&
-          op.typeOfOperation === 'Credit' &&
-          op.counterParty.name
-        ) {
-          const counterPartyTitle = op.counterParty.name.toLowerCase();
-          if (
-            counterPartyTitle.startsWith('ооо') ||
-            counterPartyTitle.startsWith('ип') ||
-            counterPartyTitle.startsWith(
-              'общество с ограниченной ответственностью',
-            ) ||
-            counterPartyTitle.startsWith('индивидуальный предприниматель')
-          ) {
-            // Список исключений
-            const exceptions = [
-              'индивидуальный предприниматель мазунин максим евгеньевич',
-              'общество с ограниченной ответственностью "экспресс курьер"',
-              'общество с ограниченной ответственностью "рвб"',
-            ];
-            const isException = exceptions.some((exception) =>
-              counterPartyTitle.includes(exception.toLowerCase()),
-            );
-            if (!isException) {
-              incomeCategoryId = 1;
-            }
-          }
-        }
+        const counterParty = await this.getOrCreateCounterParty({
+          account: op.counterParty.account || '',
+          inn: op.counterParty.inn || '',
+          kpp: op.counterParty.kpp || '',
+          name: op.counterParty.name || '',
+          bankName: op.counterParty.bankName || '',
+          bankBic: op.counterParty.bankBic || '',
+        });
 
-        // Создаем или находим контрагента с определенной категорией
-        // Для Debit используем категорию из правил, если она есть, иначе из determineExpenseCategory
-        const finalOutcomeCategoryId =
-          outcomeCategoryIdFromRules || outcomeCategoryId;
-        const counterParty = await this.getOrCreateCounterParty(
-          {
-            account: op.counterParty.account || '',
-            inn: op.counterParty.inn || '',
-            kpp: op.counterParty.kpp || '',
-            name: op.counterParty.name || '',
-            bankName: op.counterParty.bankName || '',
-            bankBic: op.counterParty.bankBic || '',
-          },
-          incomeCategoryId,
-          finalOutcomeCategoryId,
-        );
-
-        // Теперь применяем правила БД с учетом accountId и counterPartyId
-        // Это может переопределить предыдущий результат, если есть правила с фильтром по контрагентам
-        const matchedCategoryIdWithCounterParty = applyRules(
+        const matchedWithCounterParty = applyRules(
           op,
           accountId,
-          counterParty.id,
+          counterParty?.id ?? null,
         );
-        if (matchedCategoryIdWithCounterParty) {
-          if (op.typeOfOperation === 'Credit') {
-            incomeCategoryId = matchedCategoryIdWithCounterParty;
-          } else if (op.typeOfOperation === 'Debit') {
-            outcomeCategoryIdFromRules = matchedCategoryIdWithCounterParty;
-          }
+        let ruleProjectId: number | null = null;
+        if (matchedWithCounterParty) {
+          matchedExpenseCategoryId = matchedWithCounterParty.expenseCategoryId;
+          ruleProjectId = matchedWithCounterParty.projectId;
+        } else if (matchedWithoutCounterParty) {
+          ruleProjectId = matchedWithoutCounterParty.projectId;
         }
 
-        // Всегда делаем upsert для операции
         const originalOperation = await (
           this.prisma as unknown as {
             originalOperationFromTbank: {
@@ -570,89 +447,43 @@ export class TbankSyncService {
         });
 
         // Проверяем, есть ли уже позиции у операции
-        const existingPositions = await this.prisma.operationPosition.findMany({
-          where: {
-            originalOperationId: originalOperation.id,
-          },
-        });
+        const existingPositions =
+          originalOperation?.id != null
+            ? await this.prisma.operationPosition.findMany({
+                where: {
+                  originalOperationId: originalOperation.id,
+                },
+              })
+            : [];
 
         // Если позиции уже есть, пропускаем создание новых
         if (existingPositions.length > 0) {
-        if (verbose) {
+          if (verbose) {
+            this.logger.log(
+              `Операция ${op.operationId} уже имеет позиции, пропускаем создание позиций`,
+            );
+          }
+          savedCount++;
+          continue;
+        }
+
+        const expenseCategoryId = matchedExpenseCategoryId;
+        const finalProjectId = ruleProjectId ?? defaultProjectId;
+
+        if (verbose && expenseCategoryId) {
           this.logger.log(
-            `Операция ${op.operationId} уже имеет позиции, пропускаем создание позиций`,
+            `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по AutoCategoryRule`,
           );
         }
-        savedCount++;
-        continue;
-      }
 
-        // Определяем категорию: 1) правила БД по payPurpose (приоритет); 2) по типу операции/категории контрагента
-        let expenseCategoryId: number | null = null;
-
-        // Сначала проверяем правила БД (высший приоритет)
-        if (op.typeOfOperation === 'Credit' && incomeCategoryId) {
-          expenseCategoryId = incomeCategoryId;
-          if (verbose) {
-            this.logger.log(
-              `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по правилу БД (Credit)`,
-            );
-          }
-        } else if (
-          op.typeOfOperation === 'Debit' &&
-          outcomeCategoryIdFromRules
-        ) {
-          expenseCategoryId = outcomeCategoryIdFromRules;
-          if (verbose) {
-            this.logger.log(
-              `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по правилу БД (Debit)`,
-            );
-          }
-        } else {
-          // Если правила не сработали, используем категорию контрагента
-          if (
-            op.typeOfOperation === 'Credit' &&
-            counterParty.incomeExpenseCategory
-          ) {
-            expenseCategoryId = counterParty.incomeExpenseCategory.id;
-            if (verbose) {
-              this.logger.log(
-                `Операция ${op.operationId}: присвоена входящая категория "${counterParty.incomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-              );
-            }
-          } else if (
-            op.typeOfOperation === 'Debit' &&
-            counterParty.outcomeExpenseCategory
-          ) {
-            // Для Debit - используем исходящую категорию контрагента
-            expenseCategoryId = counterParty.outcomeExpenseCategory.id;
-            if (verbose) {
-              this.logger.log(
-                `Операция ${op.operationId}: присвоена исходящая категория "${counterParty.outcomeExpenseCategory.name}" для контрагента "${counterParty.title}"`,
-              );
-            }
-          }
-        }
-
-        let positionProjectId = projectId;
-        if (op.typeOfOperation === 'Credit' && counterParty.incomeProject) {
-          positionProjectId = counterParty.incomeProject.id;
-        } else if (
-          op.typeOfOperation === 'Debit' &&
-          counterParty.outcomeProject
-        ) {
-          positionProjectId = counterParty.outcomeProject.id;
-        }
-
-        // Создаем позицию (только если её еще нет)
         await this.prisma.operationPosition.create({
           data: {
             amount: op.accountAmount,
             period: op.operationDate?.slice(0, 7),
-            originalOperationId: originalOperation.id,
+            originalOperationId: originalOperation?.id,
             counterPartyId: counterParty.id,
             expenseCategoryId: expenseCategoryId,
-            projectId: positionProjectId,
+            projectId: finalProjectId,
           },
         });
 
@@ -669,12 +500,7 @@ export class TbankSyncService {
     }
 
     // Обновляем статус синхронизации
-    await this.updateSyncStatus(
-      accountId,
-      lastOperationDate,
-      savedCount,
-      'success',
-    );
+    await this.updateSyncStatus(accountId, lastOperationDate, savedCount, 'success');
 
     return { savedCount, lastOperationDate };
   }
@@ -745,8 +571,8 @@ export class TbankSyncService {
 
     const fromDateTime = `${from}T00:00:00.000Z`;
     const toDateTime = `${to}T23:59:59.999Z`;
-
     const projectIds = await this.getProjectIds();
+
     const accounts = await this.prisma.planFactAccount.findMany({
       where: { isReal: true },
       select: {
@@ -787,8 +613,8 @@ export class TbankSyncService {
         apiOperationsCount = apiOperations.length;
         result.apiOperationsTotal += apiOperations.length;
 
-        const dbOperations = await originalOperationRepo.originalOperationFromTbank.findMany(
-          {
+        const dbOperations =
+          await originalOperationRepo.originalOperationFromTbank.findMany({
             where: {
               accountId: account.id,
               operationDate: {
@@ -803,12 +629,15 @@ export class TbankSyncService {
             orderBy: {
               id: 'asc',
             },
-          },
-        );
+          });
         result.dbOperationsTotal += dbOperations.length;
 
-        const dbOperationIds = new Set(dbOperations.map((item) => item.operationId));
-        const apiOperationIds = new Set(apiOperations.map((item) => item.operationId));
+        const dbOperationIds = new Set(
+          dbOperations.map((item) => item.operationId),
+        );
+        const apiOperationIds = new Set(
+          apiOperations.map((item) => item.operationId),
+        );
 
         const apiOnlyOperations = apiOperations.filter(
           (item) => !dbOperationIds.has(item.operationId),
@@ -822,11 +651,14 @@ export class TbankSyncService {
 
         let createdCount = 0;
         if (apiOnlyOperations.length > 0) {
-          const projectId = this.resolveProjectIdForAccount(account.id, projectIds);
+          const defaultProjectId = this.resolveProjectIdForAccount(
+            account.id,
+            projectIds,
+          );
           const saveResult = await this.saveOriginalOperations(
             apiOnlyOperations,
             account.id,
-            projectId,
+            defaultProjectId,
             { verbose: false },
           );
           createdCount = saveResult.savedCount;
@@ -927,8 +759,7 @@ export class TbankSyncService {
 
       this.logger.log(`Синхронизация операций с ${fromDate} по ${toDate}`);
 
-      const { generalId, easyneonId, easybookId } =
-        await this.getProjectIds();
+      const { generalId, easyneonId, easybookId } = await this.getProjectIds();
 
       // Получаем все аккаунты с доступом к API
       const accounts = await this.prisma.planFactAccount.findMany({
@@ -961,16 +792,18 @@ export class TbankSyncService {
           );
 
           if (operations.length > 0) {
-            const projectId = this.resolveProjectIdForAccount(account.id, {
-              generalId,
-              easyneonId,
-              easybookId,
-            });
-
+            const defaultProjectId = this.resolveProjectIdForAccount(
+              account.id,
+              {
+                generalId,
+                easyneonId,
+                easybookId,
+              },
+            );
             const result = await this.saveOriginalOperations(
               operations,
               account.id,
-              projectId,
+              defaultProjectId,
             );
             this.logger.log(
               `Сохранено ${result.savedCount} операций для аккаунта ${account.name}. Последняя операция: ${result.lastOperationDate}`,

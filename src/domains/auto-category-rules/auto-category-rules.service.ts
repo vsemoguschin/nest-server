@@ -6,12 +6,37 @@ type CreateRuleInput = {
   priority?: number;
   name: string;
   description?: string;
-  keywords: string[];
+  keywords?: string[];
   operationType: 'Debit' | 'Credit' | 'Any';
   accountIds?: number[];
   counterPartyIds?: number[];
   expenseCategoryId: number;
+  projectId?: number | null;
+  effectiveFrom?: string | null;
 };
+
+function hasAtLeastOneCondition(
+  keywords: string[] | undefined,
+  accountIds: number[] | undefined,
+  counterPartyIds: number[] | undefined,
+): boolean {
+  return (
+    (Array.isArray(keywords) && keywords.length > 0) ||
+    (Array.isArray(accountIds) && accountIds.length > 0) ||
+    (Array.isArray(counterPartyIds) && counterPartyIds.length > 0)
+  );
+}
+
+// Returns true if the operation falls within the rule's effective period.
+// operationDate is a string like '2026-05-08' or '2026-05-08T12:00:00'.
+function isOperationDateAllowed(
+  operationDate: string,
+  effectiveFrom: string | null | undefined,
+): boolean {
+  if (!effectiveFrom) return true;
+  // Compare first 10 chars (YYYY-MM-DD) — works for both date and datetime strings
+  return operationDate.slice(0, 10) >= effectiveFrom.slice(0, 10);
+}
 
 type UpdateRuleInput = Partial<CreateRuleInput>;
 
@@ -21,19 +46,8 @@ export class AutoCategoryRulesService {
 
   // === CRUD ===
   async create(data: CreateRuleInput) {
-    // Проверяем на дубликат по keywords + operationType + expenseCategoryId
-    const existing = await (this.prisma as any).autoCategoryRule.findFirst({
-      where: {
-        operationType: data.operationType,
-        expenseCategoryId: data.expenseCategoryId,
-        keywords: { equals: data.keywords },
-      },
-    });
-
-    if (existing) {
-      throw new Error(
-        `Правило с такими ключевыми словами, типом операции и категорией уже существует (ID: ${existing.id})`,
-      );
+    if (!hasAtLeastOneCondition(data.keywords, data.accountIds, data.counterPartyIds)) {
+      throw new Error('Укажите хотя бы одно условие: ключевые слова, счёт или контрагент');
     }
 
     const rule = await (
@@ -52,7 +66,9 @@ export class AutoCategoryRulesService {
         operationType: data.operationType,
         accountIds: data.accountIds ?? [],
         counterPartyIds: data.counterPartyIds ?? [],
-        expenseCategoryId: data.expenseCategoryId,
+        expenseCategoryId: data.expenseCategoryId ?? null,
+        projectId: data.projectId ?? null,
+        effectiveFrom: data.effectiveFrom ?? null,
       },
     });
 
@@ -61,8 +77,12 @@ export class AutoCategoryRulesService {
     return rule;
   }
 
-  async findAll() {
+  async findAll(counterPartyId?: number) {
+    const where = counterPartyId != null
+      ? { counterPartyIds: { has: counterPartyId } }
+      : undefined;
     return (this.prisma as any).autoCategoryRule.findMany({
+      where,
       orderBy: [{ enabled: 'desc' }, { priority: 'asc' }, { id: 'asc' }],
     });
   }
@@ -72,41 +92,24 @@ export class AutoCategoryRulesService {
   }
 
   async update(id: number, data: UpdateRuleInput) {
-    // Если меняются ключевые поля, проверяем на дубликат
-    if (
-      data.keywords !== undefined ||
-      data.operationType !== undefined ||
-      data.expenseCategoryId !== undefined
-    ) {
-      const current = await (this.prisma as any).autoCategoryRule.findUnique({
-        where: { id },
-      });
+    const current = await (this.prisma as any).autoCategoryRule.findUnique({
+      where: { id },
+    });
 
-      const newKeywords =
-        data.keywords !== undefined ? data.keywords : current.keywords;
-      const newOperationType =
-        data.operationType !== undefined
-          ? data.operationType
-          : current.operationType;
-      const newExpenseCategoryId =
-        data.expenseCategoryId !== undefined
-          ? data.expenseCategoryId
-          : current.expenseCategoryId;
+    // Проверяем, что после применения патча останется хотя бы одно условие
+    const mergedKeywords = data.keywords !== undefined ? data.keywords : current.keywords;
+    const mergedAccountIds = data.accountIds !== undefined ? data.accountIds : current.accountIds;
+    const mergedCounterPartyIds =
+      data.counterPartyIds !== undefined ? data.counterPartyIds : current.counterPartyIds;
+    if (!hasAtLeastOneCondition(mergedKeywords, mergedAccountIds, mergedCounterPartyIds)) {
+      throw new Error('Укажите хотя бы одно условие: ключевые слова, счёт или контрагент');
+    }
 
-      const existing = await (this.prisma as any).autoCategoryRule.findFirst({
-        where: {
-          id: { not: id }, // исключаем текущее правило
-          operationType: newOperationType,
-          expenseCategoryId: newExpenseCategoryId,
-          keywords: { equals: newKeywords },
-        },
-      });
-
-      if (existing) {
-        throw new Error(
-          `Правило с такими ключевыми словами, типом операции и категорией уже существует (ID: ${existing.id})`,
-        );
-      }
+    // expenseCategoryId обязательна: если патч пытается обнулить — отклоняем
+    const mergedExpenseCategoryId =
+      data.expenseCategoryId !== undefined ? data.expenseCategoryId : current.expenseCategoryId;
+    if (!mergedExpenseCategoryId) {
+      throw new Error('Укажите статью расходов/доходов');
     }
 
     const rule = await (this.prisma as any).autoCategoryRule.update({
@@ -130,6 +133,13 @@ export class AutoCategoryRulesService {
           : {}),
         ...(data.expenseCategoryId !== undefined
           ? { expenseCategoryId: data.expenseCategoryId }
+          : {}),
+        ...(data.projectId !== undefined
+          ? { projectId: data.projectId }
+          : {}),
+        // effectiveFrom: null is a valid value (reset to unlimited)
+        ...(data.effectiveFrom !== undefined
+          ? { effectiveFrom: data.effectiveFrom }
           : {}),
       },
     });
@@ -167,14 +177,21 @@ export class AutoCategoryRulesService {
       payPurpose: string;
       accountId?: number;
       counterPartyId?: number | null;
+      operationDate: string;
     },
     rule: {
       operationType: string;
       keywords: string[];
       accountIds?: number[];
       counterPartyIds?: number[];
+      effectiveFrom?: string | null;
     },
   ): boolean {
+    // Проверка периода действия правила
+    if (!isOperationDateAllowed(op.operationDate, rule.effectiveFrom)) {
+      return false;
+    }
+
     // Проверка типа операции
     if (
       rule.operationType !== 'Any' &&
@@ -200,8 +217,11 @@ export class AutoCategoryRulesService {
       }
     }
 
-    // Проверка ключевых слов
-    return this.matchesPayPurposeInOrder(op.payPurpose || '', rule.keywords);
+    // Проверка ключевых слов (если keywords пустые — условие пропускается)
+    if (rule.keywords && rule.keywords.length > 0) {
+      return this.matchesPayPurposeInOrder(op.payPurpose || '', rule.keywords);
+    }
+    return true;
   }
 
   // === Тестирование правила ===
@@ -244,7 +264,17 @@ export class AutoCategoryRulesService {
         counterPartyAccount: true,
         expenseCategoryName: true,
         counterPartyTitle: true,
-        operationPositions: true,
+        operationDate: true,
+        operationPositions: {
+          select: {
+            id: true,
+            amount: true,
+            expenseCategoryId: true,
+            expenseCategory: { select: { name: true } },
+            projectId: true,
+            project: { select: { name: true } },
+          },
+        },
         account: {
           select: {
             id: true,
@@ -273,13 +303,21 @@ export class AutoCategoryRulesService {
   async testRuleByParams(
     data: {
       operationType: 'Debit' | 'Credit' | 'Any';
-      keywords: string[];
+      keywords?: string[];
       accountIds?: number[];
       counterPartyIds?: number[];
+      effectiveFrom?: string | null;
     },
     take = 50,
     skip = 0,
   ) {
+    const hasKeywords = Array.isArray(data.keywords) && data.keywords.length > 0;
+    const hasAccounts = Array.isArray(data.accountIds) && data.accountIds.length > 0;
+    const hasCounterParties = Array.isArray(data.counterPartyIds) && data.counterPartyIds.length > 0;
+    if (!hasKeywords && !hasAccounts && !hasCounterParties) {
+      throw new Error('Укажите хотя бы одно условие: ключевые слова, счёт или контрагент');
+    }
+
     // Берем кандидатов по типу операции для ускорения
     const where: any = {};
     if (data.operationType !== 'Any') {
@@ -311,13 +349,15 @@ export class AutoCategoryRulesService {
         counterPartyAccount: true,
         expenseCategoryName: true,
         counterPartyTitle: true,
+        operationDate: true,
         operationPositions: {
           select: {
-            expenseCategory: {
-              select: {
-                name: true,
-              },
-            },
+            id: true,
+            amount: true,
+            expenseCategoryId: true,
+            expenseCategory: { select: { name: true } },
+            projectId: true,
+            project: { select: { name: true } },
           },
         },
         account: {
@@ -340,9 +380,10 @@ export class AutoCategoryRulesService {
       .filter((op: any) =>
         this.matchRuleWithOriginal(op, {
           operationType: data.operationType,
-          keywords: data.keywords,
+          keywords: data.keywords ?? [],
           accountIds: data.accountIds,
           counterPartyIds: data.counterPartyIds,
+          effectiveFrom: data.effectiveFrom,
         }),
       );
 
@@ -415,11 +456,16 @@ export class AutoCategoryRulesService {
       }
       if (matchIds.length) {
         // Обновим существующие позиции
-        const updatedRes = await this.prisma.operationPosition.updateMany({
-          where: { originalOperationId: { in: matchIds } },
-          data: { expenseCategoryId: rule.expenseCategoryId },
-        });
-        updated += updatedRes.count;
+        const updateData: any = {};
+        if (rule.expenseCategoryId) updateData.expenseCategoryId = rule.expenseCategoryId;
+        if (rule.projectId) updateData.projectId = rule.projectId;
+        if (Object.keys(updateData).length > 0) {
+          const updatedRes = await this.prisma.operationPosition.updateMany({
+            where: { originalOperationId: { in: matchIds } },
+            data: updateData,
+          });
+          updated += updatedRes.count;
+        }
 
         // Создадим позиции там, где их нет
         const withCounts = await this.prisma.operationPosition.groupBy({
@@ -443,7 +489,8 @@ export class AutoCategoryRulesService {
                 period: op.operationDate?.slice(0, 7),
                 originalOperationId: id,
                 counterPartyId: counterPartyId ?? null,
-                expenseCategoryId: rule.expenseCategoryId,
+                expenseCategoryId: rule.expenseCategoryId ?? null,
+                projectId: rule.projectId ?? null,
               },
             });
             created += 1;
@@ -494,9 +541,13 @@ export class AutoCategoryRulesService {
 
     for (const rule of rules) {
       if (this.matchRuleWithOriginal(opWithCounterParty, rule)) {
+        const updateData: any = {};
+        if (rule.expenseCategoryId) updateData.expenseCategoryId = rule.expenseCategoryId;
+        if (rule.projectId) updateData.projectId = rule.projectId;
+
         const { count } = await this.prisma.operationPosition.updateMany({
           where: { originalOperationId: op.id },
-          data: { expenseCategoryId: rule.expenseCategoryId },
+          data: updateData,
         });
         if (count === 0) {
           await this.prisma.operationPosition.create({
@@ -505,7 +556,8 @@ export class AutoCategoryRulesService {
               period: op.operationDate?.slice(0, 7),
               originalOperationId: op.id,
               counterPartyId: counterParty?.id ?? null,
-              expenseCategoryId: rule.expenseCategoryId,
+              expenseCategoryId: rule.expenseCategoryId ?? null,
+              projectId: rule.projectId ?? null,
             },
           });
         }
