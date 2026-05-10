@@ -1724,8 +1724,8 @@ export class NotificationSchedulerService {
     }
   }
 
-  // Автоматическая синхронизация расходов VK Ads в AdExpense
-  // Если за последние 5 дней (до вчера по МСК) нет записи AdExpense, создаём на основе VkAdsDailyStat
+  // Автоматическая синхронизация расходов VK Ads в AdExpense.
+  // Источник определяется через VkAdsAccountIntegration.adSourceId → AdSource.
   @Cron('0 0 8 * * *', { timeZone: 'Europe/Moscow' })
   async syncVkAdsExpenses() {
     if (this.env === 'development') {
@@ -1733,7 +1733,6 @@ export class NotificationSchedulerService {
       return;
     }
 
-    // Защита от повторного выполнения
     if (this.isVkAdsExpenseSyncRunning) {
       this.logger.warn(
         '[VK Ads Expenses] Sync is already running, skipping...',
@@ -1745,11 +1744,6 @@ export class NotificationSchedulerService {
     const startTime = new Date();
 
     try {
-      this.logger.log(
-        `[VK Ads Expenses] Starting sync at ${startTime.toISOString()}`,
-      );
-
-      // Даты считаем явно по Москве
       const todayMsk = this.ymdInMoscow(new Date());
       const yesterdayMsk = this.addDaysYmd(todayMsk, -1);
       const daysToSync: string[] = [];
@@ -1758,95 +1752,10 @@ export class NotificationSchedulerService {
       }
 
       this.logger.log(
-        `[VK Ads Expenses] Checking expenses for dates (MSK): ${daysToSync.join(', ')}`,
+        `[VK Ads Expenses] Starting sync at ${startTime.toISOString()}, dates: ${daysToSync.join(', ')}`,
       );
 
-      // Конфигурация проектов
-      const projectConfigs = [
-        { project: 'neon', adSourceId: 1, workSpaceId: 3, groupId: 3 },
-        { project: 'book', adSourceId: 19, workSpaceId: 3, groupId: 19 },
-        // { project: 'book-2', adSourceId: 19, workSpaceId: 3, groupId: 17 },
-      ];
-
-      const results: string[] = [];
-
-      for (const dayStr of daysToSync) {
-        this.logger.log(
-          `[VK Ads Expenses] Checking day ${dayStr} (MSK)`,
-        );
-        for (const config of projectConfigs) {
-          this.logger.log(
-            `[VK Ads Expenses] Processing project: ${config.project} (${dayStr})`,
-          );
-
-          // Проверяем, есть ли уже запись AdExpense за день для этого проекта
-          const existingExpense = await this.prisma.adExpense.findFirst({
-            where: {
-              adSourceId: config.adSourceId,
-              workSpaceId: config.workSpaceId,
-              groupId: config.groupId,
-              date: {
-                startsWith: dayStr,
-              },
-            },
-          });
-
-          if (existingExpense) {
-            this.logger.log(
-              `[VK Ads Expenses] ${config.project}: AdExpense already exists for ${dayStr} (id=${existingExpense.id}, price=${existingExpense.price})`,
-            );
-            results.push(
-              `${dayStr} ${config.project}: уже есть (${existingExpense.price}₽)`,
-            );
-            continue;
-          }
-
-          // Записи нет — ищем VkAdsDailyStat за день
-          const vkStats = await this.prisma.vkAdsDailyStat.findMany({
-            where: {
-              project: config.project,
-              date: dayStr,
-              entity: 'ad_plans',
-            },
-          });
-
-          if (vkStats.length === 0) {
-            this.logger.log(
-              `[VK Ads Expenses] ${config.project}: No VkAdsDailyStat found for ${dayStr}`,
-            );
-            results.push(`${dayStr} ${config.project}: нет данных VK Ads`);
-            continue;
-          }
-
-          // Суммируем spentNds по всем записям
-          const totalSpentNds = vkStats.reduce(
-            (sum, stat) => sum + stat.spentNds,
-            0,
-          );
-          const priceInt = Math.round(totalSpentNds);
-
-          this.logger.log(
-            `[VK Ads Expenses] ${config.project}: Found ${vkStats.length} VkAdsDailyStat records, totalSpentNds=${totalSpentNds}, priceInt=${priceInt}`,
-          );
-
-          // Создаём запись AdExpense
-          const newExpense = await this.prisma.adExpense.create({
-            data: {
-              price: priceInt,
-              date: dayStr,
-              period: '',
-              adSourceId: config.adSourceId,
-              workSpaceId: config.workSpaceId,
-              groupId: config.groupId,
-            },
-          });
-
-          this.logger.log(
-            `[VK Ads Expenses] ${config.project}: Created AdExpense id=${newExpense.id}, price=${newExpense.price}`,
-          );
-          results.push(`${dayStr} ${config.project}: создано ${priceInt}₽`);
-        }
-      }
+      const results = await this.runVkAdsExpenseSync(daysToSync);
 
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
@@ -1867,5 +1776,110 @@ export class NotificationSchedulerService {
     } finally {
       this.isVkAdsExpenseSyncRunning = false;
     }
+  }
+
+  async runVkAdsExpenseSync(daysToSync: string[]): Promise<string[]> {
+    const integrations = await this.prisma.vkAdsAccountIntegration.findMany({
+      where: { isActive: true },
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        adSourceId: true,
+      },
+    });
+
+    const integrationsWithSource = integrations.filter(
+      (i) => (i as any).adSourceId != null,
+    );
+
+    if (integrationsWithSource.length === 0) {
+      this.logger.warn('[VK Ads Expenses] No active integrations with adSourceId found');
+      return ['Нет интеграций с adSourceId'];
+    }
+
+    const adSourceIds = [
+      ...new Set(integrationsWithSource.map((i) => (i as any).adSourceId as number)),
+    ];
+    const adSources = await this.prisma.adSource.findMany({
+      where: { id: { in: adSourceIds } },
+      select: { id: true, title: true, workSpaceId: true, groupId: true },
+    });
+    const adSourceMap = new Map(adSources.map((s) => [s.id, s]));
+
+    const results: string[] = [];
+
+    for (const integration of integrationsWithSource) {
+      const adSourceId = (integration as any).adSourceId as number;
+      const adSource = adSourceMap.get(adSourceId);
+      const label = `integrationId=${integration.id} name="${integration.name ?? ''}"`;
+
+      if (!adSource) {
+        this.logger.warn(
+          `[VK Ads Expenses] ${label}: adSource id=${adSourceId} not found, skipping`,
+        );
+        results.push(`${label}: adSource не найден`);
+        continue;
+      }
+
+      for (const dayStr of daysToSync) {
+        const existingExpense = await this.prisma.adExpense.findFirst({
+          where: {
+            adSourceId,
+            workSpaceId: adSource.workSpaceId,
+            date: { startsWith: dayStr },
+          },
+        });
+
+        if (existingExpense) {
+          this.logger.log(
+            `[VK Ads Expenses] ${label}: AdExpense already exists for ${dayStr} (id=${existingExpense.id}, price=${existingExpense.price})`,
+          );
+          results.push(`${dayStr} ${label}: уже есть (${existingExpense.price}₽)`);
+          continue;
+        }
+
+        const vkStats = await this.prisma.vkAdsDailyStat.findMany({
+          where: {
+            integrationId: integration.id,
+            date: dayStr,
+            entity: 'ad_plans',
+          },
+        });
+
+        if (vkStats.length === 0) {
+          this.logger.log(
+            `[VK Ads Expenses] ${label}: No VkAdsDailyStat found for ${dayStr}`,
+          );
+          results.push(`${dayStr} ${label}: нет данных VK Ads`);
+          continue;
+        }
+
+        const totalSpentNds = vkStats.reduce((sum, stat) => sum + stat.spentNds, 0);
+        const priceInt = Math.round(totalSpentNds);
+
+        this.logger.log(
+          `[VK Ads Expenses] ${label}: ${vkStats.length} stats for ${dayStr}, totalSpentNds=${totalSpentNds}, priceInt=${priceInt}`,
+        );
+
+        const newExpense = await this.prisma.adExpense.create({
+          data: {
+            price: priceInt,
+            date: dayStr,
+            period: '',
+            adSourceId,
+            workSpaceId: adSource.workSpaceId,
+            groupId: adSource.groupId ?? null,
+          },
+        });
+
+        this.logger.log(
+          `[VK Ads Expenses] ${label}: Created AdExpense id=${newExpense.id}, price=${newExpense.price} for ${dayStr}`,
+        );
+        results.push(`${dayStr} ${label}: создано ${priceInt}₽`);
+      }
+    }
+
+    return results;
   }
 }

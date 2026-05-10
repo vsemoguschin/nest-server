@@ -38,9 +38,9 @@ export class VkAdsTestService {
 
     return integrations.map((integration) => ({
       id: integration.id,
-      name: this.formatIntegrationName(integration),
+      name: integration.name,
       accountId: integration.accountId,
-      accountName: integration.account?.name ?? null,
+      // accountName: integration.account?.name ?? null,
       vkAdsAccountId: integration.vkAdsAccountId,
       vkAdsCabinetId: integration.vkAdsCabinetId,
     }));
@@ -144,8 +144,7 @@ export class VkAdsTestService {
       runtimeStatus:
         runtimeStateByTestId.get(test.id)?.runtimeStatus ??
         (test.vkCampaignId == null ? 'unknown' : 'error'),
-      runtimeIssue:
-        runtimeStateByTestId.get(test.id)?.runtimeIssue ?? null,
+      runtimeIssue: runtimeStateByTestId.get(test.id)?.runtimeIssue ?? null,
       canToggleRuntime:
         test.vkCampaignId != null &&
         !this.isRuntimeToggleDisabled(
@@ -507,23 +506,5 @@ export class VkAdsTestService {
           : NaN;
 
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }
-
-  private formatIntegrationName(
-    integration: Awaited<
-      ReturnType<VkAdsTestRepository['listActiveIntegrations']>
-    >[number],
-  ) {
-    const parts = [
-      integration.account?.name || integration.account?.code,
-      integration.vkAdsAccountId
-        ? `VK account ${integration.vkAdsAccountId}`
-        : '',
-      integration.vkAdsCabinetId ? `cabinet ${integration.vkAdsCabinetId}` : '',
-    ].filter(Boolean);
-
-    return parts.length
-      ? parts.join(' / ')
-      : `VK Ads integration #${integration.id}`;
   }
 }

@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VkAdsService } from './vk-ads.service';
-import { Prisma } from '@prisma/client';
 import axios from 'axios';
 
 type Project = 'neon' | 'book';
@@ -26,8 +25,8 @@ export class VkAdsStatsService {
     date_from: string,
     date_to: string | undefined,
     items: any[],
+    integrationId?: number,
   ) {
-    const upserts: Prisma.PrismaPromise<any>[] = [];
     const bulkMode = String(process.env.VK_ADS_BULK_INSERT || '') === '1';
     const bulkRows: any[] = [];
 
@@ -72,18 +71,47 @@ export class VkAdsStatsService {
       // поэтому не полагаемся на items.days и всегда используем date_from как дату записи.
       const date = date_from;
       const total = it?.total ?? null;
+      const legacyWhere =
+        integrationId !== undefined
+          ? {
+              integrationId,
+              entity,
+              entityId,
+              date,
+            }
+          : {
+              project,
+              entity,
+              entityId,
+              date,
+            };
+      const data = {
+        integrationId: integrationId ?? null,
+        project,
+        entity,
+        entityId,
+        date,
+        total,
+        ...baseMeta,
+      };
       if (bulkMode) {
-        bulkRows.push({ project, entity, entityId, date, total, ...baseMeta });
+        bulkRows.push(data);
       } else {
-        upserts.push(
-          this.prisma.vkAdsDailyStat.upsert({
-            where: {
-              project_entity_entityId_date: { project, entity, entityId, date },
-            },
-            create: { project, entity, entityId, date, total, ...baseMeta },
-            update: { total, ...baseMeta },
-          }),
-        );
+        const existing = await this.prisma.vkAdsDailyStat.findFirst({
+          where: legacyWhere,
+          select: { id: true },
+          orderBy: { id: 'asc' },
+        });
+
+        if (existing) {
+          await this.prisma.vkAdsDailyStat.update({
+            where: { id: existing.id },
+            data,
+          });
+          continue;
+        }
+
+        await this.prisma.vkAdsDailyStat.create({ data });
       }
     }
 
@@ -91,13 +119,16 @@ export class VkAdsStatsService {
     if (bulkMode) {
       // Быстрый путь: очищаем срез дня и вставляем пачкой
       await this.prisma.$transaction([
-        this.prisma.vkAdsDailyStat.deleteMany({ where: { project, entity, date: date_from } }),
+        this.prisma.vkAdsDailyStat.deleteMany({
+          where:
+            integrationId !== undefined
+              ? { integrationId, entity, date: date_from }
+              : { project, entity, date: date_from },
+        }),
       ]);
       if (bulkRows.length) {
         await this.prisma.vkAdsDailyStat.createMany({ data: bulkRows });
       }
-    } else {
-      if (upserts.length) await this.prisma.$transaction(upserts);
     }
   }
 
@@ -107,7 +138,11 @@ export class VkAdsStatsService {
     entity: Entity,
     date_from: string,
     date_to?: string,
+    options?: { integrationId?: number },
   ) {
+    const integrationScope = options?.integrationId
+      ? `integrationId=${options.integrationId}`
+      : `project=${project}`;
     // Запрещаем будущую дату начала и ограничиваем конец сегодняшним днем
     const today = new Date();
     const todayYmd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
@@ -127,8 +162,12 @@ export class VkAdsStatsService {
     const end = date_to ? parse(date_to) : start;
     const paceMs = Math.max(0, Number(process.env.VK_ADS_SEED_PACE_MS) || 600);
     const dayRetries = Math.max(1, Number(process.env.VK_ADS_SEED_DAY_RETRIES) || 4);
-    this.logger.log(`[collectRange] project=${project} entity=${entity} from=${date_from} to=${date_to || date_from}`);
-    await this.notify(`VK ADS: start ${project} ${entity} ${date_from}..${date_to || date_from}`);
+    this.logger.log(
+      `[collectRange] ${integrationScope} entity=${entity} from=${date_from} to=${date_to || date_from}`,
+    );
+    await this.notify(
+      `VK ADS: start ${integrationScope} ${entity} ${date_from}..${date_to || date_from}`,
+    );
 
     // Prefetch: собрать один раз список IDs для сущности и подставлять его в DTO
     let idsCsv: string | undefined;
@@ -140,11 +179,32 @@ export class VkAdsStatsService {
         while (true) {
           let resp: any;
           if (entity === 'ad_plans') {
-            resp = await this.vk.getAdPlansDay({ project, date_from: refDay, date_to: refDay, limit: limitEnum, offset: off } as any);
+            resp = await this.vk.getAdPlansDay({
+              project,
+              integrationId: options?.integrationId,
+              date_from: refDay,
+              date_to: refDay,
+              limit: limitEnum,
+              offset: off,
+            } as any);
           } else if (entity === 'ad_groups') {
-            resp = await this.vk.getAdGroupsDay({ project, date_from: refDay, date_to: refDay, limit: limitEnum, offset: off } as any);
+            resp = await this.vk.getAdGroupsDay({
+              project,
+              integrationId: options?.integrationId,
+              date_from: refDay,
+              date_to: refDay,
+              limit: limitEnum,
+              offset: off,
+            } as any);
           } else {
-            resp = await this.vk.getBannersDay({ project, date_from: refDay, date_to: refDay, limit: limitEnum, offset: off } as any);
+            resp = await this.vk.getBannersDay({
+              project,
+              integrationId: options?.integrationId,
+              date_from: refDay,
+              date_to: refDay,
+              limit: limitEnum,
+              offset: off,
+            } as any);
           }
           const items = Array.isArray(resp?.items) ? resp.items : [];
           for (const it of items) {
@@ -168,32 +228,70 @@ export class VkAdsStatsService {
       const day = fmt(cur);
       const limit = 250;
       let offset = 0;
-      this.logger.log(`[day:start] project=${project} entity=${entity} day=${day}`);
-      await this.notify(`VK ADS: day start ${project} ${entity} ${day}`);
+      this.logger.log(
+        `[day:start] ${integrationScope} entity=${entity} day=${day}`,
+      );
+      await this.notify(
+        `VK ADS: day start ${integrationScope} ${entity} ${day}`,
+      );
       let pageDone = false;
       while (!pageDone) {
         let attempt = 0;
         while (attempt < dayRetries) {
           try {
-            this.logger.log(`[page:fetch] project=${project} entity=${entity} day=${day} offset=${offset} limit=${limit}`);
+            this.logger.log(
+              `[page:fetch] ${integrationScope} entity=${entity} day=${day} offset=${offset} limit=${limit}`,
+            );
             let resp: any;
             if (entity === 'ad_plans') {
-              const dto: any = { project, date_from: day, date_to: day, limit, offset };
+              const dto: any = {
+                project,
+                integrationId: options?.integrationId,
+                date_from: day,
+                date_to: day,
+                limit,
+                offset,
+              };
               if (idsCsv) dto.ids = idsCsv;
               resp = await this.vk.getAdPlansDay(dto);
             } else if (entity === 'ad_groups') {
-              const dto: any = { project, date_from: day, date_to: day, limit, offset };
+              const dto: any = {
+                project,
+                integrationId: options?.integrationId,
+                date_from: day,
+                date_to: day,
+                limit,
+                offset,
+              };
               if (idsCsv) dto.ids = idsCsv;
               resp = await this.vk.getAdGroupsDay(dto);
             } else {
-              const dto: any = { project, date_from: day, date_to: day, limit, offset };
+              const dto: any = {
+                project,
+                integrationId: options?.integrationId,
+                date_from: day,
+                date_to: day,
+                limit,
+                offset,
+              };
               if (idsCsv) dto.ids = idsCsv;
               resp = await this.vk.getBannersDay(dto);
             }
             const items = Array.isArray(resp?.items) ? resp.items : [];
-            this.logger.log(`[page:resp] project=${project} entity=${entity} day=${day} items=${items.length} count=${resp?.count ?? items.length}`);
-            await this.persistStats(project, entity, day, day, items);
-            this.logger.log(`[persist:done] project=${project} entity=${entity} day=${day} saved=${items.length}`);
+            this.logger.log(
+              `[page:resp] ${integrationScope} entity=${entity} day=${day} items=${items.length} count=${resp?.count ?? items.length}`,
+            );
+            await this.persistStats(
+              project,
+              entity,
+              day,
+              day,
+              items,
+              options?.integrationId,
+            );
+            this.logger.log(
+              `[persist:done] ${integrationScope} entity=${entity} day=${day} saved=${items.length}`,
+            );
             const count: number = Number(resp?.count || items.length);
             offset += limit;
             if (paceMs) await new Promise((r) => setTimeout(r, paceMs));
@@ -203,27 +301,43 @@ export class VkAdsStatsService {
             const status = typeof e?.getStatus === 'function' ? e.getStatus() : e?.status;
             if (status === 429) {
               const backoff = Math.min(5000, 1000 * Math.pow(2, attempt));
-              this.logger.warn(`[429] project=${project} entity=${entity} day=${day} offset=${offset} attempt=${attempt + 1}/${dayRetries} backoffMs=${backoff}`);
+              this.logger.warn(
+                `[429] ${integrationScope} entity=${entity} day=${day} offset=${offset} attempt=${attempt + 1}/${dayRetries} backoffMs=${backoff}`,
+              );
               await new Promise((r) => setTimeout(r, backoff));
               attempt++;
               continue;
             }
-            this.logger.error(`[error] project=${project} entity=${entity} day=${day} offset=${offset} msg=${e?.message || e}`);
-            await this.notify(`VK ADS: ERROR ${project} ${entity} ${day}\n${e?.message || e}`);
+            this.logger.error(
+              `[error] ${integrationScope} entity=${entity} day=${day} offset=${offset} msg=${e?.message || e}`,
+            );
+            await this.notify(
+              `VK ADS: ERROR ${integrationScope} ${entity} ${day}\n${e?.message || e}`,
+            );
             throw e;
           }
         }
         if (attempt >= dayRetries) {
-          this.logger.warn(`Skip ${entity} ${project} ${day} after ${dayRetries} retries (429)`);
-          await this.notify(`VK ADS: WARN skip ${project} ${entity} ${day} after ${dayRetries} retries (429)`);
+          this.logger.warn(
+            `Skip ${entity} ${integrationScope} ${day} after ${dayRetries} retries (429)`,
+          );
+          await this.notify(
+            `VK ADS: WARN skip ${integrationScope} ${entity} ${day} after ${dayRetries} retries (429)`,
+          );
           break;
         }
       }
-      this.logger.log(`[day:done] project=${project} entity=${entity} day=${day}`);
-      await this.notify(`VK ADS: day done ${project} ${entity} ${day}`);
+      this.logger.log(
+        `[day:done] ${integrationScope} entity=${entity} day=${day}`,
+      );
+      await this.notify(`VK ADS: day done ${integrationScope} ${entity} ${day}`);
     }
-    this.logger.log(`[collectRange:done] project=${project} entity=${entity} from=${date_from} to=${date_to || date_from}`);
-    await this.notify(`VK ADS: done ${project} ${entity} ${date_from}..${date_to || date_from}`);
+    this.logger.log(
+      `[collectRange:done] ${integrationScope} entity=${entity} from=${date_from} to=${date_to || date_from}`,
+    );
+    await this.notify(
+      `VK ADS: done ${integrationScope} ${entity} ${date_from}..${date_to || date_from}`,
+    );
   }
 
   private async notify(text: string) {

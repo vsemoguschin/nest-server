@@ -51,10 +51,17 @@ export interface StatsDayResponse<TExtra = {}> {
 // Query DTO for: GET /vk-ads/ad_plans/:id/groups/statistics/day
 // Same as StatisticsDayDto but without `entity` and without `ids`
 export class StatisticsDayGroupsDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @IsIn(['neon', 'book'])
-  project!: 'neon' | 'book';
+  project?: 'neon' | 'book';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  integrationId?: number;
 
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsNotFutureYmd({ message: 'Дата начала не может быть будущей' })
@@ -79,10 +86,17 @@ export class StatisticsDayGroupsDto {
 // Query DTO for: GET /vk-ads/ad_plans/statistics/day
 // Same filters as StatisticsDayDto, but without `entity`.
 export class StatisticsDayAdPlansDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @IsIn(['neon', 'book'])
-  project!: 'neon' | 'book';
+  project?: 'neon' | 'book';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  integrationId?: number;
 
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsNotFutureYmd({ message: 'Дата начала не может быть будущей' })
@@ -97,10 +111,17 @@ export class StatisticsDayAdPlansDto {
 // Query DTO for: GET /vk-ads/banners/statistics/day
 // Similar to groups DTO, but ids correspond to banners and `status` applies to banner status.
 export class StatisticsDayBannersDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @IsIn(['neon', 'book'])
-  project!: 'neon' | 'book';
+  project?: 'neon' | 'book';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  integrationId?: number;
 
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsNotFutureYmd({ message: 'Дата начала не может быть будущей' })

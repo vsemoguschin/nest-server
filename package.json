@@ -38,6 +38,11 @@
     "seed:vk-callback-test": "ts-node --transpile-only src/seeds/seed-vk-callback-test.ts",
     "seed:find-task-order-master-report": "ts-node --transpile-only src/seeds/seed-find-task-order-master-report.ts",
     "seed:merge-expense-categories-subscriptions": "ts-node --transpile-only src/seeds/seed-merge-expense-categories-subscriptions.ts",
+    "seed:vk-ads-integration-projects": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-integration-projects.ts",
+    "seed:vk-ads-daily-stat-integration-backfill": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-daily-stat-integration-backfill.ts",
+    "seed:vk-ads-collect-one-day": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-collect-one-day.ts",
+    "seed:vk-ads-sync-expenses": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-sync-expenses.ts",
+    "seed:vk-ads-stat-matching-diagnostics": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-stat-matching-diagnostics.ts",
     "transfer:users-to-printer": "ts-node --transpile-only -r tsconfig-paths/register src/scripts/transfer-users-to-printer.ts"
   },
   "dependencies": {

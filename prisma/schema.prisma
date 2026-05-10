@@ -40,6 +40,8 @@ model Project {
   operationPositions    OperationPosition[]
   counterPartiesIncome  CounterParty[]      @relation("CounterPartyIncomeProject")
   counterPartiesOutcome CounterParty[]      @relation("CounterPartyOutcomeProject")
+  vkAdsAccountIntegrations VkAdsAccountIntegration[]
+  adSources                AdSource[]
 }
 
 // ПРОСТРАНСТВО
@@ -394,7 +396,7 @@ model DealAudit {
   user   User? @relation(fields: [userId], references: [id])
 }
 
-// Источники сделок
+// Источники рекламы
 model AdSource {
   id         Int         @id @default(autoincrement())
   title      String      @unique
@@ -406,6 +408,13 @@ model AdSource {
 
   groupId Int?
   group   Group? @relation(fields: [groupId], references: [id])
+
+  projectId Int?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  vkAdsIntegration VkAdsAccountIntegration?
+
+  @@index([projectId])
 }
 
 // Источники сделок
@@ -1631,11 +1640,13 @@ model VkCallbackEvent {
 
 /// Ежедневная статистика VK Ads (агрегированная и бизнес-поля), хранится по дням
 model VkAdsDailyStat {
-  id       Int    @id @default(autoincrement())
-  project  String // 'neon' | 'book'
-  entity   String // 'ad_plans' | 'ad_groups' | 'banners'
-  entityId Int
-  date     String // YYYY-MM-DD
+  id            Int                     @id @default(autoincrement())
+  integrationId Int?
+  integration   VkAdsAccountIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  project       String // 'neon' | 'book'
+  entity        String // 'ad_plans' | 'ad_groups' | 'banners'
+  entityId      Int
+  date          String // YYYY-MM-DD
 
   // Метаданные и связи
   status         String?
@@ -1658,14 +1669,18 @@ model VkAdsDailyStat {
 
   createdAt DateTime @default(now())
 
-  @@unique([project, entity, entityId, date], map: "vkads_unique_entity_per_day")
+  @@index([integrationId])
   @@index([project, entity, date])
+  @@index([integrationId, entity, date])
 }
 
 model VkAdsAccountIntegration {
   id               Int        @id @default(autoincrement())
   accountId        Int
   account          CrmAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  projectId        Int?
+  project          Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  name             String?
   isActive         Boolean    @default(true)
   baseUrl          String?
   tokenEnvKey      String?
@@ -1675,10 +1690,15 @@ model VkAdsAccountIntegration {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
+  adSourceId  Int?      @unique
+  adSource    AdSource? @relation(fields: [adSourceId], references: [id], onDelete: SetNull)
+
+  dailyStats  VkAdsDailyStat[]
   tests       VkAdsTest[]
   videoAssets VkAdsTestVideoAsset[]
 
   @@index([accountId])
+  @@index([projectId])
   @@index([isActive])
 }
 

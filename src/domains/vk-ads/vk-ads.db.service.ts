@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   StatsDayResponse,
@@ -59,7 +59,8 @@ export class VkAdsDbService {
 
   private async getFromDb(
     entity: Entity,
-    project: 'neon' | 'book',
+    project: 'neon' | 'book' | undefined,
+    integrationId: number | undefined,
     date_from: string,
     date_to?: string,
     idsCsv?: string,
@@ -69,7 +70,16 @@ export class VkAdsDbService {
     sort_by = 'base.shows',
     dir: 'asc' | 'desc' = 'desc',
   ): Promise<StatsDayResponse<any>> {
-    const where: any = { project, entity, date: { gte: date_from } };
+    const where: any = { entity, date: { gte: date_from } };
+    if (integrationId !== undefined) {
+      where.integrationId = integrationId;
+    } else if (project) {
+      where.project = project;
+    } else {
+      throw new BadRequestException(
+        'Either project or integrationId is required for VK Ads statistics',
+      );
+    }
     if (date_to) where.date.lte = date_to;
     const ids: number[] = idsCsv
       ? String(idsCsv)
@@ -184,6 +194,7 @@ export class VkAdsDbService {
     return this.getFromDb(
       'ad_plans',
       q.project,
+      q.integrationId,
       q.date_from,
       q.date_to,
       undefined,
@@ -204,6 +215,7 @@ export class VkAdsDbService {
     return this.getFromDb(
       'ad_groups',
       q.project,
+      q.integrationId,
       q.date_from,
       q.date_to,
       (q as any).ids,
@@ -224,6 +236,7 @@ export class VkAdsDbService {
     return this.getFromDb(
       'banners',
       q.project,
+      q.integrationId,
       q.date_from,
       q.date_to,
       (q as any).ids,

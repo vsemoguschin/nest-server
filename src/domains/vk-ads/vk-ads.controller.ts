@@ -1,18 +1,28 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { VkAdsDbService } from './vk-ads.db.service';
+import { VkAdsIntegrationsService } from './vk-ads-integrations.service';
 import {
   StatisticsDayAdPlansDto,
   StatisticsDayGroupsDto,
   StatisticsDayBannersDto,
 } from './dto/statistics-day.dto';
-import {
-  AdPlanIdParamDto,
-} from './dto/ad-plans.dto';
-
 @Controller('vk-ads')
 export class VkAdsController {
   // Перевод на БД: по умолчанию читаем из VkAdsDailyStat через VkAdsDbService
-  constructor(private readonly db: VkAdsDbService) {}
+  constructor(
+    private readonly db: VkAdsDbService,
+    private readonly integrations: VkAdsIntegrationsService,
+  ) {}
+
+  @Get('integrations')
+  listIntegrations() {
+    return this.integrations.listActiveIntegrations();
+  }
+
+  @Get('ad-sources')
+  listAdSources() {
+    return this.integrations.listAdSources();
+  }
 
   // Ad Plans statistics (day) – entity fixed to ad_plans
   @Get('ad_plans/statistics/day')
