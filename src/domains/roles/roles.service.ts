@@ -19,7 +19,6 @@ export class RolesService {
     });
 
     if (existingRole) {
-      
       throw new ConflictException(
         `Роль с shortName "${createRoleDto.shortName}" уже существует.`,
       );
@@ -53,12 +52,13 @@ export class RolesService {
         'MOV',
         'FINANCIER',
         'GUEST',
-        'ROP'
+        'ROP',
+        'PRINTER',
       ],
       ['ROD']: ['DIZ'],
       ['ROV']: ['MOV'],
       ['DO']: ['MOP', 'MOV', 'ROP', 'ROV'],
-      ['RP']: ['FRZ', 'LAM', 'MASTER', 'PACKER'],
+      ['RP']: ['FRZ', 'LAM', 'MASTER', 'PACKER', 'PRINTER'],
     };
     const roles = await this.prisma.role.findMany({
       where: {
