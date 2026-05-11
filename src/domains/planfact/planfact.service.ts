@@ -2687,34 +2687,35 @@ export class PlanfactService {
       }
     }
 
-    // Удаляем все существующие позиции
-    await this.prisma.operationPosition.deleteMany({
-      where: {
-        originalOperationId: originalOperation.id,
-      },
-    });
-
-    // Создаем новые позиции
+    // Удаляем и пересоздаём позиции атомарно, чтобы исключить race condition с hourly sync:
+    // без транзакции sync мог видеть пустой список позиций в окне между deleteMany и create.
     const fallbackPeriod = originalOperation.operationDate?.slice(0, 7);
-    const createdPositions = await Promise.all(
-      positionsData.map((positionData) =>
-        this.prisma.operationPosition.create({
-          data: {
-            amount: positionData.amount,
-            period: positionData.period || fallbackPeriod,
-            originalOperationId: originalOperation.id,
-            counterPartyId: positionData.counterPartyId,
-            expenseCategoryId: positionData.expenseCategoryId,
-            projectId: positionData.projectId ?? null,
-          },
-          include: {
-            counterParty: true,
-            expenseCategory: true,
-            project: true,
-          },
-        }),
-      ),
-    );
+    const createdPositions = await this.prisma.$transaction(async (tx) => {
+      await tx.operationPosition.deleteMany({
+        where: { originalOperationId: originalOperation.id },
+      });
+
+      return Promise.all(
+        positionsData.map((positionData) =>
+          tx.operationPosition.create({
+            data: {
+              source: 'MANUAL',
+              amount: positionData.amount,
+              period: positionData.period || fallbackPeriod,
+              originalOperationId: originalOperation.id,
+              counterPartyId: positionData.counterPartyId,
+              expenseCategoryId: positionData.expenseCategoryId,
+              projectId: positionData.projectId ?? null,
+            },
+            include: {
+              counterParty: true,
+              expenseCategory: true,
+              project: true,
+            },
+          }),
+        ),
+      );
+    });
 
     return {
       success: true,

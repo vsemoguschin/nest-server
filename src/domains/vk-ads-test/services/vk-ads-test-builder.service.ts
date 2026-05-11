@@ -468,6 +468,26 @@ export class VkAdsTestBuilderService {
   }): Promise<number> {
     const bannerPayload = this.buildBannerPayloadFromResolvedTemplate(params);
 
+    const resolvedContent = bannerPayload.content as Record<string, { id: number }> | undefined;
+    const resolvedVideoSlot = resolvedContent
+      ? Object.entries(resolvedContent).find(([k]) => k.startsWith('video_'))
+      : undefined;
+    const templateBanner = this.asRecord(
+      this.asRecord(params.template.banner)?.content,
+    );
+    const templateVideoSlot = templateBanner
+      ? Object.entries(templateBanner).find(([k]) => k.startsWith('video_'))
+      : undefined;
+
+    this.logger.debug(
+      `[cities] createBannerFromResolvedTemplate` +
+        ` | name=${params.name}` +
+        ` | selectedVideoContentId=${params.creative.videoAssetVkContentId ?? 'none'}` +
+        ` | resolvedSlot=${resolvedVideoSlot ? `${resolvedVideoSlot[0]}=${resolvedVideoSlot[1].id}` : 'none'}` +
+        ` | finalContentVideoId=${resolvedVideoSlot ? resolvedVideoSlot[1].id : 'none'}` +
+        ` | templateVideoId=${templateVideoSlot ? String(this.asRecord(templateVideoSlot[1])?.id ?? 'n/a') : 'none'}`,
+    );
+
     this.logBannerPayload({
       variantKey: params.name,
       payload: bannerPayload,
@@ -502,6 +522,18 @@ export class VkAdsTestBuilderService {
       'VK Ads banner template is missing textblocks',
     );
 
+    const videoContentId = this.asNumber(params.creative.videoAssetVkContentId);
+    const width = this.asNumber(params.creative.videoAssetWidth);
+    const height = this.asNumber(params.creative.videoAssetHeight);
+
+    if (videoContentId === null || width === null || height === null) {
+      throw new Error(
+        'VK Ads creative videoAssetId is required to build cities banner',
+      );
+    }
+
+    const videoSlotProfile = this.resolveVideoSlotProfile(width, height);
+
     return {
       name: params.name,
       status: 'blocked',
@@ -510,7 +542,11 @@ export class VkAdsTestBuilderService {
           id: params.primaryUrlId,
         },
       },
-      content: this.cloneTemplateContent(templateContent),
+      content: this.buildBannerContentFromTemplate(
+        templateContent,
+        videoContentId,
+        videoSlotProfile,
+      ),
       textblocks: this.buildBannerTextblocksFromTemplate(
         templateTextblocks,
         params.creative,

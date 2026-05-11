@@ -6,6 +6,7 @@ import {
   StatisticsDayGroupsDto,
   StatisticsDayBannersDto,
 } from './dto/statistics-day.dto';
+import { AdSourcesQueryDto } from './dto/ad-sources-query.dto';
 @Controller('vk-ads')
 export class VkAdsController {
   // Перевод на БД: по умолчанию читаем из VkAdsDailyStat через VkAdsDbService
@@ -20,8 +21,8 @@ export class VkAdsController {
   }
 
   @Get('ad-sources')
-  listAdSources() {
-    return this.integrations.listAdSources();
+  listAdSources(@Query() q: AdSourcesQueryDto) {
+    return this.integrations.listAdSources(q);
   }
 
   // Ad Plans statistics (day) – entity fixed to ad_plans

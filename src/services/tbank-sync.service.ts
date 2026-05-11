@@ -397,97 +397,111 @@ export class TbankSyncService {
           ruleProjectId = matchedWithoutCounterParty.projectId;
         }
 
-        const originalOperation = await (
-          this.prisma as unknown as {
-            originalOperationFromTbank: {
-              upsert: (args: {
-                where: { operationId: string };
-                update: Record<string, unknown>;
-                create: Record<string, unknown>;
-              }) => Promise<{ id: number }>;
-            };
-          }
-        ).originalOperationFromTbank.upsert({
-          where: { operationId: op.operationId },
-          update: {
-            operationDate: op.operationDate,
-            typeOfOperation: op.typeOfOperation || 'Unknown',
-            category: op.category || '',
-            description: op.description || '',
-            payPurpose: op.payPurpose || '',
-            accountAmount: op.accountAmount,
-            counterPartyAccount: op.counterParty.account || '',
-            counterPartyInn: op.counterParty.inn || '',
-            counterPartyKpp: op.counterParty.kpp || '',
-            counterPartyBic: op.counterParty.bankBic || '',
-            counterPartyBankName: op.counterParty.bankName || '',
-            counterPartyTitle: op.counterParty.name || '',
-            expenseCategoryId: op.expenseCategoryId,
-            expenseCategoryName: op.expenseCategoryName,
-            accountId: accountId,
-          },
-          create: {
-            operationId: op.operationId,
-            operationDate: op.operationDate,
-            typeOfOperation: op.typeOfOperation || 'Unknown',
-            category: op.category || '',
-            description: op.description || '',
-            payPurpose: op.payPurpose || '',
-            accountAmount: op.accountAmount,
-            counterPartyAccount: op.counterParty.account || '',
-            counterPartyInn: op.counterParty.inn || '',
-            counterPartyKpp: op.counterParty.kpp || '',
-            counterPartyBic: op.counterParty.bankBic || '',
-            counterPartyBankName: op.counterParty.bankName || '',
-            counterPartyTitle: op.counterParty.name || '',
-            expenseCategoryId: op.expenseCategoryId,
-            expenseCategoryName: op.expenseCategoryName,
-            accountId: accountId,
-          },
-        });
-
-        // Проверяем, есть ли уже позиции у операции
-        const existingPositions =
-          originalOperation?.id != null
-            ? await this.prisma.operationPosition.findMany({
-                where: {
-                  originalOperationId: originalOperation.id,
-                },
-              })
-            : [];
-
-        // Если позиции уже есть, пропускаем создание новых
-        if (existingPositions.length > 0) {
-          if (verbose) {
-            this.logger.log(
-              `Операция ${op.operationId} уже имеет позиции, пропускаем создание позиций`,
-            );
-          }
-          savedCount++;
-          continue;
-        }
-
         const expenseCategoryId = matchedExpenseCategoryId;
         const finalProjectId = ruleProjectId ?? defaultProjectId;
 
-        if (verbose && expenseCategoryId) {
+        // Атомарная операция: upsert записи банка + проверка позиций + создание позиции.
+        // Транзакция исключает race condition между hourly sync и ручным редактированием:
+        // если позиции уже есть внутри транзакции — создание пропускается.
+        const positionCreated = await this.prisma.$transaction(async (tx) => {
+          const savedOperation = await (
+            tx as unknown as {
+              originalOperationFromTbank: {
+                upsert: (args: {
+                  where: { operationId: string };
+                  update: Record<string, unknown>;
+                  create: Record<string, unknown>;
+                }) => Promise<{ id: number }>;
+              };
+            }
+          ).originalOperationFromTbank.upsert({
+            where: { operationId: op.operationId },
+            update: {
+              operationDate: op.operationDate,
+              typeOfOperation: op.typeOfOperation || 'Unknown',
+              category: op.category || '',
+              description: op.description || '',
+              payPurpose: op.payPurpose || '',
+              accountAmount: op.accountAmount,
+              counterPartyAccount: op.counterParty.account || '',
+              counterPartyInn: op.counterParty.inn || '',
+              counterPartyKpp: op.counterParty.kpp || '',
+              counterPartyBic: op.counterParty.bankBic || '',
+              counterPartyBankName: op.counterParty.bankName || '',
+              counterPartyTitle: op.counterParty.name || '',
+              expenseCategoryId: op.expenseCategoryId,
+              expenseCategoryName: op.expenseCategoryName,
+              accountId: accountId,
+            },
+            create: {
+              operationId: op.operationId,
+              operationDate: op.operationDate,
+              typeOfOperation: op.typeOfOperation || 'Unknown',
+              category: op.category || '',
+              description: op.description || '',
+              payPurpose: op.payPurpose || '',
+              accountAmount: op.accountAmount,
+              counterPartyAccount: op.counterParty.account || '',
+              counterPartyInn: op.counterParty.inn || '',
+              counterPartyKpp: op.counterParty.kpp || '',
+              counterPartyBic: op.counterParty.bankBic || '',
+              counterPartyBankName: op.counterParty.bankName || '',
+              counterPartyTitle: op.counterParty.name || '',
+              expenseCategoryId: op.expenseCategoryId,
+              expenseCategoryName: op.expenseCategoryName,
+              accountId: accountId,
+            },
+          });
+
+          // Повторная проверка внутри транзакции — атомарно, без race condition.
+          const existingCount = await tx.operationPosition.count({
+            where: { originalOperationId: savedOperation.id },
+          });
+
+          if (verbose) {
+            this.logger.log(
+              `[sync] operationId=${op.operationId} originalOperationId=${savedOperation.id} existingPositions=${existingCount}`,
+            );
+          }
+
+          if (existingCount > 0) {
+            if (verbose) {
+              this.logger.log(
+                `[sync] operationId=${op.operationId} — позиции уже есть (${existingCount}), пропускаем`,
+              );
+            }
+            return false;
+          }
+
+          await tx.operationPosition.create({
+            data: {
+              source: 'AUTO_SYNC',
+              amount: op.accountAmount,
+              period: op.operationDate?.slice(0, 7),
+              originalOperationId: savedOperation.id,
+              counterPartyId: counterParty.id,
+              expenseCategoryId: expenseCategoryId,
+              projectId: finalProjectId,
+            },
+          });
+
+          if (verbose) {
+            this.logger.log(
+              `[sync] operationId=${op.operationId} — создана AUTO_SYNC позиция` +
+                (expenseCategoryId ? ` категория=${expenseCategoryId}` : '') +
+                ` проект=${finalProjectId}`,
+            );
+          }
+
+          return true;
+        });
+
+        savedCount++;
+        if (positionCreated && verbose && expenseCategoryId) {
           this.logger.log(
             `Операция ${op.operationId}: присвоена категория ${expenseCategoryId} по AutoCategoryRule`,
           );
         }
-
-        await this.prisma.operationPosition.create({
-          data: {
-            amount: op.accountAmount,
-            period: op.operationDate?.slice(0, 7),
-            originalOperationId: originalOperation?.id,
-            counterPartyId: counterParty.id,
-            expenseCategoryId: expenseCategoryId,
-            projectId: finalProjectId,
-          },
-        });
-
-        savedCount++;
         if (op.operationDate > lastOperationDate) {
           lastOperationDate = op.operationDate;
         }

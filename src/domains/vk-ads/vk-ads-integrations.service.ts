@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AdSourcesQueryDto } from './dto/ad-sources-query.dto';
 
 export type VkAdsStatsProjectKey = 'neon' | 'book';
 
@@ -37,11 +38,13 @@ export type AdSourceListItem = {
   title: string;
   workSpaceId: number;
   groupId: number | null;
+  groupName: string | null;
   projectId: number | null;
   projectName: string | null;
   projectCode: string | null;
   vkIntegrationId: number | null;
   vkIntegrationName: string | null;
+  totalExpense: number;
 };
 
 export type VkAdsIntegrationAuthContext = {
@@ -165,29 +168,65 @@ export class VkAdsIntegrationsService {
     }));
   }
 
-  async listAdSources(): Promise<AdSourceListItem[]> {
-    const sources = await this.prisma.adSource.findMany({
-      orderBy: { id: 'asc' },
-      include: {
-        project: {
-          select: { id: true, name: true, code: true },
+  async listAdSources(query: AdSourcesQueryDto = {}): Promise<AdSourceListItem[]> {
+    const { dateFrom, dateTo, projectId } = query;
+
+    const projectWhere =
+      projectId === 'none'
+        ? { projectId: null }
+        : projectId && projectId !== 'all'
+          ? { projectId: Number(projectId) }
+          : {};
+
+    const [sources, expenseSums] = await Promise.all([
+      this.prisma.adSource.findMany({
+        where: projectWhere,
+        orderBy: { id: 'asc' },
+        include: {
+          project: {
+            select: { id: true, name: true, code: true },
+          },
+          group: {
+            select: { id: true, title: true },
+          },
+          vkAdsIntegration: {
+            select: { id: true, name: true },
+          },
         },
-        vkAdsIntegration: {
-          select: { id: true, name: true },
+      }),
+      this.prisma.adExpense.groupBy({
+        by: ['adSourceId'],
+        where: {
+          ...(dateFrom || dateTo
+            ? {
+                date: {
+                  ...(dateFrom ? { gte: dateFrom } : {}),
+                  ...(dateTo ? { lte: dateTo } : {}),
+                },
+              }
+            : {}),
         },
-      },
-    });
+        _sum: { price: true },
+      }),
+    ]);
+
+    const sumBySourceId = new Map<number, number>();
+    for (const row of expenseSums) {
+      sumBySourceId.set(row.adSourceId, row._sum.price ?? 0);
+    }
 
     return sources.map((s) => ({
       id: s.id,
       title: s.title,
       workSpaceId: s.workSpaceId,
       groupId: s.groupId ?? null,
+      groupName: (s as any).group?.title ?? null,
       projectId: (s as any).projectId ?? null,
       projectName: (s as any).project?.name ?? null,
       projectCode: (s as any).project?.code ?? null,
       vkIntegrationId: (s as any).vkAdsIntegration?.id ?? null,
       vkIntegrationName: (s as any).vkAdsIntegration?.name ?? null,
+      totalExpense: sumBySourceId.get(s.id) ?? 0,
     }));
   }
 

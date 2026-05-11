@@ -924,6 +924,11 @@ model OperationPosition {
   amount Float
   period String?
 
+  // AUTO_SYNC — создана автоматически hourly sync; MANUAL — создана/обновлена вручную.
+  // Partial unique index в БД гарантирует: не более одной AUTO_SYNC позиции на originalOperationId.
+  // Создаётся вручную через SQL-миграцию (Prisma не поддерживает partial unique index).
+  source String @default("MANUAL")
+
   operationId Int? // Связь с операцией
   operation   Operation? @relation(fields: [operationId], references: [id])
 
