@@ -5,170 +5,6 @@ import {
   VkAdsTestAuthService,
 } from '../services/vk-ads-test-auth.service';
 
-// ---------------------------------------------------------------------------
-// Lightweight rate limiter — no external dependencies.
-//
-// Two independent queues:
-//   write  — one serial queue per integrationId (launch/mutation path)
-//   read   — global queue, concurrency=RATE_READ_CONCURRENCY (status polling path)
-//
-// Each queue enforces a minimum gap (minTime) between consecutive dispatches.
-// When a 429 is received the shared cooldown is set so BOTH queues pause.
-// ---------------------------------------------------------------------------
-
-const RATE_WRITE_MIN_TIME_MS = 500;        // min gap between writes per integration
-const RATE_READ_MIN_TIME_MS = 1_000;       // min gap between reads (global)
-const RATE_READ_CONCURRENCY = 1;           // max parallel read requests
-const RATE_429_COOLDOWN_BASE_MS = 30_000;  // global pause on 429 before queue resumes
-
-// getBanner detail reads get fewer retries — they are not critical and each
-// 429 retry burns global cooldown budget that the launch queue needs.
-const BANNER_READ_MAX_RETRIES = 2;
-
-// TTL cache for getBanner detail — template discovery calls the same banner
-// id multiple times across concurrent requests.
-const BANNER_DETAIL_CACHE_TTL_MS = 10 * 60 * 1_000; // 10 minutes
-
-class VkAdsSerialQueue {
-  private tail: Promise<void> = Promise.resolve();
-  private lastDispatchAt = 0;
-
-  constructor(private readonly minTimeMs: number) {}
-
-  schedule<T>(fn: () => Promise<T>): Promise<T> {
-    const result = this.tail.then(async () => {
-      const elapsed = Date.now() - this.lastDispatchAt;
-      const wait = this.minTimeMs - elapsed;
-      if (wait > 0) {
-        await new Promise<void>((r) => setTimeout(r, wait));
-      }
-      this.lastDispatchAt = Date.now();
-      return fn();
-    });
-    // tail tracks only the scheduling slot, not the result
-    this.tail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
-  }
-}
-
-// VkAdsConcurrentQueue — concurrency + minTime, single drain loop.
-//
-// Waiters are stored as {fn, resolve, reject} tuples.
-// drain() is the ONLY place that dispatches work; it is called once after each
-// release so there is at most one pending setTimeout at any time.
-class VkAdsConcurrentQueue {
-  private running = 0;
-  private lastDispatchAt = 0;
-  private drainScheduled = false;
-  private readonly waiters: Array<{
-    fn: () => Promise<unknown>;
-    resolve: (value: unknown) => void;
-    reject: (reason: unknown) => void;
-  }> = [];
-
-  constructor(
-    private readonly concurrency: number,
-    private readonly minTimeMs: number,
-  ) {}
-
-  schedule<T>(fn: () => Promise<T>): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      this.waiters.push({
-        fn: fn as () => Promise<unknown>,
-        resolve: resolve as (value: unknown) => void,
-        reject,
-      });
-      this.drain();
-    });
-  }
-
-  private drain(): void {
-    if (this.drainScheduled) return;
-
-    if (this.running >= this.concurrency || this.waiters.length === 0) return;
-
-    const elapsed = Date.now() - this.lastDispatchAt;
-    const wait = this.minTimeMs - elapsed;
-
-    if (wait > 0) {
-      this.drainScheduled = true;
-      setTimeout(() => {
-        this.drainScheduled = false;
-        this.dispatch();
-      }, wait);
-    } else {
-      this.dispatch();
-    }
-  }
-
-  private dispatch(): void {
-    if (this.running >= this.concurrency || this.waiters.length === 0) return;
-
-    const waiter = this.waiters.shift();
-    if (!waiter) return;
-
-    this.running += 1;
-    this.lastDispatchAt = Date.now();
-
-    waiter.fn().then(
-      (value) => {
-        waiter.resolve(value);
-        this.release();
-      },
-      (err: unknown) => {
-        waiter.reject(err);
-        this.release();
-      },
-    );
-
-    // Dispatch more if concurrency allows (currently 1, kept generic)
-    this.drain();
-  }
-
-  private release(): void {
-    this.running -= 1;
-    this.drain();
-  }
-}
-
-class VkAdsRateLimiter {
-  private readonly writeQueues = new Map<number, VkAdsSerialQueue>();
-  private readonly readQueue = new VkAdsConcurrentQueue(
-    RATE_READ_CONCURRENCY,
-    RATE_READ_MIN_TIME_MS,
-  );
-  private cooldownUntil = 0;
-
-  scheduleWrite<T>(integrationId: number, fn: () => Promise<T>): Promise<T> {
-    let queue = this.writeQueues.get(integrationId);
-    if (!queue) {
-      queue = new VkAdsSerialQueue(RATE_WRITE_MIN_TIME_MS);
-      this.writeQueues.set(integrationId, queue);
-    }
-    return queue.schedule(() => this.withCooldown(fn));
-  }
-
-  scheduleRead<T>(fn: () => Promise<T>): Promise<T> {
-    return this.readQueue.schedule(() => this.withCooldown(fn));
-  }
-
-  notifyGlobal429(retryAfterMs?: number): void {
-    const pauseMs = retryAfterMs ?? RATE_429_COOLDOWN_BASE_MS;
-    this.cooldownUntil = Math.max(this.cooldownUntil, Date.now() + pauseMs);
-  }
-
-  private async withCooldown<T>(fn: () => Promise<T>): Promise<T> {
-    const remaining = this.cooldownUntil - Date.now();
-    if (remaining > 0) {
-      await new Promise<void>((r) => setTimeout(r, remaining));
-    }
-    return fn();
-  }
-}
-
 type Primitive = string | number | boolean;
 type QueryValue =
   | Primitive
@@ -292,13 +128,6 @@ const RETRY_JITTER_FACTOR = 0.2;
 export class VkAdsTestClient {
   private readonly logger = new Logger(VkAdsTestClient.name);
   private readonly clients = new Map<string, AxiosInstance>();
-  private readonly limiter = new VkAdsRateLimiter();
-  // key: `${integrationId}:${bannerId}` — stores pending Promise so parallel
-  // calls for the same banner coalesce into a single VK request.
-  private readonly bannerDetailCache = new Map<
-    string,
-    { promise: Promise<JsonObject>; expiresAt: number }
-  >();
 
   constructor(private readonly authService: VkAdsTestAuthService) {}
 
@@ -581,35 +410,11 @@ export class VkAdsTestClient {
     bannerId: number | string,
     params?: QueryParams,
   ): Promise<JsonObject> {
-    const cacheKey = `${integrationId}:${bannerId}`;
-    const now = Date.now();
-    const cached = this.bannerDetailCache.get(cacheKey);
-
-    if (cached && now < cached.expiresAt) {
-      return cached.promise;
-    }
-
-    // Store promise immediately so parallel calls coalesce.
-    const promise = this.get<JsonObject>(
+    return this.get<JsonObject>(
       integrationId,
       `/api/v2/banners/${bannerId}.json`,
       params,
     );
-
-    this.bannerDetailCache.set(cacheKey, {
-      promise,
-      expiresAt: now + BANNER_DETAIL_CACHE_TTL_MS,
-    });
-
-    // On error evict — don't cache failures.
-    promise.catch(() => {
-      const entry = this.bannerDetailCache.get(cacheKey);
-      if (entry?.promise === promise) {
-        this.bannerDetailCache.delete(cacheKey);
-      }
-    });
-
-    return promise;
   }
 
   async getLeadForms(
@@ -724,16 +529,14 @@ export class VkAdsTestClient {
     endpoint: string,
     data: unknown[],
   ): Promise<T> {
-    return this.limiter.scheduleWrite(integrationId, async () => {
-      const context = await this.authService.resolveAuthContext(integrationId);
-      const http = this.getHttp(context);
-      const config: AxiosRequestConfig = {
-        method: 'POST',
-        url: endpoint,
-        data,
-      };
-      return this.requestWithRetry<T>(http, config, context);
-    });
+    const context = await this.authService.resolveAuthContext(integrationId);
+    const http = this.getHttp(context);
+    const config: AxiosRequestConfig = {
+      method: 'POST',
+      url: endpoint,
+      data,
+    };
+    return this.requestWithRetry<T>(http, config, context);
   }
 
   private async delete(integrationId: number, endpoint: string): Promise<void> {
@@ -832,22 +635,15 @@ export class VkAdsTestClient {
       data?: JsonObject;
     } = {},
   ): Promise<T> {
-    const isWrite = method === 'POST' || method === 'DELETE';
-    const execute = async () => {
-      const context = await this.authService.resolveAuthContext(integrationId);
-      const http = this.getHttp(context);
-      const config: AxiosRequestConfig = {
-        method,
-        url: endpoint,
-        params: this.normalizeParams(options.params),
-        data: options.data,
-      };
-      return this.requestWithRetry<T>(http, config, context);
+    const context = await this.authService.resolveAuthContext(integrationId);
+    const http = this.getHttp(context);
+    const config: AxiosRequestConfig = {
+      method,
+      url: endpoint,
+      params: this.normalizeParams(options.params),
+      data: options.data,
     };
-
-    return isWrite
-      ? this.limiter.scheduleWrite(integrationId, execute)
-      : this.limiter.scheduleRead(execute);
+    return this.requestWithRetry<T>(http, config, context);
   }
 
   private getHttp(context: VkAdsTestAuthContext): AxiosInstance {
@@ -877,10 +673,7 @@ export class VkAdsTestClient {
   ): Promise<T> {
     const method = String(config.method || 'GET').toUpperCase();
     const endpoint = String(config.url || '');
-    const entity = this.resolveEntityHint(method, endpoint);
-    const maxRetries =
-      entity === 'bannerRead' ? BANNER_READ_MAX_RETRIES : DEFAULT_MAX_RETRIES;
-    const totalAttempts = maxRetries + 1;
+    const totalAttempts = DEFAULT_MAX_RETRIES + 1;
 
     for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
       try {
@@ -919,21 +712,6 @@ export class VkAdsTestClient {
         const jitterMs = Math.floor(backoffMs * RETRY_JITTER_FACTOR * Math.random());
         const delayMs = retryAfterMs ?? backoffMs + jitterMs;
 
-        if (parsed.status === 429) {
-          const cooldownMs = retryAfterMs ?? RATE_429_COOLDOWN_BASE_MS;
-          this.limiter.notifyGlobal429(retryAfterMs);
-          this.logger.warn(
-            JSON.stringify({
-              scope: 'vk-ads-test-client',
-              event: 'limiter.cooldown',
-              integrationId: context.integrationId,
-              url: endpoint,
-              entity,
-              cooldownMs,
-            }),
-          );
-        }
-
         this.logger.warn(
           JSON.stringify({
             scope: 'vk-ads-test-client',
@@ -941,7 +719,6 @@ export class VkAdsTestClient {
             integrationId: context.integrationId,
             method,
             url: endpoint,
-            entity,
             retryAttempt: attempt + 1,
             totalAttempts,
             delayMs,
@@ -960,17 +737,6 @@ export class VkAdsTestClient {
       method,
       endpoint,
     });
-  }
-
-  private resolveEntityHint(method: string, endpoint: string): string {
-    if (endpoint.includes('/ad_plans')) return 'campaign';
-    if (endpoint.includes('/ad_groups') && method === 'POST') return 'adGroupWrite';
-    if (endpoint.includes('/ad_groups')) return 'adGroupRead';
-    if (endpoint.includes('/banners') && method === 'GET') return 'bannerRead';
-    if (endpoint.includes('/banners')) return 'bannerWrite';
-    if (endpoint.includes('/urls')) return 'url';
-    if (endpoint.includes('/content')) return 'content';
-    return 'unknown';
   }
 
   private normalizeParams(

@@ -10,7 +10,6 @@ import { VkAdsTestClient, VkAdsTestClientError } from '../clients/vk-ads-test.cl
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
 import { VkAdsTestBuilderService } from './vk-ads-test-builder.service';
 import { VkAdsTestVideoAssetsService } from './vk-ads-test-video-assets.service';
-import { VkAdsTestRuntimeStatusService } from './vk-ads-test-runtime-status.service';
 
 type LaunchCityRecord = LaunchCitiesDto['cities'][number];
 
@@ -31,7 +30,6 @@ export class VkAdsTestCitiesLaunchService {
     private readonly client: VkAdsTestClient,
     private readonly builder: VkAdsTestBuilderService,
     private readonly videoAssetsService: VkAdsTestVideoAssetsService,
-    private readonly runtimeStatusService: VkAdsTestRuntimeStatusService,
   ) {}
 
   async launchCities(dto: LaunchCitiesDto) {
@@ -166,12 +164,6 @@ export class VkAdsTestCitiesLaunchService {
         }),
         error instanceof Error ? error.stack : String(error),
       );
-      if (launchProgress.campaignId !== null) {
-        this.runtimeStatusService.invalidateCache(
-          dto.accountIntegrationId,
-          launchProgress.campaignId,
-        );
-      }
     });
 
     const refreshedTest = await this.repository.getTestCard(test.id);
@@ -230,14 +222,61 @@ export class VkAdsTestCitiesLaunchService {
       }),
     );
 
-    const sharedUrl = await this.builder.prepareLandingUrl(
-      params.accountIntegrationId,
-      params.landingUrl,
-      VK_ADS_TEST_PACKAGE_ID,
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'prepareLandingUrl.start',
+        testId: params.testId,
+        accountIntegrationId: params.accountIntegrationId,
+        landingUrl: params.landingUrl,
+      }),
     );
-    const bannerTemplate = await this.builder.prepareBannerTemplate(
-      params.accountIntegrationId,
-      VK_ADS_TEST_PACKAGE_ID,
+    let sharedUrl: Awaited<ReturnType<typeof this.builder.prepareLandingUrl>>;
+    try {
+      sharedUrl = await this.builder.prepareLandingUrl(
+        params.accountIntegrationId,
+        params.landingUrl,
+        VK_ADS_TEST_PACKAGE_ID,
+      );
+    } catch (error: unknown) {
+      this.logStepError('prepareLandingUrl.error', params.testId, params.accountIntegrationId, error);
+      throw error;
+    }
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'prepareLandingUrl.ok',
+        testId: params.testId,
+        urlId: sharedUrl.id,
+      }),
+    );
+
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'prepareBannerTemplate.start',
+        testId: params.testId,
+        accountIntegrationId: params.accountIntegrationId,
+      }),
+    );
+    let bannerTemplate: Awaited<ReturnType<typeof this.builder.prepareBannerTemplate>>;
+    try {
+      bannerTemplate = await this.builder.prepareBannerTemplate(
+        params.accountIntegrationId,
+        VK_ADS_TEST_PACKAGE_ID,
+      );
+    } catch (error: unknown) {
+      this.logStepError('prepareBannerTemplate.error', params.testId, params.accountIntegrationId, error);
+      throw error;
+    }
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'prepareBannerTemplate.ok',
+        testId: params.testId,
+        adGroupId: bannerTemplate.adGroupId,
+        bannerId: bannerTemplate.bannerId,
+      }),
     );
 
     const runtimeCityIds: Array<{
@@ -316,17 +355,41 @@ export class VkAdsTestCitiesLaunchService {
       let adGroupId: number;
       let bannerId: number;
       if (index === 0) {
-        const adPlan = await this.client.createAdPlan(
-          params.accountIntegrationId,
-          this.buildCampaignPayload({
-            campaignName: params.testName,
-            packageId: VK_ADS_TEST_PACKAGE_ID,
-            budgetDay: params.startBudget,
-            ref: cityRef,
-            targetings,
-            adGroupName: city.label,
+        this.logger.log(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'createAdPlan.start',
+            testId: params.testId,
+            accountIntegrationId: params.accountIntegrationId,
+            cityId: city.id,
+            cityName: city.label,
           }),
-          sharedUrl.id,
+        );
+        let adPlan: Awaited<ReturnType<typeof this.client.createAdPlan>>;
+        try {
+          adPlan = await this.client.createAdPlan(
+            params.accountIntegrationId,
+            this.buildCampaignPayload({
+              campaignName: params.testName,
+              packageId: VK_ADS_TEST_PACKAGE_ID,
+              budgetDay: params.startBudget,
+              ref: cityRef,
+              targetings,
+              adGroupName: city.label,
+            }),
+            sharedUrl.id,
+          );
+        } catch (error: unknown) {
+          this.logStepError('createAdPlan.error', params.testId, params.accountIntegrationId, error);
+          throw error;
+        }
+        this.logger.log(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'createAdPlan.ok',
+            testId: params.testId,
+            vkCampaignId: adPlan.id,
+          }),
         );
 
         campaignId = this.requireNumber(
@@ -574,17 +637,32 @@ export class VkAdsTestCitiesLaunchService {
       },
     });
 
-    if (campaignId !== null) {
-      this.runtimeStatusService.invalidateCache(
-        params.accountIntegrationId,
-        campaignId,
-      );
-    }
   }
 
   private throttle(minMs: number, maxMs: number): Promise<void> {
     const delay = minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
     return new Promise((resolve) => setTimeout(resolve, delay));
+  }
+
+  private logStepError(event: string, testId: number, accountIntegrationId: number, error: unknown): void {
+    const isVkError = error instanceof VkAdsTestClientError;
+    this.logger.error(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event,
+        testId,
+        accountIntegrationId,
+        message: error instanceof Error ? error.message : String(error),
+        ...(isVkError && {
+          status: (error as VkAdsTestClientError).status,
+          vkErrorCode: (error as VkAdsTestClientError).vkErrorCode,
+          vkErrorMessage: (error as VkAdsTestClientError).vkErrorMessage,
+          fieldErrors: (error as VkAdsTestClientError).fieldErrors,
+          rawError: (error as VkAdsTestClientError).rawError,
+        }),
+      }),
+      error instanceof Error ? error.stack : String(error),
+    );
   }
 
   private logCitiesVkError(params: {

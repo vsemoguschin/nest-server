@@ -5,7 +5,6 @@ import {
 } from '@nestjs/common';
 import { VkAdsTestClient } from '../clients/vk-ads-test.client';
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
-import { VkAdsTestRuntimeStatusService } from './vk-ads-test-runtime-status.service';
 
 type TestActionKind = 'pause' | 'resume';
 type VkRuntimeActionStatus = 'active' | 'blocked';
@@ -46,7 +45,6 @@ export class VkAdsTestTestActionsService {
   constructor(
     private readonly repository: VkAdsTestRepository,
     private readonly client: VkAdsTestClient,
-    private readonly runtimeStatusService: VkAdsTestRuntimeStatusService,
   ) {}
 
   async pauseTest(testId: number): Promise<RuntimeActionReport> {
@@ -105,11 +103,6 @@ export class VkAdsTestTestActionsService {
       action: action === 'pause' ? 'test_paused' : 'test_resumed',
       payloadJson: this.toReportPayload(report),
     });
-
-    this.runtimeStatusService.invalidateCache(
-      test.accountIntegrationId,
-      test.vkCampaignId,
-    );
 
     return report;
   }
