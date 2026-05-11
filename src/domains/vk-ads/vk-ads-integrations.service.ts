@@ -5,6 +5,13 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdSourcesQueryDto } from './dto/ad-sources-query.dto';
+import { AdSourceExpensesQueryDto } from './dto/ad-source-expenses-query.dto';
+
+export type AdSourceExpenseItem = {
+  id: number;
+  date: string;
+  price: number;
+};
 
 export type VkAdsStatsProjectKey = 'neon' | 'book';
 
@@ -228,6 +235,61 @@ export class VkAdsIntegrationsService {
       vkIntegrationName: (s as any).vkAdsIntegration?.name ?? null,
       totalExpense: sumBySourceId.get(s.id) ?? 0,
     }));
+  }
+
+  async listAdSourceExpenses(
+    sourceId: number,
+    query: AdSourceExpensesQueryDto = {},
+  ): Promise<AdSourceExpenseItem[]> {
+    const { dateFrom, dateTo } = query;
+
+    const expenses = await this.prisma.adExpense.findMany({
+      where: {
+        adSourceId: sourceId,
+        ...(dateFrom || dateTo
+          ? {
+              date: {
+                ...(dateFrom ? { gte: dateFrom } : {}),
+                ...(dateTo ? { lte: dateTo } : {}),
+              },
+            }
+          : {}),
+      },
+      orderBy: { date: 'desc' },
+      select: { id: true, date: true, price: true },
+    });
+
+    return expenses;
+  }
+
+  async createAdSourceExpense(
+    sourceId: number,
+    body: { date: string; price: number },
+  ): Promise<AdSourceExpenseItem> {
+    const source = await this.prisma.adSource.findUnique({
+      where: { id: sourceId },
+    });
+    if (!source) {
+      throw new NotFoundException(`AdSource not found: id=${sourceId}`);
+    }
+
+    const expense = await this.prisma.adExpense.create({
+      data: {
+        adSourceId: sourceId,
+        date: body.date,
+        price: body.price,
+        period: body.date.slice(0, 7),
+        workSpaceId: source.workSpaceId,
+        groupId: source.groupId ?? null,
+      },
+      select: { id: true, date: true, price: true },
+    });
+
+    return expense;
+  }
+
+  async deleteAdSourceExpense(expenseId: number): Promise<void> {
+    await this.prisma.adExpense.delete({ where: { id: expenseId } });
   }
 
   async findActiveIntegrationById(integrationId: number) {

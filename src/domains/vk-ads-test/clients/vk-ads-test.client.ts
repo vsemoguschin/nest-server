@@ -118,7 +118,11 @@ export class VkAdsTestClientError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_RETRIES = 4;
+const DEFAULT_MAX_RETRIES = 8;
+const RETRY_BASE_DELAY_429_MS = 1_500;
+const RETRY_BASE_DELAY_5XX_MS = 300;
+const RETRY_MAX_DELAY_MS = 30_000;
+const RETRY_JITTER_FACTOR = 0.2;
 
 @Injectable()
 export class VkAdsTestClient {
@@ -670,13 +674,16 @@ export class VkAdsTestClient {
   ): Promise<T> {
     const method = String(config.method || 'GET').toUpperCase();
     const endpoint = String(config.url || '');
+    const entity = this.resolveEntityHint(method, endpoint);
+    const totalAttempts = DEFAULT_MAX_RETRIES + 1;
 
-    for (let attempt = 0; attempt <= DEFAULT_MAX_RETRIES; attempt += 1) {
+    for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
       try {
         const response = await http.request<T>(config);
         return response.data;
       } catch (error) {
         const parsed = this.parseError(error, method, endpoint);
+
         if (method === 'POST' && endpoint === '/api/v2/ad_plans.json') {
           this.logger.error(
             JSON.stringify({
@@ -691,17 +698,21 @@ export class VkAdsTestClient {
           );
         }
 
-        const retryAfterMs = this.parseRetryAfter(error);
         const shouldRetry = this.isRetryableError(error);
-        const isLastAttempt = attempt >= DEFAULT_MAX_RETRIES;
+        const isLastAttempt = attempt >= totalAttempts - 1;
 
         if (!shouldRetry || isLastAttempt) {
           throw parsed;
         }
 
-        const baseDelayMs = parsed.status === 429 ? 1000 : 300;
-        const backoffMs = Math.min(baseDelayMs * 2 ** attempt, 10_000);
-        const delayMs = retryAfterMs ?? backoffMs;
+        const retryAfterMs = this.parseRetryAfter(error);
+        const baseDelayMs =
+          parsed.status === 429
+            ? RETRY_BASE_DELAY_429_MS
+            : RETRY_BASE_DELAY_5XX_MS;
+        const backoffMs = Math.min(baseDelayMs * 2 ** attempt, RETRY_MAX_DELAY_MS);
+        const jitterMs = Math.floor(backoffMs * RETRY_JITTER_FACTOR * Math.random());
+        const delayMs = retryAfterMs ?? backoffMs + jitterMs;
 
         this.logger.warn(
           JSON.stringify({
@@ -709,9 +720,11 @@ export class VkAdsTestClient {
             event: 'request.retry',
             integrationId: context.integrationId,
             method,
-            endpoint,
-            attempt: attempt + 1,
-            retryInMs: delayMs,
+            url: endpoint,
+            entity,
+            retryAttempt: attempt + 1,
+            totalAttempts,
+            delayMs,
             status: parsed.status ?? null,
             vkErrorCode: parsed.vkErrorCode ?? null,
             message: parsed.vkErrorMessage ?? parsed.message,
@@ -727,6 +740,15 @@ export class VkAdsTestClient {
       method,
       endpoint,
     });
+  }
+
+  private resolveEntityHint(method: string, endpoint: string): string {
+    if (endpoint.includes('/ad_plans')) return 'campaign';
+    if (endpoint.includes('/ad_groups') && method === 'POST') return 'adGroup';
+    if (endpoint.includes('/banners') && method === 'POST') return 'banner';
+    if (endpoint.includes('/urls')) return 'url';
+    if (endpoint.includes('/content')) return 'content';
+    return 'unknown';
   }
 
   private normalizeParams(

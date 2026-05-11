@@ -1823,38 +1823,31 @@ export class NotificationSchedulerService {
       }
 
       for (const dayStr of daysToSync) {
+        // 1. Stat rows
+        const vkStats = await this.prisma.vkAdsDailyStat.findMany({
+          where: { integrationId: integration.id, date: dayStr, entity: 'ad_plans' },
+        });
+
+        // 2. Existing expense
         const existingExpense = await this.prisma.adExpense.findFirst({
           where: {
             adSourceId,
             workSpaceId: adSource.workSpaceId,
             date: { startsWith: dayStr },
           },
+          select: { id: true, price: true },
         });
 
-        if (existingExpense) {
-          this.logger.log(
-            `[VK Ads Expenses] ${label}: AdExpense already exists for ${dayStr} (id=${existingExpense.id}, price=${existingExpense.price})`,
-          );
-          results.push(`${dayStr} ${label}: уже есть (${existingExpense.price}₽)`);
-          continue;
-        }
-
-        const vkStats = await this.prisma.vkAdsDailyStat.findMany({
-          where: {
-            integrationId: integration.id,
-            date: dayStr,
-            entity: 'ad_plans',
-          },
-        });
-
+        // 3. No stats — collect hasn't run or returned nothing; preserve any existing expense
         if (vkStats.length === 0) {
           this.logger.log(
-            `[VK Ads Expenses] ${label}: No VkAdsDailyStat found for ${dayStr}`,
+            `[VK Ads Expenses] ${label}: No VkAdsDailyStat found for ${dayStr}, skipping`,
           );
           results.push(`${dayStr} ${label}: нет данных VK Ads`);
           continue;
         }
 
+        // 4. Compute spend
         const totalSpentNds = vkStats.reduce((sum, stat) => sum + stat.spentNds, 0);
         const priceInt = Math.round(totalSpentNds);
 
@@ -1862,21 +1855,56 @@ export class NotificationSchedulerService {
           `[VK Ads Expenses] ${label}: ${vkStats.length} stats for ${dayStr}, totalSpentNds=${totalSpentNds}, priceInt=${priceInt}`,
         );
 
-        const newExpense = await this.prisma.adExpense.create({
-          data: {
-            price: priceInt,
-            date: dayStr,
-            period: '',
-            adSourceId,
-            workSpaceId: adSource.workSpaceId,
-            groupId: adSource.groupId ?? null,
-          },
-        });
+        // 5. Confirmed zero spend — delete stale expense if present
+        if (priceInt <= 0) {
+          if (existingExpense) {
+            await this.prisma.adExpense.delete({ where: { id: existingExpense.id } });
+            this.logger.log(
+              `[VK Ads Expenses] ${label}: Deleted zero-spend AdExpense id=${existingExpense.id} for ${dayStr}`,
+            );
+            results.push(`${dayStr} ${label}: удалено (нулевой расход)`);
+          } else {
+            this.logger.log(
+              `[VK Ads Expenses] ${label}: Zero spend for ${dayStr}, nothing to create`,
+            );
+            results.push(`${dayStr} ${label}: пропущено (нулевой расход)`);
+          }
+          continue;
+        }
 
-        this.logger.log(
-          `[VK Ads Expenses] ${label}: Created AdExpense id=${newExpense.id}, price=${newExpense.price} for ${dayStr}`,
-        );
-        results.push(`${dayStr} ${label}: создано ${priceInt}₽`);
+        // 6. Positive spend — upsert
+        if (existingExpense) {
+          if (existingExpense.price === priceInt) {
+            this.logger.log(
+              `[VK Ads Expenses] ${label}: AdExpense already up-to-date for ${dayStr} (id=${existingExpense.id}, price=${existingExpense.price})`,
+            );
+            results.push(`${dayStr} ${label}: без изменений (${existingExpense.price}₽)`);
+          } else {
+            await this.prisma.adExpense.update({
+              where: { id: existingExpense.id },
+              data: { price: priceInt },
+            });
+            this.logger.log(
+              `[VK Ads Expenses] ${label}: Updated AdExpense id=${existingExpense.id} for ${dayStr}: ${existingExpense.price} → ${priceInt}`,
+            );
+            results.push(`${dayStr} ${label}: обновлено ${existingExpense.price}₽ → ${priceInt}₽`);
+          }
+        } else {
+          const newExpense = await this.prisma.adExpense.create({
+            data: {
+              price: priceInt,
+              date: dayStr,
+              period: '',
+              adSourceId,
+              workSpaceId: adSource.workSpaceId,
+              groupId: adSource.groupId ?? null,
+            },
+          });
+          this.logger.log(
+            `[VK Ads Expenses] ${label}: Created AdExpense id=${newExpense.id}, price=${newExpense.price} for ${dayStr}`,
+          );
+          results.push(`${dayStr} ${label}: создано ${priceInt}₽`);
+        }
       }
     }
 

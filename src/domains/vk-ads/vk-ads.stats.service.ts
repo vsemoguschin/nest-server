@@ -6,6 +6,30 @@ import axios from 'axios';
 type Project = 'neon' | 'book';
 type Entity = 'ad_plans' | 'ad_groups' | 'banners';
 
+const VK_MACRO_PATTERN = /\{\{campaign_id\}\}.*\{\{banner_id\}\}/;
+
+function expandVkAdsMacroRefs(
+  rawRefs: string[],
+  context: { campaignId?: number; bannerIds?: number[] },
+): string[] {
+  const out: string[] = [...rawRefs];
+  const seen = new Set<string>(rawRefs);
+  for (const ref of rawRefs) {
+    if (!VK_MACRO_PATTERN.test(ref)) continue;
+    if (!context.campaignId || !context.bannerIds?.length) continue;
+    for (const bannerId of context.bannerIds) {
+      const expanded = ref
+        .replace(/\{\{campaign_id\}\}/g, String(context.campaignId))
+        .replace(/\{\{banner_id\}\}/g, String(bannerId));
+      if (!seen.has(expanded)) {
+        seen.add(expanded);
+        out.push(expanded);
+      }
+    }
+  }
+  return out;
+}
+
 @Injectable()
 export class VkAdsStatsService {
   private readonly logger = new Logger(VkAdsStatsService.name);
@@ -35,12 +59,41 @@ export class VkAdsStatsService {
       if (!Number.isFinite(entityId)) continue;
 
       // refs: для баннеров всегда используем собственный id как строку
-      const refsForEntity: string[] =
+      const rawRefs: string[] =
         entity === 'banners'
           ? [String(entityId)]
           : Array.isArray(it?.refs)
             ? it.refs
             : [];
+
+      // Расширяем literal VK macros ({{campaign_id}}/{{banner_id}}) для ad_plans и ad_groups.
+      // VK подставляет в click URL {{campaign_id}} = ad_group_id (не ad_plan_id),
+      // поэтому для ad_groups используем entityId как campaignId.
+      // Для banners expansion не нужен — refs = [String(entityId)].
+      const bannerIdsForExpand: number[] = Array.isArray(it?.banners) ? it.banners : [];
+      const macroContext =
+        entity === 'banners'
+          ? undefined
+          : { campaignId: entityId, bannerIds: bannerIdsForExpand };
+      const refsForEntity: string[] =
+        macroContext !== undefined
+          ? expandVkAdsMacroRefs(rawRefs, macroContext)
+          : rawRefs;
+
+      // Диагностический лог только для строк с literal macros
+      if (rawRefs.some((r) => r.includes('{{campaign_id}}') || r.includes('{{banner_id}}'))) {
+        const firstBannerId = bannerIdsForExpand[0];
+        const targetExample = firstBannerId ? `vk_ads-${entityId}-${firstBannerId}` : '(no banners)';
+        const targetInExpanded = refsForEntity.includes(targetExample);
+        this.logger.log(
+          `[macro-expand] integrationId=${integrationId ?? 'n/a'} entity=${entity} entityId=${entityId}` +
+          ` rawRefs=[${rawRefs.join(',')}]` +
+          ` bannerIds.len=${bannerIdsForExpand.length} bannerIds.sample=[${bannerIdsForExpand.slice(0, 5).join(',')}]` +
+          ` expandedRefs.len=${refsForEntity.length} expandedRefs.sample=[${refsForEntity.slice(0, 5).join(',')}]` +
+          ` expandedRefs.last5=[${refsForEntity.slice(-5).join(',')}]` +
+          ` targetExample=${targetExample} targetExampleInExpanded=${targetInExpanded}`,
+        );
+      }
 
       const baseMeta: any = {
         status: it?.status ?? null,

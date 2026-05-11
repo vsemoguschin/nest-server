@@ -18,6 +18,8 @@ const VK_ADS_TEST_PACKAGE_ID = 3127;
 const DEFAULT_RUSSIA_REGION_ID = 188;
 const VK_ADS_TEST_PADS = [1265106, 2243453];
 const CITIES_FLOW_ACTION = 'cities_flow_created';
+const CITIES_AD_GROUP_THROTTLE_MIN_MS = 300;
+const CITIES_AD_GROUP_THROTTLE_MAX_MS = 500;
 
 @Injectable()
 export class VkAdsTestCitiesLaunchService {
@@ -298,6 +300,11 @@ export class VkAdsTestCitiesLaunchService {
           vkAdGroupId: adGroupId,
         });
 
+        await this.throttle(
+          CITIES_AD_GROUP_THROTTLE_MIN_MS,
+          CITIES_AD_GROUP_THROTTLE_MAX_MS,
+        );
+
         this.logger.debug(
           JSON.stringify({
             scope: 'vk-ads-test-cities-launch',
@@ -375,6 +382,11 @@ export class VkAdsTestCitiesLaunchService {
               videoAssetHeight: params.videoAsset.height ?? undefined,
             },
           });
+
+        await this.throttle(
+          CITIES_AD_GROUP_THROTTLE_MIN_MS,
+          CITIES_AD_GROUP_THROTTLE_MAX_MS,
+        );
 
         this.logger.debug(
           JSON.stringify({
@@ -515,6 +527,11 @@ export class VkAdsTestCitiesLaunchService {
       },
     });
 
+  }
+
+  private throttle(minMs: number, maxMs: number): Promise<void> {
+    const delay = minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
+    return new Promise((resolve) => setTimeout(resolve, delay));
   }
 
   private logCitiesVkError(params: {

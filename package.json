@@ -43,6 +43,8 @@
     "seed:vk-ads-collect-one-day": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-collect-one-day.ts",
     "seed:vk-ads-sync-expenses": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-sync-expenses.ts",
     "seed:vk-ads-stat-matching-diagnostics": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-stat-matching-diagnostics.ts",
+    "seed:vk-ads-ref-match-debug": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-ref-match-debug.ts",
+    "seed:vk-ads-enrich-daily-stat-crm-metrics": "ts-node --transpile-only -r tsconfig-paths/register src/seeds/seed-vk-ads-enrich-daily-stat-crm-metrics.ts",
     "transfer:users-to-printer": "ts-node --transpile-only -r tsconfig-paths/register src/scripts/transfer-users-to-printer.ts",
     "planfact:cleanup-duplicate-positions": "ts-node --transpile-only -r tsconfig-paths/register src/scripts/planfact-cleanup-duplicate-positions.ts"
   },
