@@ -1071,6 +1071,12 @@ export class VkAdsTestBuilderService {
     };
   }
 
+  // Max banner detail GETs per resolveBannerTemplate call.
+  // List endpoint rarely returns content/textblocks — most candidates need a detail fetch.
+  // Storm root cause: prod has hundreds of ad_groups (one per city × N launches) each
+  // with banners, all needing detail reads. Cap prevents unbounded GET storm.
+  private static readonly BANNER_DETAIL_FETCH_LIMIT = 5;
+
   private async resolveBannerTemplate(
     integrationId: number,
     packageId: number,
@@ -1080,6 +1086,19 @@ export class VkAdsTestBuilderService {
       packageId,
     );
 
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-builder',
+        event: 'resolveBannerTemplate.start',
+        integrationId,
+        packageId,
+        adGroupsCount: adGroups.length,
+      }),
+    );
+
+    let totalCandidates = 0;
+    let totalDetailFetches = 0;
+
     for (const adGroup of adGroups) {
       const banners = await this.loadBannerCandidatesForAdGroup(
         integrationId,
@@ -1087,15 +1106,27 @@ export class VkAdsTestBuilderService {
       );
 
       for (const banner of banners) {
+        totalCandidates += 1;
+
         if (this.isUsableBannerTemplate(banner)) {
-          return {
-            adGroupId: adGroup.id,
-            bannerId: this.requireNumber(
-              banner.id,
-              'VK Ads banner template item does not contain numeric id',
-            ),
-            banner,
-          };
+          const bannerId = this.requireNumber(
+            banner.id,
+            'VK Ads banner template item does not contain numeric id',
+          );
+          this.logger.log(
+            JSON.stringify({
+              scope: 'vk-ads-test-builder',
+              event: 'prepareBannerTemplate.ok',
+              integrationId,
+              packageId,
+              selectedAdGroupId: adGroup.id,
+              selectedBannerId: bannerId,
+              candidatesCount: totalCandidates,
+              detailFetches: totalDetailFetches,
+              source: 'list',
+            }),
+          );
+          return { adGroupId: adGroup.id, bannerId, banner };
         }
 
         const bannerId = this.asNumber(banner.id);
@@ -1103,20 +1134,59 @@ export class VkAdsTestBuilderService {
           continue;
         }
 
+        if (totalDetailFetches >= VkAdsTestBuilderService.BANNER_DETAIL_FETCH_LIMIT) {
+          const limitMsg = `VK Ads banner template not found within detail fetch limit (limit=${VkAdsTestBuilderService.BANNER_DETAIL_FETCH_LIMIT}, package_id=${packageId})`;
+          this.logger.error(
+            JSON.stringify({
+              scope: 'vk-ads-test-builder',
+              event: 'prepareBannerTemplate.error',
+              integrationId,
+              packageId,
+              adGroupsCount: adGroups.length,
+              candidatesCount: totalCandidates,
+              detailFetches: totalDetailFetches,
+              message: limitMsg,
+            }),
+          );
+          throw new Error(limitMsg);
+        }
+
+        totalDetailFetches += 1;
         const bannerDetails = await this.client.getBanner(integrationId, bannerId, {
-          fields:
-            'id,ad_group_id,name,status,moderation_status,content,textblocks,urls',
+          fields: 'id,ad_group_id,name,status,moderation_status,content,textblocks,urls',
         });
 
         if (this.isUsableBannerTemplate(bannerDetails)) {
-          return {
-            adGroupId: adGroup.id,
-            bannerId,
-            banner: bannerDetails,
-          };
+          this.logger.log(
+            JSON.stringify({
+              scope: 'vk-ads-test-builder',
+              event: 'prepareBannerTemplate.ok',
+              integrationId,
+              packageId,
+              selectedAdGroupId: adGroup.id,
+              selectedBannerId: bannerId,
+              candidatesCount: totalCandidates,
+              detailFetches: totalDetailFetches,
+              source: 'detail',
+            }),
+          );
+          return { adGroupId: adGroup.id, bannerId, banner: bannerDetails };
         }
       }
     }
+
+    this.logger.error(
+      JSON.stringify({
+        scope: 'vk-ads-test-builder',
+        event: 'prepareBannerTemplate.error',
+        integrationId,
+        packageId,
+        adGroupsCount: adGroups.length,
+        candidatesCount: totalCandidates,
+        detailFetches: totalDetailFetches,
+        message: `VK Ads runtime banner template was not found for package_id=${packageId}`,
+      }),
+    );
 
     throw new Error(
       `VK Ads runtime banner template was not found for package_id=${packageId}`,
