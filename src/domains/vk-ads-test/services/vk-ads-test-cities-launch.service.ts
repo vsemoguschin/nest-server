@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { LaunchCitiesDto } from '../dto/launch-cities.dto';
-import { VkAdsTestClient } from '../clients/vk-ads-test.client';
+import { VkAdsTestClient, VkAdsTestClientError } from '../clients/vk-ads-test.client';
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
 import { VkAdsTestBuilderService } from './vk-ads-test-builder.service';
 import { VkAdsTestVideoAssetsService } from './vk-ads-test-video-assets.service';
@@ -105,6 +105,13 @@ export class VkAdsTestCitiesLaunchService {
       throw new BadRequestException('videoAssetId is required for cities launch');
     }
 
+    const launchProgress = {
+      processedCities: 0,
+      lastSuccessfulCityId: null as number | null,
+      lastSuccessfulCityName: null as string | null,
+      lastSuccessfulIndex: null as number | null,
+    };
+
     void this.runCitiesLaunch({
       testId: test.id,
       testName: test.name,
@@ -123,9 +130,19 @@ export class VkAdsTestCitiesLaunchService {
         height: videoAsset.height ?? undefined,
       },
       cities,
-    }).catch((error) => {
+      progress: launchProgress,
+    }).catch((error: unknown) => {
       this.logger.error(
-        `Cities launch failed for testId=${test.id}`,
+        JSON.stringify({
+          scope: 'vk-ads-test-cities-launch',
+          event: 'launch.failed',
+          testId: test.id,
+          processedCities: launchProgress.processedCities,
+          lastSuccessfulCityId: launchProgress.lastSuccessfulCityId,
+          lastSuccessfulCityName: launchProgress.lastSuccessfulCityName,
+          lastSuccessfulIndex: launchProgress.lastSuccessfulIndex,
+          message: error instanceof Error ? error.message : String(error),
+        }),
         error instanceof Error ? error.stack : String(error),
       );
     });
@@ -158,6 +175,12 @@ export class VkAdsTestCitiesLaunchService {
       height?: number;
     };
     cities: LaunchCityRecord[];
+    progress: {
+      processedCities: number;
+      lastSuccessfulCityId: number | null;
+      lastSuccessfulCityName: string | null;
+      lastSuccessfulIndex: number | null;
+    };
   }) {
     const sharedUrl = await this.builder.prepareLandingUrl(
       params.accountIntegrationId,
@@ -179,6 +202,7 @@ export class VkAdsTestCitiesLaunchService {
     }> = [];
 
     let campaignId: number | null = null;
+    const totalCities = params.cities.length;
 
     for (const [index, city] of params.cities.entries()) {
       const creativeCopy = this.buildCityCreativeCopy(city.label, params.adTitleTemplate, params.adTextTemplate);
@@ -199,6 +223,20 @@ export class VkAdsTestCitiesLaunchService {
           targetings,
         }),
       );
+
+      if (index > 0 && index % 25 === 0) {
+        this.logger.log(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'progress',
+            testId: params.testId,
+            processed: index,
+            total: totalCities,
+            percent: Math.round((index / totalCities) * 100),
+          }),
+        );
+      }
+
       const creative = await this.repository.createCreative({
         test: { connect: { id: params.testId } },
         name: creativeCopy.title,
@@ -259,22 +297,63 @@ export class VkAdsTestCitiesLaunchService {
         await this.repository.updateAudienceRuntimeIds(audience.id, {
           vkAdGroupId: adGroupId,
         });
-        const banner = await this.builder.createBannerFromResolvedTemplate({
-          integrationId: params.accountIntegrationId,
-          adGroupId,
-          name: creativeCopy.title,
-          primaryUrlId: sharedUrl.id,
-          template: bannerTemplate,
-          creative: {
+
+        this.logger.debug(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'createBanner.before',
+            testId: params.testId,
+            cityIndex: index,
+            cityId: city.id,
+            cityName: city.label,
+            vkAdGroupId: adGroupId,
+          }),
+        );
+
+        let banner: number;
+        try {
+          banner = await this.builder.createBannerFromResolvedTemplate({
+            integrationId: params.accountIntegrationId,
+            adGroupId,
             name: creativeCopy.title,
-            title: creativeCopy.title,
-            text: creativeCopy.text,
-            videoAssetId: params.videoAsset.id,
-            videoAssetVkContentId: params.videoAsset.vkContentId,
-            videoAssetWidth: params.videoAsset.width ?? undefined,
-            videoAssetHeight: params.videoAsset.height ?? undefined,
-          },
-        });
+            primaryUrlId: sharedUrl.id,
+            template: bannerTemplate,
+            creative: {
+              name: creativeCopy.title,
+              title: creativeCopy.title,
+              text: creativeCopy.text,
+              videoAssetId: params.videoAsset.id,
+              videoAssetVkContentId: params.videoAsset.vkContentId,
+              videoAssetWidth: params.videoAsset.width ?? undefined,
+              videoAssetHeight: params.videoAsset.height ?? undefined,
+            },
+          });
+        } catch (error: unknown) {
+          this.logCitiesVkError({
+            event: 'createBanner.error',
+            testId: params.testId,
+            cityIndex: index,
+            totalCities,
+            cityId: city.id,
+            cityName: city.label,
+            campaignId,
+            error,
+          });
+          throw error;
+        }
+
+        this.logger.log(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'createBanner.ok',
+            testId: params.testId,
+            cityIndex: index,
+            cityId: city.id,
+            cityName: city.label,
+            vkBannerId: banner,
+            vkAdGroupId: adGroupId,
+          }),
+        );
         bannerId = banner;
       } else {
         if (campaignId === null) {
@@ -297,18 +376,47 @@ export class VkAdsTestCitiesLaunchService {
             },
           });
 
-        const adGroup = await this.client.createAdGroup(
-          params.accountIntegrationId,
-          this.buildAdGroupPayload({
-            adPlanId: campaignId,
-            packageId: VK_ADS_TEST_PACKAGE_ID,
-            budgetDay: params.startBudget,
+        this.logger.debug(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'createAdGroup.before',
+            testId: params.testId,
+            cityIndex: index,
+            totalCities,
+            cityId: city.id,
             cityName: city.label,
-            ref: cityRef,
-            bannerPayload,
-            targetings,
+            campaignId,
           }),
         );
+
+        let adGroup: Awaited<ReturnType<typeof this.client.createAdGroup>>;
+        try {
+          adGroup = await this.client.createAdGroup(
+            params.accountIntegrationId,
+            this.buildAdGroupPayload({
+              adPlanId: campaignId,
+              packageId: VK_ADS_TEST_PACKAGE_ID,
+              budgetDay: params.startBudget,
+              cityName: city.label,
+              ref: cityRef,
+              bannerPayload,
+              targetings,
+            }),
+          );
+        } catch (error: unknown) {
+          this.logCitiesVkError({
+            event: 'createAdGroup.error',
+            testId: params.testId,
+            cityIndex: index,
+            totalCities,
+            cityId: city.id,
+            cityName: city.label,
+            campaignId,
+            error,
+          });
+          throw error;
+        }
+
         adGroupId = this.requireNumber(
           adGroup.id,
           'VK Ads createAdGroup response does not contain numeric id',
@@ -317,6 +425,30 @@ export class VkAdsTestCitiesLaunchService {
         bannerId = this.requireNumber(
           adGroup.banners?.[0]?.id,
           'VK Ads createAdGroup response does not contain numeric banners[0].id',
+        );
+
+        this.logger.log(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'createAdGroup.ok',
+            testId: params.testId,
+            cityIndex: index,
+            cityId: city.id,
+            cityName: city.label,
+            vkAdGroupId: adGroupId,
+          }),
+        );
+        this.logger.log(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'createBanner.ok',
+            testId: params.testId,
+            cityIndex: index,
+            cityId: city.id,
+            cityName: city.label,
+            vkBannerId: bannerId,
+            vkAdGroupId: adGroupId,
+          }),
         );
 
         await this.repository.updateAudienceRuntimeIds(audience.id, {
@@ -356,6 +488,11 @@ export class VkAdsTestCitiesLaunchService {
         bannerId,
         variantId: variant.id,
       });
+
+      params.progress.processedCities = index + 1;
+      params.progress.lastSuccessfulCityId = city.id;
+      params.progress.lastSuccessfulCityName = city.label;
+      params.progress.lastSuccessfulIndex = index;
     }
 
     if (campaignId !== null) {
@@ -377,6 +514,41 @@ export class VkAdsTestCitiesLaunchService {
         cityIds: runtimeCityIds,
       },
     });
+
+  }
+
+  private logCitiesVkError(params: {
+    event: string;
+    testId: number;
+    cityIndex: number;
+    totalCities: number;
+    cityId: number;
+    cityName: string;
+    campaignId: number | null;
+    error: unknown;
+  }): void {
+    const isVkError = params.error instanceof VkAdsTestClientError;
+    this.logger.error(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: params.event,
+        testId: params.testId,
+        cityIndex: params.cityIndex,
+        totalCities: params.totalCities,
+        cityId: params.cityId,
+        cityName: params.cityName,
+        campaignId: params.campaignId,
+        message: params.error instanceof Error ? params.error.message : String(params.error),
+        ...(isVkError && {
+          status: (params.error as VkAdsTestClientError).status,
+          vkErrorCode: (params.error as VkAdsTestClientError).vkErrorCode,
+          vkErrorMessage: (params.error as VkAdsTestClientError).vkErrorMessage,
+          fieldErrors: (params.error as VkAdsTestClientError).fieldErrors,
+          rawError: (params.error as VkAdsTestClientError).rawError,
+        }),
+      }),
+      params.error instanceof Error ? params.error.stack : String(params.error),
+    );
   }
 
   private buildCampaignPayload(params: {
