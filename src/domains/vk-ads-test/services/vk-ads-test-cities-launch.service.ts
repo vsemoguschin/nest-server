@@ -10,6 +10,7 @@ import { VkAdsTestClient, VkAdsTestClientError } from '../clients/vk-ads-test.cl
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
 import { VkAdsTestBuilderService } from './vk-ads-test-builder.service';
 import { VkAdsTestVideoAssetsService } from './vk-ads-test-video-assets.service';
+import { VkAdsTestRuntimeStatusService } from './vk-ads-test-runtime-status.service';
 
 type LaunchCityRecord = LaunchCitiesDto['cities'][number];
 
@@ -30,6 +31,7 @@ export class VkAdsTestCitiesLaunchService {
     private readonly client: VkAdsTestClient,
     private readonly builder: VkAdsTestBuilderService,
     private readonly videoAssetsService: VkAdsTestVideoAssetsService,
+    private readonly runtimeStatusService: VkAdsTestRuntimeStatusService,
   ) {}
 
   async launchCities(dto: LaunchCitiesDto) {
@@ -112,6 +114,7 @@ export class VkAdsTestCitiesLaunchService {
       lastSuccessfulCityId: null as number | null,
       lastSuccessfulCityName: null as string | null,
       lastSuccessfulIndex: null as number | null,
+      campaignId: null as number | null,
     };
 
     void this.runCitiesLaunch({
@@ -147,6 +150,12 @@ export class VkAdsTestCitiesLaunchService {
         }),
         error instanceof Error ? error.stack : String(error),
       );
+      if (launchProgress.campaignId !== null) {
+        this.runtimeStatusService.invalidateCache(
+          dto.accountIntegrationId,
+          launchProgress.campaignId,
+        );
+      }
     });
 
     const refreshedTest = await this.repository.getTestCard(test.id);
@@ -182,6 +191,7 @@ export class VkAdsTestCitiesLaunchService {
       lastSuccessfulCityId: number | null;
       lastSuccessfulCityName: string | null;
       lastSuccessfulIndex: number | null;
+      campaignId: number | null;
     };
   }) {
     const sharedUrl = await this.builder.prepareLandingUrl(
@@ -287,6 +297,7 @@ export class VkAdsTestCitiesLaunchService {
           adPlan.id,
           'VK Ads createAdPlan response does not contain numeric id',
         );
+        params.progress.campaignId = campaignId;
         adGroupId = this.requireNumber(
           adPlan.ad_groups?.[0]?.id,
           'VK Ads createAdPlan response does not contain numeric ad_groups[0].id',
@@ -527,6 +538,12 @@ export class VkAdsTestCitiesLaunchService {
       },
     });
 
+    if (campaignId !== null) {
+      this.runtimeStatusService.invalidateCache(
+        params.accountIntegrationId,
+        campaignId,
+      );
+    }
   }
 
   private throttle(minMs: number, maxMs: number): Promise<void> {

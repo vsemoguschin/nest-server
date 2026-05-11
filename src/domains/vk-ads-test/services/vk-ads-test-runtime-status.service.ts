@@ -4,6 +4,26 @@ import {
   VkAdsTestClientError,
 } from '../clients/vk-ads-test.client';
 
+// ---------------------------------------------------------------------------
+// TTL cache for ad_plan runtime state.
+// Prevents repeated VK API calls when listTests() is called in rapid succession
+// (e.g. UI polling, multiple tabs, background refresh).
+//
+// TTL is per integrationId:campaignId key. Stale entries are evicted lazily.
+// ENV:  VK_ADS_RUNTIME_CACHE_TTL_MS  (default: 10 minutes)
+// ---------------------------------------------------------------------------
+const DEFAULT_RUNTIME_CACHE_TTL_MS = 10 * 60 * 1_000; // 10 minutes
+const RUNTIME_CACHE_TTL_MS = (() => {
+  const raw = process.env['VK_ADS_RUNTIME_CACHE_TTL_MS'];
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_RUNTIME_CACHE_TTL_MS;
+})();
+
+type CachedRuntimeState = {
+  result: VkAdsTestRuntimeStateResult;
+  expiresAt: number;
+};
+
 export type VkAdsTestRuntimeStatus =
   | 'active'
   | 'paused'
@@ -42,8 +62,44 @@ const AD_PLAN_RUNTIME_FIELDS = ['status', 'vkads_status'];
 @Injectable()
 export class VkAdsTestRuntimeStatusService {
   private readonly logger = new Logger(VkAdsTestRuntimeStatusService.name);
+  private readonly stateCache = new Map<string, CachedRuntimeState>();
 
   constructor(private readonly client: VkAdsTestClient) {}
+
+  private getCacheKey(integrationId: number, campaignId: number): string {
+    return `${integrationId}:${campaignId}`;
+  }
+
+  private getCached(integrationId: number, campaignId: number): VkAdsTestRuntimeStateResult | null {
+    const key = this.getCacheKey(integrationId, campaignId);
+    const entry = this.stateCache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      this.stateCache.delete(key);
+      return null;
+    }
+    return entry.result;
+  }
+
+  private setCached(integrationId: number, campaignId: number, result: VkAdsTestRuntimeStateResult): void {
+    const key = this.getCacheKey(integrationId, campaignId);
+    this.stateCache.set(key, { result, expiresAt: Date.now() + RUNTIME_CACHE_TTL_MS });
+  }
+
+  invalidateCache(integrationId: number, campaignId: number): void {
+    const key = this.getCacheKey(integrationId, campaignId);
+    if (this.stateCache.has(key)) {
+      this.stateCache.delete(key);
+      this.logger.debug(
+        JSON.stringify({
+          scope: 'vk-ads-test-runtime-status',
+          event: 'cache_invalidate',
+          integrationId,
+          campaignId,
+        }),
+      );
+    }
+  }
 
   async resolveTestRuntimeStatus(
     test: VkAdsTestRuntimeStatusTarget,
@@ -80,6 +136,20 @@ export class VkAdsTestRuntimeStatusService {
       };
     }
 
+    const cached = this.getCached(test.accountIntegrationId, test.vkCampaignId);
+    if (cached) {
+      this.logger.debug(
+        JSON.stringify({
+          scope: 'vk-ads-test-runtime-status',
+          event: 'resolveTestRuntimeState.cache_hit',
+          testId: test.id,
+          vkCampaignId: test.vkCampaignId,
+          runtimeStatus: cached.runtimeStatus,
+        }),
+      );
+      return { ...cached, testId: test.id };
+    }
+
     try {
       const adPlan = await this.client.getAdPlan(
         test.accountIntegrationId,
@@ -104,11 +174,13 @@ export class VkAdsTestRuntimeStatusService {
         }),
       );
 
-      return {
+      const result: VkAdsTestRuntimeStateResult = {
         testId: test.id,
         runtimeStatus,
         runtimeIssue,
       };
+      this.setCached(test.accountIntegrationId, test.vkCampaignId, result);
+      return result;
     } catch (error) {
       this.logger.warn(
         JSON.stringify({
@@ -137,7 +209,14 @@ export class VkAdsTestRuntimeStatusService {
   async resolveManyTestsRuntimeState(
     tests: VkAdsTestRuntimeStatusTarget[],
   ): Promise<VkAdsTestRuntimeStateResult[]> {
-    return Promise.all(tests.map((test) => this.resolveTestRuntimeState(test)));
+    // Sequential — not Promise.all — to avoid N parallel VK reads at once.
+    // The rate limiter in VkAdsTestClient provides the final guard, but
+    // serializing here keeps the queue short and reduces head-of-line blocking.
+    const results: VkAdsTestRuntimeStateResult[] = [];
+    for (const test of tests) {
+      results.push(await this.resolveTestRuntimeState(test));
+    }
+    return results;
   }
 
   private async resolveCampaignRuntimeStatus(

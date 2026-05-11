@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { VkAdsTestClient } from '../clients/vk-ads-test.client';
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
+import { VkAdsTestRuntimeStatusService } from './vk-ads-test-runtime-status.service';
 
 type ActionVariant = NonNullable<
   Awaited<ReturnType<VkAdsTestRepository['findVariantForAction']>>
@@ -16,7 +17,18 @@ export class VkAdsTestVariantActionsService {
   constructor(
     private readonly repository: VkAdsTestRepository,
     private readonly client: VkAdsTestClient,
+    private readonly runtimeStatusService: VkAdsTestRuntimeStatusService,
   ) {}
+
+  private invalidateCampaignCache(variant: ActionVariant): void {
+    const campaignId = variant.test.vkCampaignId ?? variant.vkCampaignId;
+    if (campaignId != null) {
+      this.runtimeStatusService.invalidateCache(
+        variant.test.accountIntegrationId,
+        campaignId,
+      );
+    }
+  }
 
   async pauseVariant(variantId: number) {
     const variant = await this.getVariant(variantId);
@@ -58,6 +70,8 @@ export class VkAdsTestVariantActionsService {
         vkCampaignId: campaignId,
       },
     });
+
+    this.invalidateCampaignCache(variant);
 
     return updated;
   }
@@ -104,6 +118,8 @@ export class VkAdsTestVariantActionsService {
         vkCampaignId: campaignId,
       },
     });
+
+    this.invalidateCampaignCache(variant);
 
     return updated;
   }
@@ -154,6 +170,8 @@ export class VkAdsTestVariantActionsService {
         newBudget,
       },
     });
+
+    this.invalidateCampaignCache(variant);
 
     return updated;
   }
