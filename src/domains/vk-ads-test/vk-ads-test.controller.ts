@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   Param,
   ParseIntPipe,
   Patch,
@@ -277,6 +278,8 @@ export class VkAdsTestVideosController {
 
 @Controller('vk-ads-test/cities')
 export class VkAdsTestCitiesController {
+  private readonly logger = new Logger(VkAdsTestCitiesController.name);
+
   constructor(
     private readonly citiesLaunchService: VkAdsTestCitiesLaunchService,
     private readonly citiesSettingsService: VkAdsTestCitiesSettingsService,
@@ -284,6 +287,16 @@ export class VkAdsTestCitiesController {
 
   @Post('launch')
   launchCities(@Body() dto: LaunchCitiesDto) {
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'controller.received',
+        accountIntegrationId: dto.accountIntegrationId,
+        testId: dto.testId ?? null,
+        citiesCount: dto.cities?.length ?? 0,
+        videoAssetId: dto.videoAssetId ?? null,
+      }),
+    );
     return this.citiesLaunchService.launchCities(dto);
   }
 

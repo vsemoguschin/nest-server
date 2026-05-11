@@ -35,9 +35,24 @@ export class VkAdsTestCitiesLaunchService {
   ) {}
 
   async launchCities(dto: LaunchCitiesDto) {
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'launchCities.enter',
+        accountIntegrationId: dto.accountIntegrationId,
+        testId: dto.testId ?? null,
+        citiesCount: dto.cities?.length ?? 0,
+        videoAssetId: dto.videoAssetId ?? null,
+      }),
+    );
+
     const cities = this.normalizeLaunchCities(dto.cities);
     if (!cities.length) {
       throw new BadRequestException('At least one city is required');
+    }
+
+    if (!dto.videoAssetId) {
+      throw new BadRequestException('videoAssetId is required for cities launch');
     }
 
     const integration = await this.repository.findIntegrationById(
@@ -82,6 +97,15 @@ export class VkAdsTestCitiesLaunchService {
           landingUrl: dto.landingUrl,
         });
 
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'test.created',
+        testId: test.id,
+        reused: existingTest !== null,
+      }),
+    );
+
     await this.repository.logAction({
       test: { connect: { id: test.id } },
       action: CITIES_FLOW_ACTION,
@@ -98,17 +122,6 @@ export class VkAdsTestCitiesLaunchService {
       },
     });
 
-    const videoAsset = dto.videoAssetId
-      ? await this.videoAssetsService.ensureVideoAssetForCreative(
-          test.id,
-          dto.videoAssetId,
-        )
-      : null;
-
-    if (!videoAsset) {
-      throw new BadRequestException('videoAssetId is required for cities launch');
-    }
-
     const launchProgress = {
       processedCities: 0,
       lastSuccessfulCityId: null as number | null,
@@ -117,23 +130,26 @@ export class VkAdsTestCitiesLaunchService {
       campaignId: null as number | null,
     };
 
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'async.runCitiesLaunch.scheduled',
+        testId: test.id,
+      }),
+    );
+
     void this.runCitiesLaunch({
       testId: test.id,
       testName: test.name,
       accountIntegrationId: dto.accountIntegrationId,
       landingUrl: dto.landingUrl,
       startBudget: dto.startBudget,
+      videoAssetId: dto.videoAssetId,
       adTitleTemplate: dto.adTitle ?? null,
       adTextTemplate: dto.adText ?? null,
       sex: dto.sex ?? null,
       ageFrom: dto.ageFrom ?? null,
       ageTo: dto.ageTo ?? null,
-      videoAsset: {
-        id: videoAsset.id,
-        vkContentId: videoAsset.vkContentId,
-        width: videoAsset.width ?? undefined,
-        height: videoAsset.height ?? undefined,
-      },
       cities,
       progress: launchProgress,
     }).catch((error: unknown) => {
@@ -174,17 +190,12 @@ export class VkAdsTestCitiesLaunchService {
     accountIntegrationId: number;
     landingUrl: string;
     startBudget: number;
+    videoAssetId: number;
     adTitleTemplate: string | null;
     adTextTemplate: string | null;
     sex: 'male' | 'female' | null;
     ageFrom: number | null;
     ageTo: number | null;
-    videoAsset: {
-      id: number;
-      vkContentId: number;
-      width?: number;
-      height?: number;
-    };
     cities: LaunchCityRecord[];
     progress: {
       processedCities: number;
@@ -194,6 +205,31 @@ export class VkAdsTestCitiesLaunchService {
       campaignId: number | null;
     };
   }) {
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'runCitiesLaunch.enter',
+        testId: params.testId,
+        citiesCount: params.cities.length,
+        videoAssetId: params.videoAssetId,
+      }),
+    );
+
+    const videoAsset = await this.videoAssetsService.ensureVideoAssetForCreative(
+      params.testId,
+      params.videoAssetId,
+    );
+
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'videoAsset.resolved',
+        testId: params.testId,
+        videoAssetId: videoAsset.id,
+        vkContentId: videoAsset.vkContentId,
+      }),
+    );
+
     const sharedUrl = await this.builder.prepareLandingUrl(
       params.accountIntegrationId,
       params.landingUrl,
@@ -255,8 +291,8 @@ export class VkAdsTestCitiesLaunchService {
         title: creativeCopy.title,
         text: creativeCopy.text,
         status: 'active',
-        videoAssetId: params.videoAsset.id,
-        vkContentId: String(params.videoAsset.vkContentId),
+        videoAssetId: videoAsset.id,
+        vkContentId: String(videoAsset.vkContentId),
       });
 
       const audience = await this.repository.createAudience({
@@ -340,10 +376,10 @@ export class VkAdsTestCitiesLaunchService {
               name: creativeCopy.title,
               title: creativeCopy.title,
               text: creativeCopy.text,
-              videoAssetId: params.videoAsset.id,
-              videoAssetVkContentId: params.videoAsset.vkContentId,
-              videoAssetWidth: params.videoAsset.width ?? undefined,
-              videoAssetHeight: params.videoAsset.height ?? undefined,
+              videoAssetId: videoAsset.id,
+              videoAssetVkContentId: videoAsset.vkContentId,
+              videoAssetWidth: videoAsset.width ?? undefined,
+              videoAssetHeight: videoAsset.height ?? undefined,
             },
           });
         } catch (error: unknown) {
@@ -387,10 +423,10 @@ export class VkAdsTestCitiesLaunchService {
               name: creativeCopy.title,
               title: creativeCopy.title,
               text: creativeCopy.text,
-              videoAssetId: params.videoAsset.id,
-              videoAssetVkContentId: params.videoAsset.vkContentId,
-              videoAssetWidth: params.videoAsset.width ?? undefined,
-              videoAssetHeight: params.videoAsset.height ?? undefined,
+              videoAssetId: videoAsset.id,
+              videoAssetVkContentId: videoAsset.vkContentId,
+              videoAssetWidth: videoAsset.width ?? undefined,
+              videoAssetHeight: videoAsset.height ?? undefined,
             },
           });
 
