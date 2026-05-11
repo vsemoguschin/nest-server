@@ -16,10 +16,18 @@ import {
 // When a 429 is received the shared cooldown is set so BOTH queues pause.
 // ---------------------------------------------------------------------------
 
-const RATE_WRITE_MIN_TIME_MS = 500;       // min gap between writes per integration
-const RATE_READ_MIN_TIME_MS = 300;        // min gap between reads (global)
-const RATE_READ_CONCURRENCY = 1;          // max parallel read requests
-const RATE_429_COOLDOWN_BASE_MS = 10_000; // global pause on 429 before queue resumes
+const RATE_WRITE_MIN_TIME_MS = 500;        // min gap between writes per integration
+const RATE_READ_MIN_TIME_MS = 1_000;       // min gap between reads (global)
+const RATE_READ_CONCURRENCY = 1;           // max parallel read requests
+const RATE_429_COOLDOWN_BASE_MS = 30_000;  // global pause on 429 before queue resumes
+
+// getBanner detail reads get fewer retries — they are not critical and each
+// 429 retry burns global cooldown budget that the launch queue needs.
+const BANNER_READ_MAX_RETRIES = 2;
+
+// TTL cache for getBanner detail — template discovery calls the same banner
+// id multiple times across concurrent requests.
+const BANNER_DETAIL_CACHE_TTL_MS = 10 * 60 * 1_000; // 10 minutes
 
 class VkAdsSerialQueue {
   private tail: Promise<void> = Promise.resolve();
@@ -285,6 +293,12 @@ export class VkAdsTestClient {
   private readonly logger = new Logger(VkAdsTestClient.name);
   private readonly clients = new Map<string, AxiosInstance>();
   private readonly limiter = new VkAdsRateLimiter();
+  // key: `${integrationId}:${bannerId}` — stores pending Promise so parallel
+  // calls for the same banner coalesce into a single VK request.
+  private readonly bannerDetailCache = new Map<
+    string,
+    { promise: Promise<JsonObject>; expiresAt: number }
+  >();
 
   constructor(private readonly authService: VkAdsTestAuthService) {}
 
@@ -567,11 +581,35 @@ export class VkAdsTestClient {
     bannerId: number | string,
     params?: QueryParams,
   ): Promise<JsonObject> {
-    return this.get<JsonObject>(
+    const cacheKey = `${integrationId}:${bannerId}`;
+    const now = Date.now();
+    const cached = this.bannerDetailCache.get(cacheKey);
+
+    if (cached && now < cached.expiresAt) {
+      return cached.promise;
+    }
+
+    // Store promise immediately so parallel calls coalesce.
+    const promise = this.get<JsonObject>(
       integrationId,
       `/api/v2/banners/${bannerId}.json`,
       params,
     );
+
+    this.bannerDetailCache.set(cacheKey, {
+      promise,
+      expiresAt: now + BANNER_DETAIL_CACHE_TTL_MS,
+    });
+
+    // On error evict — don't cache failures.
+    promise.catch(() => {
+      const entry = this.bannerDetailCache.get(cacheKey);
+      if (entry?.promise === promise) {
+        this.bannerDetailCache.delete(cacheKey);
+      }
+    });
+
+    return promise;
   }
 
   async getLeadForms(
@@ -840,7 +878,9 @@ export class VkAdsTestClient {
     const method = String(config.method || 'GET').toUpperCase();
     const endpoint = String(config.url || '');
     const entity = this.resolveEntityHint(method, endpoint);
-    const totalAttempts = DEFAULT_MAX_RETRIES + 1;
+    const maxRetries =
+      entity === 'bannerRead' ? BANNER_READ_MAX_RETRIES : DEFAULT_MAX_RETRIES;
+    const totalAttempts = maxRetries + 1;
 
     for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
       try {
@@ -924,8 +964,10 @@ export class VkAdsTestClient {
 
   private resolveEntityHint(method: string, endpoint: string): string {
     if (endpoint.includes('/ad_plans')) return 'campaign';
-    if (endpoint.includes('/ad_groups') && method === 'POST') return 'adGroup';
-    if (endpoint.includes('/banners') && method === 'POST') return 'banner';
+    if (endpoint.includes('/ad_groups') && method === 'POST') return 'adGroupWrite';
+    if (endpoint.includes('/ad_groups')) return 'adGroupRead';
+    if (endpoint.includes('/banners') && method === 'GET') return 'bannerRead';
+    if (endpoint.includes('/banners')) return 'bannerWrite';
     if (endpoint.includes('/urls')) return 'url';
     if (endpoint.includes('/content')) return 'content';
     return 'unknown';

@@ -1071,6 +1071,11 @@ export class VkAdsTestBuilderService {
     };
   }
 
+  // Hard cap: stop fetching banner details after this many candidates per adGroup.
+  // Template discovery should find a valid banner in the first 1-3 items; scanning
+  // hundreds of banners one-by-one is the primary source of GET /banners/{id} storms.
+  private static readonly BANNER_DETAIL_SCAN_LIMIT = 5;
+
   private async resolveBannerTemplate(
     integrationId: number,
     packageId: number,
@@ -1080,14 +1085,32 @@ export class VkAdsTestBuilderService {
       packageId,
     );
 
+    let totalCandidatesChecked = 0;
+
     for (const adGroup of adGroups) {
       const banners = await this.loadBannerCandidatesForAdGroup(
         integrationId,
         adGroup.id,
       );
 
+      let detailFetches = 0;
+
       for (const banner of banners) {
+        totalCandidatesChecked += 1;
+
         if (this.isUsableBannerTemplate(banner)) {
+          this.logger.log(
+            JSON.stringify({
+              scope: 'vk-ads-test-builder',
+              event: 'bannerTemplate.found',
+              integrationId,
+              packageId,
+              adGroupId: adGroup.id,
+              bannerId: this.asNumber(banner.id),
+              candidatesChecked: totalCandidatesChecked,
+              detailFetches,
+            }),
+          );
           return {
             adGroupId: adGroup.id,
             bannerId: this.requireNumber(
@@ -1103,12 +1126,39 @@ export class VkAdsTestBuilderService {
           continue;
         }
 
+        if (detailFetches >= VkAdsTestBuilderService.BANNER_DETAIL_SCAN_LIMIT) {
+          this.logger.warn(
+            JSON.stringify({
+              scope: 'vk-ads-test-builder',
+              event: 'bannerTemplate.detailScanLimitReached',
+              integrationId,
+              packageId,
+              adGroupId: adGroup.id,
+              limit: VkAdsTestBuilderService.BANNER_DETAIL_SCAN_LIMIT,
+            }),
+          );
+          break;
+        }
+
+        detailFetches += 1;
         const bannerDetails = await this.client.getBanner(integrationId, bannerId, {
           fields:
             'id,ad_group_id,name,status,moderation_status,content,textblocks,urls',
         });
 
         if (this.isUsableBannerTemplate(bannerDetails)) {
+          this.logger.log(
+            JSON.stringify({
+              scope: 'vk-ads-test-builder',
+              event: 'bannerTemplate.found',
+              integrationId,
+              packageId,
+              adGroupId: adGroup.id,
+              bannerId,
+              candidatesChecked: totalCandidatesChecked,
+              detailFetches,
+            }),
+          );
           return {
             adGroupId: adGroup.id,
             bannerId,
