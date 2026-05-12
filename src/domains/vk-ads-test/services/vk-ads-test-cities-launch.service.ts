@@ -397,6 +397,17 @@ export class VkAdsTestCitiesLaunchService {
           'VK Ads createAdPlan response does not contain numeric id',
         );
         params.progress.campaignId = campaignId;
+        this.logger.warn(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'cities.createAdPlan.normalized',
+            testId: params.testId,
+            vkCampaignId: adPlan.id,
+            adGroupsCount: adPlan.ad_groups?.length ?? 0,
+            adGroups: adPlan.ad_groups,
+          }),
+        );
+
         adGroupId = this.requireNumber(
           adPlan.ad_groups?.[0]?.id,
           'VK Ads createAdPlan response does not contain numeric ad_groups[0].id',
@@ -538,6 +549,18 @@ export class VkAdsTestCitiesLaunchService {
           });
           throw error;
         }
+
+        this.logger.warn(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'cities.createAdGroup.response',
+            testId: params.testId,
+            cityIndex: index,
+            adGroupId: adGroup.id,
+            bannersCount: (adGroup.banners as unknown[] | undefined)?.length ?? 0,
+            banners: adGroup.banners,
+          }),
+        );
 
         adGroupId = this.requireNumber(
           adGroup.id,

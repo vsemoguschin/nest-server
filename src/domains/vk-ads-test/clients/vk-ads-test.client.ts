@@ -547,6 +547,18 @@ export class VkAdsTestClient {
     integrationId: number,
     response: VkAdsCreateIdResponse,
   ): Promise<VkAdsCreateIdResponse> {
+    this.logger.warn(
+      JSON.stringify({
+        scope: 'vk-ads-test-client',
+        event: 'createAdPlan.response.raw',
+        integrationId,
+        adPlanId: response.id,
+        rawAdGroups: response.ad_groups,
+        rawKeys: Object.keys(response ?? {}),
+        response,
+      }),
+    );
+
     const adGroups = this.extractAdGroupRefs(response);
     if (adGroups.length > 0) {
       return {
@@ -561,6 +573,15 @@ export class VkAdsTestClient {
     }
 
     // Some runtime responses return only campaign id; read back the groups created with the campaign.
+    this.logger.warn(
+      JSON.stringify({
+        scope: 'vk-ads-test-client',
+        event: 'createAdPlan.fallback.triggered',
+        integrationId,
+        adPlanId,
+      }),
+    );
+
     const discoveredAdGroups = await this.getAdGroups(integrationId, {
       fields: 'id,ad_plan_id,name,package_id,status',
       _ad_plan_id: adPlanId,
@@ -573,16 +594,27 @@ export class VkAdsTestClient {
       discoveredAdGroups.items,
     );
 
-    this.logger.warn(
-      JSON.stringify({
-        scope: 'vk-ads-test-client',
-        event: 'createAdPlan.response.normalized.debug',
-        integrationId,
-        endpoint: '/api/v2/ad_plans.json',
-        adPlanId,
-        adGroups: normalizedAdGroups,
-      }),
-    );
+    if (normalizedAdGroups.length === 0) {
+      this.logger.warn(
+        JSON.stringify({
+          scope: 'vk-ads-test-client',
+          event: 'createAdPlan.fallback.empty',
+          integrationId,
+          adPlanId,
+        }),
+      );
+    } else {
+      this.logger.warn(
+        JSON.stringify({
+          scope: 'vk-ads-test-client',
+          event: 'createAdPlan.fallback.rowsFound',
+          integrationId,
+          adPlanId,
+          rowsCount: normalizedAdGroups.length,
+          rowsIds: normalizedAdGroups.map((g) => g.id),
+        }),
+      );
+    }
 
     return {
       ...response,

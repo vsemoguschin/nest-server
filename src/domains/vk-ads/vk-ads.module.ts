@@ -5,6 +5,7 @@ import { VkAdsStatsService } from './vk-ads.stats.service';
 import { VkAdsCronService } from './vk-ads.cron.service';
 import { VkAdsDbService } from './vk-ads.db.service';
 import { VkAdsIntegrationsService } from './vk-ads-integrations.service';
+import { VkAdsAnalyticsService } from './vk-ads-analytics.service';
 
 @Module({
   controllers: [VkAdsController],
@@ -14,6 +15,7 @@ import { VkAdsIntegrationsService } from './vk-ads-integrations.service';
     VkAdsCronService,
     VkAdsDbService,
     VkAdsIntegrationsService,
+    VkAdsAnalyticsService,
   ],
   exports: [VkAdsService, VkAdsStatsService, VkAdsDbService],
 })

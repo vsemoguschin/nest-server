@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { VkAdsDbService } from './vk-ads.db.service';
 import { VkAdsIntegrationsService } from './vk-ads-integrations.service';
+import { VkAdsAnalyticsService } from './vk-ads-analytics.service';
 import {
   StatisticsDayAdPlansDto,
   StatisticsDayGroupsDto,
@@ -8,12 +9,14 @@ import {
 } from './dto/statistics-day.dto';
 import { AdSourcesQueryDto } from './dto/ad-sources-query.dto';
 import { AdSourceExpensesQueryDto } from './dto/ad-source-expenses-query.dto';
+import { AdPlansReportQueryDto } from './dto/ad-plans-report-query.dto';
+import { AdPlanDealsQueryDto } from './dto/ad-plan-deals-query.dto';
 @Controller('vk-ads')
 export class VkAdsController {
-  // Перевод на БД: по умолчанию читаем из VkAdsDailyStat через VkAdsDbService
   constructor(
     private readonly db: VkAdsDbService,
     private readonly integrations: VkAdsIntegrationsService,
+    private readonly analytics: VkAdsAnalyticsService,
   ) {}
 
   @Get('integrations')
@@ -45,6 +48,19 @@ export class VkAdsController {
   @Delete('ad-sources/expenses/:expenseId')
   deleteAdSourceExpense(@Param('expenseId', ParseIntPipe) expenseId: number) {
     return this.integrations.deleteAdSourceExpense(expenseId);
+  }
+
+  @Get('ad_plans/report')
+  getAdPlansReport(@Query() q: AdPlansReportQueryDto) {
+    return this.analytics.getAdPlansReport(q);
+  }
+
+  @Get('ad_plans/:adPlanId/deals')
+  getAdPlanDeals(
+    @Param('adPlanId', ParseIntPipe) adPlanId: number,
+    @Query() q: AdPlanDealsQueryDto,
+  ) {
+    return this.analytics.getAdPlanDeals(adPlanId, q);
   }
 
   // Ad Plans statistics (day) – entity fixed to ad_plans

@@ -7,6 +7,11 @@ import {
   VkAdsUrl,
 } from '../clients/vk-ads-test.client';
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
+import {
+  VK_ADS_TEST_STATIC_BANNER_TEMPLATE,
+  VK_ADS_TEST_STATIC_BANNER_TEMPLATE_BANNER_ID,
+  VK_ADS_TEST_STATIC_BANNER_TEMPLATE_AD_GROUP_ID,
+} from '../templates/vkAdsStaticBannerTemplate';
 
 type PackageInfo = {
   id: number;
@@ -153,10 +158,11 @@ const DEFAULT_CTA_CODE = 'getPrice';
 const DEFAULT_RUSSIA_REGION_ID = 188;
 const DEFAULT_FULLTIME_HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const VK_ADS_TEST_PADS = [1265106, 2243453];
-const REQUIRED_TEMPLATE_CONTENT_KEYS = [
-  'icon_256x256',
-  'video_portrait_9_16_180s',
-  'video_portrait_9_16_30s',
+const REQUIRED_TEMPLATE_CONTENT_KEYS = ['icon_256x256'] as const;
+// At least one video slot must be present (either 9_16 or 4_5 profile).
+const REQUIRED_VIDEO_SLOT_GROUPS = [
+  ['video_portrait_9_16_180s', 'video_portrait_9_16_30s'],
+  ['video_portrait_4_5_180s', 'video_portrait_4_5_30s'],
 ] as const;
 
 @Injectable()
@@ -681,13 +687,23 @@ export class VkAdsTestBuilderService {
     );
 
     if (
-      !REQUIRED_TEMPLATE_CONTENT_KEYS.every(
-        (key) => {
-          const record = this.asRecord(templateContent[key]);
-          return this.asNumber(record?.id) !== null;
-        },
-      )
+      !REQUIRED_TEMPLATE_CONTENT_KEYS.every((key) => {
+        const record = this.asRecord(templateContent[key]);
+        return this.asNumber(record?.id) !== null;
+      })
     ) {
+      throw new Error(
+        'VK Ads banner template is missing required content slots for package 3127',
+      );
+    }
+
+    const hasVideoSlots = REQUIRED_VIDEO_SLOT_GROUPS.some((group) =>
+      group.every((key) => {
+        const record = this.asRecord(templateContent[key]);
+        return this.asNumber(record?.id) !== null;
+      }),
+    );
+    if (!hasVideoSlots) {
       throw new Error(
         'VK Ads banner template is missing required video content slots for package 3127',
       );
@@ -971,7 +987,7 @@ export class VkAdsTestBuilderService {
     autobiddingMode: string;
     targetings: Record<string, unknown>;
   }) {
-    this.logger.warn(
+    this.logger.log(
       JSON.stringify({
         scope: 'vk-ads-test-builder',
         event: 'createAdGroup.payload',
@@ -997,7 +1013,7 @@ export class VkAdsTestBuilderService {
     const urls = params.payload.urls as Record<string, unknown> | undefined;
     const primary = urls?.primary as Record<string, unknown> | undefined;
 
-    this.logger.warn(
+    this.logger.log(
       JSON.stringify({
         scope: 'vk-ads-test-builder',
         event: 'createBanner.payload',
@@ -1071,165 +1087,37 @@ export class VkAdsTestBuilderService {
     };
   }
 
-  // Max banner detail GETs per resolveBannerTemplate call.
-  // List endpoint rarely returns content/textblocks — most candidates need a detail fetch.
-  // Storm root cause: prod has hundreds of ad_groups (one per city × N launches) each
-  // with banners, all needing detail reads. Cap prevents unbounded GET storm.
-  private static readonly BANNER_DETAIL_FETCH_LIMIT = 5;
-
   private async resolveBannerTemplate(
     integrationId: number,
     packageId: number,
   ): Promise<VkAdsTestBannerTemplate> {
-    const adGroups = await this.loadAdGroupsForPackage(
-      integrationId,
-      packageId,
+    // Static template — no API call, always valid shape.
+    const staticTemplate: VkAdsTestBannerTemplate = {
+      adGroupId: VK_ADS_TEST_STATIC_BANNER_TEMPLATE_AD_GROUP_ID,
+      bannerId: VK_ADS_TEST_STATIC_BANNER_TEMPLATE_BANNER_ID,
+      banner: VK_ADS_TEST_STATIC_BANNER_TEMPLATE as unknown as Record<string, unknown>,
+    };
+    this.logger.warn(
+      JSON.stringify({
+        scope: 'vk-ads-test-builder',
+        event: 'templateBanner.static.used',
+        integrationId,
+        packageId,
+        bannerId: staticTemplate.bannerId,
+      }),
     );
-
     this.logger.log(
       JSON.stringify({
         scope: 'vk-ads-test-builder',
-        event: 'resolveBannerTemplate.start',
+        event: 'prepareBannerTemplate.ok',
         integrationId,
         packageId,
-        adGroupsCount: adGroups.length,
+        selectedAdGroupId: staticTemplate.adGroupId,
+        selectedBannerId: staticTemplate.bannerId,
+        source: 'static',
       }),
     );
-
-    let totalCandidates = 0;
-    let totalDetailFetches = 0;
-
-    for (const adGroup of adGroups) {
-      const banners = await this.loadBannerCandidatesForAdGroup(
-        integrationId,
-        adGroup.id,
-      );
-
-      for (const banner of banners) {
-        totalCandidates += 1;
-
-        if (this.isUsableBannerTemplate(banner)) {
-          const bannerId = this.requireNumber(
-            banner.id,
-            'VK Ads banner template item does not contain numeric id',
-          );
-          this.logger.log(
-            JSON.stringify({
-              scope: 'vk-ads-test-builder',
-              event: 'prepareBannerTemplate.ok',
-              integrationId,
-              packageId,
-              selectedAdGroupId: adGroup.id,
-              selectedBannerId: bannerId,
-              candidatesCount: totalCandidates,
-              detailFetches: totalDetailFetches,
-              source: 'list',
-            }),
-          );
-          return { adGroupId: adGroup.id, bannerId, banner };
-        }
-
-        const bannerId = this.asNumber(banner.id);
-        if (bannerId === null) {
-          continue;
-        }
-
-        if (totalDetailFetches >= VkAdsTestBuilderService.BANNER_DETAIL_FETCH_LIMIT) {
-          const limitMsg = `VK Ads banner template not found within detail fetch limit (limit=${VkAdsTestBuilderService.BANNER_DETAIL_FETCH_LIMIT}, package_id=${packageId})`;
-          this.logger.error(
-            JSON.stringify({
-              scope: 'vk-ads-test-builder',
-              event: 'prepareBannerTemplate.error',
-              integrationId,
-              packageId,
-              adGroupsCount: adGroups.length,
-              candidatesCount: totalCandidates,
-              detailFetches: totalDetailFetches,
-              message: limitMsg,
-            }),
-          );
-          throw new Error(limitMsg);
-        }
-
-        totalDetailFetches += 1;
-        const bannerDetails = await this.client.getBanner(integrationId, bannerId, {
-          fields: 'id,ad_group_id,name,status,moderation_status,content,textblocks,urls',
-        });
-
-        if (this.isUsableBannerTemplate(bannerDetails)) {
-          this.logger.log(
-            JSON.stringify({
-              scope: 'vk-ads-test-builder',
-              event: 'prepareBannerTemplate.ok',
-              integrationId,
-              packageId,
-              selectedAdGroupId: adGroup.id,
-              selectedBannerId: bannerId,
-              candidatesCount: totalCandidates,
-              detailFetches: totalDetailFetches,
-              source: 'detail',
-            }),
-          );
-          return { adGroupId: adGroup.id, bannerId, banner: bannerDetails };
-        }
-      }
-    }
-
-    this.logger.error(
-      JSON.stringify({
-        scope: 'vk-ads-test-builder',
-        event: 'prepareBannerTemplate.error',
-        integrationId,
-        packageId,
-        adGroupsCount: adGroups.length,
-        candidatesCount: totalCandidates,
-        detailFetches: totalDetailFetches,
-        message: `VK Ads runtime banner template was not found for package_id=${packageId}`,
-      }),
-    );
-
-    throw new Error(
-      `VK Ads runtime banner template was not found for package_id=${packageId}`,
-    );
-  }
-
-  private async loadAdGroupsForPackage(
-    integrationId: number,
-    packageId: number,
-  ): Promise<Array<{ id: number }>> {
-    const limit = 100;
-    const result: Array<{ id: number }> = [];
-
-    for (let offset = 0; ; offset += limit) {
-      const response = await this.client.getAdGroups(integrationId, {
-        fields: 'id,package_id,name,status',
-        limit,
-        offset,
-        sorting: '-id',
-      });
-
-      const pageItems = (response.items ?? [])
-        .map((item) => {
-          const record = this.asRecord(item);
-          const id = this.asNumber(record?.id);
-          const currentPackageId = this.asNumber(record?.package_id);
-
-          if (id === null || currentPackageId !== packageId) {
-            return null;
-          }
-
-          return { id };
-        })
-        .filter((item): item is { id: number } => item !== null);
-
-      result.push(...pageItems);
-
-      if ((response.items?.length ?? 0) < limit) {
-        break;
-      }
-    }
-
-    return result;
+    return staticTemplate;
   }
 
   private getCachedBannerTemplate(
@@ -1252,38 +1140,6 @@ export class VkAdsTestBuilderService {
     return promise;
   }
 
-  private async loadBannerCandidatesForAdGroup(
-    integrationId: number,
-    adGroupId: number,
-  ): Promise<Record<string, unknown>[]> {
-    const limit = 100;
-    const items: Record<string, unknown>[] = [];
-
-    for (let offset = 0; ; offset += limit) {
-      const response = await this.client.getBanners(integrationId, {
-        _ad_group_id: adGroupId,
-        _status__in: 'active,blocked',
-        fields:
-          'id,ad_group_id,name,status,moderation_status,content,textblocks,urls',
-        limit,
-        offset,
-        sorting: '-id',
-      });
-
-      items.push(
-        ...(response.items ?? [])
-          .map((item) => this.asRecord(item))
-          .filter((item): item is Record<string, unknown> => item !== undefined),
-      );
-
-      if ((response.items?.length ?? 0) < limit) {
-        break;
-      }
-    }
-
-    return items;
-  }
-
   private isUsableBannerTemplate(banner: Record<string, unknown>): boolean {
     if (!banner) {
       return false;
@@ -1302,16 +1158,35 @@ export class VkAdsTestBuilderService {
     const content = this.asRecord(banner.content);
     const textblocks = this.asRecord(banner.textblocks);
 
+    if (
+      this.asNumber(primary?.id) === null ||
+      content === undefined ||
+      textblocks === undefined
+    ) {
+      return false;
+    }
+
+    if (
+      !REQUIRED_TEMPLATE_CONTENT_KEYS.every((key) => {
+        const record = this.asRecord(content[key]);
+        return this.asNumber(record?.id) !== null;
+      })
+    ) {
+      return false;
+    }
+
+    // Accept banners with either 9_16 or 4_5 video slots.
+    const hasVideoSlots = REQUIRED_VIDEO_SLOT_GROUPS.some((group) =>
+      group.every((key) => {
+        const record = this.asRecord(content[key]);
+        return this.asNumber(record?.id) !== null;
+      }),
+    );
+    if (!hasVideoSlots) {
+      return false;
+    }
+
     return (
-      this.asNumber(primary?.id) !== null &&
-      content !== undefined &&
-      REQUIRED_TEMPLATE_CONTENT_KEYS.every(
-        (key) => {
-          const record = this.asRecord(content[key]);
-          return this.asNumber(record?.id) !== null;
-        },
-      ) &&
-      textblocks !== undefined &&
       this.asRecord(textblocks.title_40_vkads) !== undefined &&
       this.asRecord(textblocks.text_2000) !== undefined &&
       this.asRecord(textblocks.about_company_115) !== undefined &&
