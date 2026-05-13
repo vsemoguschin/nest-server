@@ -13,6 +13,7 @@ import { UpdateDealersDto } from './dto/dealers-update.dto';
 import { UpdateDealGroupDto } from './dto/deal-group-update.dto';
 import { GroupsAccessService } from '../groups/groups-access.service';
 import { YandexDiskClient } from 'src/integrations/yandex-disk/yandex-disk.client';
+import axios from 'axios';
 
 const useMyGetDaysDifference = (
   dateString1: string,
@@ -119,6 +120,34 @@ export class DealsService {
       default:
         return 'saleDate';
     }
+  }
+
+  private getFilePlatformBaseUrl() {
+    const value = process.env.FILE_PLATFORM_BASE_URL?.trim();
+    if (!value) {
+      throw new Error('Missing required environment variable: FILE_PLATFORM_BASE_URL');
+    }
+    return value.replace(/\/+$/, '');
+  }
+
+  private getFilePlatformInternalApiKey() {
+    const value = process.env.FILE_PLATFORM_INTERNAL_API_KEY?.trim();
+    if (!value) {
+      throw new Error(
+        'Missing required environment variable: FILE_PLATFORM_INTERNAL_API_KEY',
+      );
+    }
+    return value;
+  }
+
+  private getFilePlatformPublicUploadBaseUrl() {
+    const value = process.env.FILE_PLATFORM_PUBLIC_UPLOAD_BASE_URL?.trim();
+    if (!value) {
+      throw new Error(
+        'Missing required environment variable: FILE_PLATFORM_PUBLIC_UPLOAD_BASE_URL',
+      );
+    }
+    return value.replace(/\/+$/, '');
   }
 
   private normalizeSortOrder(sortOrder?: string): SortOrder {
@@ -1463,6 +1492,54 @@ export class DealsService {
       productionTasks: productionTasks.map(mapTask),
     };
   }
+
+  async createUploadLinkForPage(user: UserDto) {
+    const { data } = await axios.post(
+      `${this.getFilePlatformBaseUrl()}/api/internal/upload-links`,
+      {
+        createdByUserId: user.id,
+      },
+      {
+        headers: {
+          'X-Internal-Api-Key': this.getFilePlatformInternalApiKey(),
+        },
+      },
+    );
+
+    const token = String(data.token ?? '').trim();
+    const publicUrl = String(data.publicUrl ?? '').trim() || (
+      token ? `${this.getFilePlatformPublicUploadBaseUrl()}/${token}` : ''
+    );
+
+    if (!token) {
+      throw new Error('file-platform upload-link response does not contain token');
+    }
+    if (!publicUrl) {
+      throw new Error(
+        'file-platform upload-link response does not contain publicUrl and token fallback failed',
+      );
+    }
+
+    const prismaAny = this.prisma as any;
+    const created = await prismaAny.uploadLinkAction.create({
+      data: {
+        filePlatformUploadLinkId: String(data.id ?? ''),
+        token,
+        publicUrl,
+        source: 'deals_page',
+        createdByUserId: user.id,
+      },
+    });
+
+    return {
+      publicUrl,
+      token,
+      filePlatformUploadLinkId: data.id ?? null,
+      createdByUserId: user.id,
+      createdAt: created.createdAt.toISOString(),
+    };
+  }
+
   async findOne(user: UserDto, id: number) {
     const groupsSearch = this.groupsAccessService.buildGroupsScope(user);
 
@@ -1501,7 +1578,7 @@ export class DealsService {
             board: { select: { title: true } },
           },
         },
-      },
+      } as any,
     });
 
     if (!deal) {
@@ -1510,7 +1587,7 @@ export class DealsService {
 
     deal.status = this.getDealStatus(deal);
 
-    const { reviews } = deal;
+    const { reviews } = deal as any;
     if (reviews.length > 0) {
       await Promise.all(
         reviews.map(async (review, i) => {

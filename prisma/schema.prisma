@@ -143,6 +143,7 @@ model User {
   deliveries Delivery[]
 
   reviews Review[]
+  uploadLinkActions UploadLinkAction[]
 
   managersPlans ManagersPlan[]
 
@@ -394,6 +395,21 @@ model DealAudit {
 
   userId Int? // ID пользователя, который совершил действие (опционально)
   user   User? @relation(fields: [userId], references: [id])
+}
+
+model UploadLinkAction {
+  id                      Int      @id @default(autoincrement())
+  filePlatformUploadLinkId String
+  token                   String
+  publicUrl               String
+  source                  String
+  createdAt               DateTime @default(now())
+
+  createdByUserId Int
+  createdByUser   User     @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([createdByUserId, createdAt])
+  @@index([source, createdAt])
 }
 
 // Источники рекламы
