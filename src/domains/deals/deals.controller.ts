@@ -45,12 +45,11 @@ export class DealsController {
   @Post('upload-link')
   @ApiOperation({
     summary: 'Создать ссылку загрузки фото',
-    description: 'Endpoint: POST /deals/upload-link. Создает публичную ссылку на загрузку фото через file-platform.',
+    description:
+      'Endpoint: POST /deals/upload-link. Создает публичную ссылку на загрузку фото через file-platform.',
   })
-  @Roles('ADMIN', 'G', 'KD')
-  async createUploadLink(
-    @CurrentUser() user: UserDto,
-  ) {
+  @Roles('ADMIN', 'G', 'KD', 'MOP', 'ROP', 'DO')
+  async createUploadLink(@CurrentUser() user: UserDto) {
     return this.dealsService.createUploadLinkForPage(user);
   }
 
