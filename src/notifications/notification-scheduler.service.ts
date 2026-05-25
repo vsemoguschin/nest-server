@@ -1726,7 +1726,7 @@ export class NotificationSchedulerService {
 
   // Автоматическая синхронизация расходов VK Ads в AdExpense.
   // Источник определяется через VkAdsAccountIntegration.adSourceId → AdSource.
-  @Cron('0 0 8 * * *', { timeZone: 'Europe/Moscow' })
+  // @Cron('0 0 8 * * *', { timeZone: 'Europe/Moscow' })
   async syncVkAdsExpenses() {
     if (this.env === 'development') {
       this.logger.debug(`[dev] skip syncVkAdsExpenses`);

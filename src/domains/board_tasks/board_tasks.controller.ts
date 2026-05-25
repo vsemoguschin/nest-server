@@ -53,6 +53,9 @@ const TMP_DIR = path.join(os.tmpdir(), 'easycrm-uploads');
 const ORDER_AUDIT_FIELD_LABELS: Record<string, string> = {
   title: 'Название',
   deadline: 'Дедлайн',
+  cloudLink: 'Ссылка на облако',
+  size: 'Размер',
+  spreadsCount: 'Количество разворотов',
   material: 'Материал',
   boardWidth: 'Ширина',
   boardHeight: 'Высота',
@@ -1098,6 +1101,32 @@ export class TasksController {
       }
     }
     return updated;
+  }
+
+  /** Открыть редактор для заказа */
+  @Post('orders/:orderId/open-editor')
+  @Roles(
+    'ADMIN',
+    'G',
+    'KD',
+    'DO',
+    'ROD',
+    'DP',
+    'ROV',
+    'MOP',
+    'MOV',
+    'DIZ',
+    'LOGIST',
+    'RP',
+    'GUEST',
+    'MASTER',
+    'PACKER',
+    'PRINTER',
+  )
+  async openEditor(
+    @Param('orderId', ParseIntPipe) orderId: number,
+  ) {
+    return this.tasksService.openEditorForOrder(orderId);
   }
 
   /** Мягкое удаление заказа */

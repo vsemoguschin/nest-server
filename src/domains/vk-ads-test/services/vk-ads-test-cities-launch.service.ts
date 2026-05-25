@@ -8,7 +8,11 @@ import { Prisma } from '@prisma/client';
 import { LaunchCitiesDto } from '../dto/launch-cities.dto';
 import { VkAdsTestClient, VkAdsTestClientError } from '../clients/vk-ads-test.client';
 import { VkAdsTestRepository } from '../repositories/vk-ads-test.repository';
-import { VkAdsTestBuilderService } from './vk-ads-test-builder.service';
+import {
+  VkAdsCitiesBannerDiagnostics,
+  VkAdsTestBuildError,
+  VkAdsTestBuilderService,
+} from './vk-ads-test-builder.service';
 import { VkAdsTestVideoAssetsService } from './vk-ads-test-video-assets.service';
 
 type LaunchCityRecord = LaunchCitiesDto['cities'][number];
@@ -215,10 +219,22 @@ export class VkAdsTestCitiesLaunchService {
     this.logger.log(
       JSON.stringify({
         scope: 'vk-ads-test-cities-launch',
-        event: 'videoAsset.resolved',
+        event: 'videoAsset.resolved.detail',
         testId: params.testId,
         videoAssetId: videoAsset.id,
         vkContentId: videoAsset.vkContentId,
+        durationSec: videoAsset.durationSec ?? null,
+        width: videoAsset.width ?? null,
+        height: videoAsset.height ?? null,
+        aspectRatio: this.formatAspectRatio(
+          videoAsset.width ?? null,
+          videoAsset.height ?? null,
+        ),
+        status: videoAsset.status,
+        originalFilename: videoAsset.name ?? null,
+        belongsToTestId: videoAsset.testId ?? null,
+        expectedTestId: params.testId,
+        isSameTest: videoAsset.testId === params.testId,
       }),
     );
 
@@ -279,6 +295,30 @@ export class VkAdsTestCitiesLaunchService {
       }),
     );
 
+    const templateDiagnostics = this.builder.describeCitiesBannerDiagnostics({
+      template: bannerTemplate,
+      testId: params.testId,
+      accountIntegrationId: params.accountIntegrationId,
+      packageId: VK_ADS_TEST_PACKAGE_ID,
+    });
+
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-cities-launch',
+        event: 'prepareBannerTemplate.detail',
+        testId: params.testId,
+        accountIntegrationId: params.accountIntegrationId,
+        packageId: VK_ADS_TEST_PACKAGE_ID,
+        templateBannerId: templateDiagnostics.templateBannerId,
+        templateContentKeys: templateDiagnostics.templateContentKeys,
+        templateTextblockKeys: templateDiagnostics.templateTextblockKeys,
+        templateUrlKeys: templateDiagnostics.templateUrlKeys,
+        templatePatternIds: templateDiagnostics.templatePatternIds,
+        templateVideoSlots: templateDiagnostics.templateVideoSlots,
+        templateImageSlots: templateDiagnostics.templateImageSlots,
+      }),
+    );
+
     const runtimeCityIds: Array<{
       cityId: number;
       audienceId: number;
@@ -298,6 +338,25 @@ export class VkAdsTestCitiesLaunchService {
         ageFrom: params.ageFrom,
         ageTo: params.ageTo,
       });
+      const bannerDiagnostics: VkAdsCitiesBannerDiagnostics =
+        this.builder.describeCitiesBannerDiagnostics({
+          template: bannerTemplate,
+          creative: {
+            name: creativeCopy.title,
+            title: creativeCopy.title,
+            text: creativeCopy.text,
+            videoAssetId: videoAsset.id,
+            videoAssetVkContentId: videoAsset.vkContentId,
+            videoAssetWidth: videoAsset.width ?? undefined,
+            videoAssetHeight: videoAsset.height ?? undefined,
+          },
+          testId: params.testId,
+          accountIntegrationId: params.accountIntegrationId,
+          cityIndex: index,
+          cityId: city.id,
+          cityName: city.label,
+          packageId: VK_ADS_TEST_PACKAGE_ID,
+        });
       this.logger.warn(
         JSON.stringify({
           scope: 'vk-ads-test-cities-launch',
@@ -308,6 +367,26 @@ export class VkAdsTestCitiesLaunchService {
           cityId: city.id,
           cityName: city.label,
           targetings,
+        }),
+      );
+      this.logger.log(
+        JSON.stringify({
+          scope: 'vk-ads-test-cities-launch',
+          event: 'videoSlot.resolve',
+          testId: params.testId,
+          cityIndex: index,
+          cityId: city.id,
+          cityName: city.label,
+          packageId: VK_ADS_TEST_PACKAGE_ID,
+          templateBannerId: bannerDiagnostics.templateBannerId,
+          candidateVideoSlots: bannerDiagnostics.candidateVideoSlots,
+          candidateSlotsWithExistingTemplateContent:
+            bannerDiagnostics.candidateSlotsWithExistingTemplateContent,
+          resolvedSlot: bannerDiagnostics.resolvedSlot,
+          finalContentVideoId: bannerDiagnostics.finalContentVideoId,
+          templateVideoId: bannerDiagnostics.templateVideoId,
+          selectedVideoContentId: bannerDiagnostics.selectedVideoContentId,
+          reason: bannerDiagnostics.reason,
         }),
       );
 
@@ -413,6 +492,30 @@ export class VkAdsTestCitiesLaunchService {
           'VK Ads createAdPlan response does not contain numeric ad_groups[0].id',
         );
 
+        this.logger.log(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'createBanner.payload.detail',
+            testId: params.testId,
+            cityIndex: index,
+            cityId: city.id,
+            cityName: city.label,
+            packageId: VK_ADS_TEST_PACKAGE_ID,
+            templateBannerId: bannerDiagnostics.templateBannerId,
+            vkAdGroupId: adGroupId,
+            contentKeys: bannerDiagnostics.contentKeys,
+            urlKeys: bannerDiagnostics.urlKeys,
+            textblockKeys: bannerDiagnostics.textblockKeys,
+            hasVideoContent: bannerDiagnostics.hasVideoContent,
+            videoContentKeys: bannerDiagnostics.videoContentKeys,
+            selectedVideoContentId: bannerDiagnostics.selectedVideoContentId,
+            resolvedSlot: bannerDiagnostics.resolvedSlot,
+            finalContentVideoId: bannerDiagnostics.finalContentVideoId,
+            payloadPatternCompatibilityHint:
+              bannerDiagnostics.payloadPatternCompatibilityHint,
+          }),
+        );
+
         await this.repository.updateTestRuntimeIds(params.testId, {
           vkCampaignId: campaignId,
           vkPrimaryUrlId: sharedUrl.id,
@@ -465,6 +568,15 @@ export class VkAdsTestCitiesLaunchService {
             cityId: city.id,
             cityName: city.label,
             campaignId,
+            packageId: VK_ADS_TEST_PACKAGE_ID,
+            templateBannerId: bannerDiagnostics.templateBannerId,
+            contentKeys: bannerDiagnostics.contentKeys,
+            textblockKeys: bannerDiagnostics.textblockKeys,
+            urlKeys: bannerDiagnostics.urlKeys,
+            selectedVideoContentId: bannerDiagnostics.selectedVideoContentId,
+            resolvedSlot: bannerDiagnostics.resolvedSlot,
+            finalContentVideoId: bannerDiagnostics.finalContentVideoId,
+            candidateVideoSlots: bannerDiagnostics.candidateVideoSlots,
             error,
           });
           throw error;
@@ -570,6 +682,30 @@ export class VkAdsTestCitiesLaunchService {
         bannerId = this.requireNumber(
           adGroup.banners?.[0]?.id,
           'VK Ads createAdGroup response does not contain numeric banners[0].id',
+        );
+
+        this.logger.log(
+          JSON.stringify({
+            scope: 'vk-ads-test-cities-launch',
+            event: 'createBanner.payload.detail',
+            testId: params.testId,
+            cityIndex: index,
+            cityId: city.id,
+            cityName: city.label,
+            packageId: VK_ADS_TEST_PACKAGE_ID,
+            templateBannerId: bannerDiagnostics.templateBannerId,
+            vkAdGroupId: adGroupId,
+            contentKeys: bannerDiagnostics.contentKeys,
+            urlKeys: bannerDiagnostics.urlKeys,
+            textblockKeys: bannerDiagnostics.textblockKeys,
+            hasVideoContent: bannerDiagnostics.hasVideoContent,
+            videoContentKeys: bannerDiagnostics.videoContentKeys,
+            selectedVideoContentId: bannerDiagnostics.selectedVideoContentId,
+            resolvedSlot: bannerDiagnostics.resolvedSlot,
+            finalContentVideoId: bannerDiagnostics.finalContentVideoId,
+            payloadPatternCompatibilityHint:
+              bannerDiagnostics.payloadPatternCompatibilityHint,
+          }),
         );
 
         this.logger.log(
@@ -696,9 +832,27 @@ export class VkAdsTestCitiesLaunchService {
     cityId: number;
     cityName: string;
     campaignId: number | null;
+    packageId?: number;
+    templateBannerId?: number | null;
+    contentKeys?: string[];
+    textblockKeys?: string[];
+    urlKeys?: string[];
+    selectedVideoContentId?: number | null;
+    resolvedSlot?: string | null;
+    finalContentVideoId?: number | null;
+    candidateVideoSlots?: string[];
     error: unknown;
   }): void {
-    const isVkError = params.error instanceof VkAdsTestClientError;
+    const isClientError = params.error instanceof VkAdsTestClientError;
+    const isBuildError = params.error instanceof VkAdsTestBuildError;
+    const clientError = isClientError
+      ? (params.error as VkAdsTestClientError)
+      : null;
+    const buildError = isBuildError
+      ? (params.error as VkAdsTestBuildError)
+      : null;
+    const fieldErrors = buildError?.fieldErrors ?? clientError?.fieldErrors;
+    const rawError = buildError?.vkErrorBody ?? clientError?.rawError;
     this.logger.error(
       JSON.stringify({
         scope: 'vk-ads-test-cities-launch',
@@ -709,17 +863,38 @@ export class VkAdsTestCitiesLaunchService {
         cityId: params.cityId,
         cityName: params.cityName,
         campaignId: params.campaignId,
+        packageId: params.packageId ?? null,
+        templateBannerId: params.templateBannerId ?? null,
+        contentKeys: params.contentKeys ?? [],
+        textblockKeys: params.textblockKeys ?? [],
+        urlKeys: params.urlKeys ?? [],
+        selectedVideoContentId: params.selectedVideoContentId ?? null,
+        resolvedSlot: params.resolvedSlot ?? null,
+        finalContentVideoId: params.finalContentVideoId ?? null,
+        candidateVideoSlots: params.candidateVideoSlots ?? [],
         message: params.error instanceof Error ? params.error.message : String(params.error),
-        ...(isVkError && {
-          status: (params.error as VkAdsTestClientError).status,
-          vkErrorCode: (params.error as VkAdsTestClientError).vkErrorCode,
-          vkErrorMessage: (params.error as VkAdsTestClientError).vkErrorMessage,
-          fieldErrors: (params.error as VkAdsTestClientError).fieldErrors,
-          rawError: (params.error as VkAdsTestClientError).rawError,
+        ...((isBuildError || isClientError) && {
+          status: buildError?.status ?? clientError?.status,
+          vkErrorCode: buildError?.vkErrorCode ?? clientError?.vkErrorCode,
+          vkErrorMessage:
+            buildError?.vkErrorMessage ?? clientError?.vkErrorMessage,
+          fieldErrors,
+          rawError,
         }),
       }),
       params.error instanceof Error ? params.error.stack : String(params.error),
     );
+  }
+
+  private formatAspectRatio(
+    width: number | null,
+    height: number | null,
+  ): string | null {
+    if (!width || !height) {
+      return null;
+    }
+
+    return `${width}:${height}`;
   }
 
   private buildCampaignPayload(params: {

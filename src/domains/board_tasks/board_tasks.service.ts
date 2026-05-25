@@ -1,7 +1,10 @@
 import {
+  BadGatewayException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -119,12 +122,33 @@ type OrderCostPayload = {
   plug: string;
 };
 
+type BookEditorResolveResponse = {
+  found: boolean;
+  projectId?: string;
+  editorUrl: string;
+};
+
 type TaskOrderWithCostRelations = Prisma.TaskOrderGetPayload<{
   include: {
     neons: true;
     lightings: true;
     package: { include: { items: true } };
-    task: { select: { boardId: true; dealId: true } };
+    task: {
+      select: {
+        boardId: true;
+        dealId: true;
+        board: {
+          select: {
+            id: true;
+            project: {
+              select: {
+                code: true;
+              };
+            };
+          };
+        };
+      };
+    };
   };
 }>;
 
@@ -179,6 +203,57 @@ const ORDER_COST_PRICES = {
 export class TasksService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private getBookEditorBackendUrl(): string {
+    const raw = String(process.env.BOOK_EDITOR_BACKEND_URL ?? '').trim();
+    if (!raw) {
+      throw new InternalServerErrorException('BOOK_EDITOR_BACKEND_URL_NOT_CONFIGURED');
+    }
+    return raw;
+  }
+
+  private async resolveBookEditorEditorUrl(input: {
+    cardId: number;
+    taskOrderId: number;
+    cloudUrl: string;
+  }): Promise<BookEditorResolveResponse> {
+    const response = await fetch(
+      new URL('/api/project/resolve-crm-link', this.getBookEditorBackendUrl()).toString(),
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(input),
+      },
+    );
+
+    if (!response.ok) {
+      const responseText = await response.text().catch(() => '');
+      let message = responseText.trim();
+      if (responseText) {
+        try {
+          const parsed = JSON.parse(responseText);
+          const parsedMessage =
+            typeof parsed?.message === 'string'
+              ? parsed.message
+              : typeof parsed?.error === 'string'
+                ? parsed.error
+                : '';
+          if (parsedMessage.trim()) {
+            message = parsedMessage.trim();
+          }
+        } catch {
+          // ignore JSON parse failures and keep raw text fallback
+        }
+      }
+      throw new BadGatewayException(
+        message || `book-editor resolve failed with status ${response.status}`,
+      );
+    }
+
+    return (await response.json()) as BookEditorResolveResponse;
+  }
+
   /** Проверка задачи (если нужна) */
   async ensureTask(taskId: number) {
     const task = await this.prisma.kanbanTask.findFirst({
@@ -187,6 +262,20 @@ export class TasksService {
         members: true,
         column: true,
         tags: true,
+        board: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            project: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!task) throw new NotFoundException('Task not found');
@@ -761,7 +850,20 @@ export class TasksService {
         cover: true,
         archived: true,
         tags: { select: { id: true, name: true } },
-        board: { select: { id: true, title: true, description: true } },
+        board: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            project: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+          },
+        },
         column: { select: { id: true, title: true, position: true } },
         creator: { select: { id: true, fullName: true, email: true } },
         orders: {
@@ -1638,6 +1740,31 @@ export class TasksService {
     });
   }
 
+  async openEditorForOrder(orderId: number): Promise<BookEditorResolveResponse> {
+    const order = await this.prisma.taskOrder.findFirst({
+      where: { id: orderId, deletedAt: null },
+      select: {
+        id: true,
+        taskId: true,
+        cloudLink: true,
+      },
+    });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const cloudUrl = String(order.cloudLink ?? '').trim();
+    if (!cloudUrl) {
+      throw new BadRequestException('Сначала укажите ссылку на облако');
+    }
+
+    return await this.resolveBookEditorEditorUrl({
+      cardId: order.taskId,
+      taskOrderId: order.id,
+      cloudUrl,
+    });
+  }
+
   /** Список доставок задачи */
   async deliveriesListForTask(taskId: number) {
     const { dealId } = await this.ensureTask(taskId);
@@ -1735,7 +1862,8 @@ export class TasksService {
 
   /** Создать для задачи */
   async createOrderForTask(taskId: number, dto: CreateTaskOrderDto) {
-    await this.ensureTask(taskId);
+    const task = await this.ensureTask(taskId);
+    const isEasyBook = task.board?.project?.code === 'easybook';
     // console.log(dto);
 
     // дефолты / нормализация
@@ -1850,47 +1978,71 @@ export class TasksService {
           ...(plug !== undefined ? { plug: normalizedPlug } : {}),
           ...(plug !== undefined ? { plugColor: normalizedPlugColor } : {}),
           ...(plug !== undefined ? { plugLength: normalizedPlugLength } : {}),
-          package: {
-            create: {
-              items: packageItemsData.length
-                ? {
-                    createMany: {
-                      data: packageItemsData,
-                    },
-                  }
-                : undefined,
-            },
-          },
-          neons: neons.length
+          ...(!isEasyBook
             ? {
-                createMany: {
-                  data: neons.map((n) => ({
-                    width: n.width ?? '',
-                    length: n.length ?? 0,
-                    color: n.color ?? '',
-                  })),
+                package: {
+                  create: {
+                    items: packageItemsData.length
+                      ? {
+                          createMany: {
+                            data: packageItemsData,
+                          },
+                        }
+                      : undefined,
+                  },
                 },
+                neons: neons.length
+                  ? {
+                      createMany: {
+                        data: neons.map((n) => ({
+                          width: n.width ?? '',
+                          length: n.length ?? 0,
+                          color: n.color ?? '',
+                        })),
+                      },
+                    }
+                  : undefined,
+                lightings: lightings.length
+                  ? {
+                      createMany: {
+                        data: lightings.map((l) => ({
+                          length: l.length ?? 0,
+                          color: l.color ?? '',
+                          elements: l.elements ?? 0,
+                        })),
+                      },
+                    }
+                  : undefined,
               }
-            : undefined,
-          lightings: lightings.length
-            ? {
-                createMany: {
-                  data: lightings.map((l) => ({
-                    length: l.length ?? 0,
-                    color: l.color ?? '',
-                    elements: l.elements ?? 0,
-                  })),
-                },
-              }
-            : undefined,
+            : {}),
         },
         include: {
           neons: true,
           lightings: true,
           package: { include: { items: true } },
-          task: { select: { boardId: true, dealId: true } },
+          task: {
+            select: {
+              boardId: true,
+              dealId: true,
+              board: {
+                select: {
+                  id: true,
+                  project: {
+                    select: {
+                      code: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
+
+      if (isEasyBook) {
+        await tx.orderCost.deleteMany({ where: { orderId: created.id } });
+        return created;
+      }
 
       const supplies = await this.getOrderCostSupplies(tx);
       const payload = this.buildOrderCostPayload(created, supplies);
@@ -1910,10 +2062,32 @@ export class TasksService {
   /** Обновить (полная замена массивов неонов/подсветок) */
   async updateOrder(orderId: number, dto: UpdateTaskOrderDto) {
     // console.log(dto);
+    const currentOrder = await this.prisma.taskOrder.findFirst({
+      where: { id: orderId, deletedAt: null },
+      select: {
+        id: true,
+        task: {
+          select: {
+            board: {
+              select: {
+                project: {
+                  select: {
+                    code: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const isEasyBook = currentOrder?.task?.board?.project?.code === 'easybook';
     const ex = await this.prisma.taskOrder.findFirst({
       where: { id: orderId, deletedAt: null },
       select: {
         id: true,
+        taskId: true,
+        cloudLink: true,
         plug: true,
         adapter: true,
         isAcrylic: true,
@@ -1923,6 +2097,25 @@ export class TasksService {
       },
     });
     if (!ex) throw new NotFoundException('Order not found');
+
+    const currentCloudLink = String(ex.cloudLink ?? '').trim();
+    const nextCloudLink =
+      dto.cloudLink !== undefined ? String(dto.cloudLink ?? '').trim() : null;
+    if (nextCloudLink !== null && nextCloudLink !== currentCloudLink) {
+      const lookupCloudUrl = currentCloudLink || nextCloudLink;
+      if (lookupCloudUrl) {
+        const resolveResult = await this.resolveBookEditorEditorUrl({
+          cardId: ex.taskId,
+          taskOrderId: orderId,
+          cloudUrl: lookupCloudUrl,
+        });
+        if (resolveResult.found) {
+          throw new ConflictException(
+            'Ссылка на облако заблокирована после создания проекта в редакторе',
+          );
+        }
+      }
+    }
 
     const {
       neons,
@@ -2074,7 +2267,7 @@ export class TasksService {
           ...(dimmerTypeData !== undefined
             ? { dimmerType: dimmerTypeData }
             : {}),
-          ...(packageItems !== undefined
+          ...(!isEasyBook && packageItems !== undefined
             ? {
                 package: {
                   upsert: {
@@ -2104,7 +2297,7 @@ export class TasksService {
       });
 
       // 2) если прислали массивы — заменим их содержимое
-      if (neons) {
+      if (!isEasyBook && neons) {
         await tx.neon.deleteMany({ where: { orderTaskId: orderId } });
         if (neons.length) {
           await tx.neon.createMany({
@@ -2118,7 +2311,7 @@ export class TasksService {
         }
       }
 
-      if (lightings) {
+      if (!isEasyBook && lightings) {
         await tx.lighting.deleteMany({ where: { orderTaskId: orderId } });
         if (lightings.length) {
           await tx.lighting.createMany({
@@ -2132,6 +2325,12 @@ export class TasksService {
         }
       }
 
+      if (isEasyBook) {
+        await tx.orderCost.deleteMany({ where: { orderId } });
+        const { task: _task, ...freshPayload } = updated as any;
+        return freshPayload;
+      }
+
       // перечитать с вложениями
       const fresh = await tx.taskOrder.findUnique({
         where: { id: orderId },
@@ -2139,7 +2338,22 @@ export class TasksService {
           neons: true,
           lightings: true,
           package: { include: { items: true } },
-          task: { select: { boardId: true, dealId: true } },
+          task: {
+            select: {
+              boardId: true,
+              dealId: true,
+              board: {
+                select: {
+                  id: true,
+                  project: {
+                    select: {
+                      code: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       });
       if (!fresh) {
@@ -2415,13 +2629,39 @@ export class TasksService {
         neons: true,
         lightings: true,
         package: { include: { items: true } },
-        task: { select: { boardId: true, dealId: true } },
+        task: {
+          select: {
+            boardId: true,
+            dealId: true,
+            board: {
+              select: {
+                id: true,
+                project: {
+                  select: {
+                    code: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
     if (!orders.length) return;
 
+    const easyBookOrderIds = orders
+      .filter((order) => order.task?.board?.project?.code === 'easybook')
+      .map((order) => order.id);
+    if (easyBookOrderIds.length) {
+      await db.orderCost.deleteMany({
+        where: { orderId: { in: easyBookOrderIds } },
+      });
+    }
+
     const supplies = await this.getOrderCostSupplies(db);
-    for (const order of orders) {
+    for (const order of orders.filter(
+      (item) => item.task?.board?.project?.code !== 'easybook',
+    )) {
       const payload = this.buildOrderCostPayload(order, supplies);
       await db.orderCost.upsert({
         where: { orderId: order.id },

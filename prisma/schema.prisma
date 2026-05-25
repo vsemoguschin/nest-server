@@ -36,6 +36,7 @@ model Project {
   updatedAt DateTime @updatedAt // Дата обновления
 
   groups Group[] // Группы пользователей внутри проекта
+  boards Board[] // Канбан-доски, привязанные к проекту
 
   operationPositions    OperationPosition[]
   counterPartiesIncome  CounterParty[]      @relation("CounterPartyIncomeProject")
@@ -1022,6 +1023,9 @@ model Board {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
+  projectId Int?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
   columns Column[]
   tasks   KanbanTask[]
   tags    KanbanTaskTags[]
@@ -1031,6 +1035,7 @@ model Board {
   // При необходимости уникальности названия в рамках рабочего пространства:
   // @@unique([workspaceId, title])
 
+  @@index([projectId])
   @@index([deletedAt])
 }
 
@@ -1216,6 +1221,9 @@ model TaskOrder {
   id           Int     @id @default(autoincrement())
   title        String  @default("") // Название заказа
   deadline     String  @default("") // Дедлайн формат 2025-08-24
+  cloudLink    String? // Ссылка на облако для фотокниги
+  size         String? // Размер фотокниги
+  spreadsCount Int? // Количество разворотов
   material     String  @default("") // Материал подложки
   boardWidth   Int     @default(0) // Ширина подложки
   boardHeight  Int     @default(0) // Высота подложки

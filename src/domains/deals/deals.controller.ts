@@ -48,7 +48,7 @@ export class DealsController {
     description:
       'Endpoint: POST /deals/upload-link. Создает публичную ссылку на загрузку фото через file-platform.',
   })
-  @Roles('ADMIN', 'G', 'KD', 'MOP', 'ROP', 'DO')
+  @Roles('ADMIN', 'G', 'KD', 'MOP', 'ROP', 'DO', 'MOV', 'ROV')
   async createUploadLink(@CurrentUser() user: UserDto) {
     return this.dealsService.createUploadLinkForPage(user);
   }
@@ -109,6 +109,7 @@ export class DealsController {
     @Query('haveReviews') haveReviews?: string[] | string,
     @Query('isRegular') isRegular?: string[] | string,
     @Query('boxsize') boxsize?: string[] | string,
+    @Query('priceMismatch') priceMismatch?: string | string[],
   ): Promise<any> {
     if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
       throw new BadRequestException(
@@ -155,6 +156,11 @@ export class DealsController {
       haveReviews: toArray(haveReviews),
       isRegular: toArray(isRegular),
       boxsize: toArray(boxsize),
+      priceMismatch:
+        (Array.isArray(priceMismatch) ? priceMismatch[0] : priceMismatch) ===
+        'true'
+          ? true
+          : undefined,
     };
 
     return this.dealsService.getList(

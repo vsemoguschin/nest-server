@@ -46,6 +46,13 @@ export class BoardsService {
       select: {
         id: true,
         title: true,
+        project: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
         columns: {
           where: columnsWhere,
           orderBy: { position: 'asc' },
@@ -67,6 +74,7 @@ export class BoardsService {
     return {
       id: board.id,
       title: board.title,
+      project: board.project,
       columns: board.columns.map((column) => buildKanbanColumn(column)),
     };
   }
@@ -129,6 +137,7 @@ export class BoardsService {
       data: {
         title: dto.title,
         description: dto.description ?? null,
+        projectId: dto.projectId ?? null,
         users: {
           connect: { id: userId },
         },
@@ -199,6 +208,13 @@ export class BoardsService {
         title: true,
         description: true,
         createdAt: true,
+        project: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
         users: true,
         columns: true,
         _count: {
@@ -221,6 +237,13 @@ export class BoardsService {
       },
       include: {
         users: { select: { id: true, email: true, fullName: true } },
+        project: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
         columns: {
           where: { deletedAt: null },
           orderBy: { position: 'asc' },

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -31,6 +32,8 @@ type VariantCandidate = {
 
 @Injectable()
 export class VkAdsTestVideoAssetsService {
+  private readonly logger = new Logger(VkAdsTestVideoAssetsService.name);
+
   constructor(
     private readonly repository: VkAdsTestRepository,
     private readonly client: VkAdsTestClient,
@@ -59,6 +62,24 @@ export class VkAdsTestVideoAssetsService {
       'VK Ads video upload response does not contain numeric id',
     );
     const normalized = this.normalizeUploadedContent(rawContent);
+    const width = normalized.width ?? dto.width ?? null;
+    const height = normalized.height ?? dto.height ?? null;
+    const aspectRatio = this.formatAspectRatio(width, height);
+
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-video-assets',
+        event: 'videoAsset.persist.before',
+        testId: test.id,
+        accountIntegrationId: test.accountIntegrationId,
+        vkContentId,
+        durationSec: normalized.durationSec,
+        width,
+        height,
+        aspectRatio,
+        source: 'vk_video_upload',
+      }),
+    );
 
     const asset = await this.repository.createVideoAsset({
       test: { connect: { id: test.id } },
@@ -73,6 +94,27 @@ export class VkAdsTestVideoAssetsService {
       durationSec: normalized.durationSec,
       status: normalized.status,
     });
+
+    this.logger.log(
+      JSON.stringify({
+        scope: 'vk-ads-test-video-assets',
+        event: 'vk_video_upload.completed',
+        testId: test.id,
+        accountIntegrationId: test.accountIntegrationId,
+        videoAssetId: asset.id,
+        vkContentId: asset.vkContentId,
+        originalFilename: file.originalname,
+        mimeType: file.mimetype ?? null,
+        fileSize: file.size ?? null,
+        width: asset.width ?? width,
+        height: asset.height ?? height,
+        durationSec: asset.durationSec,
+        aspectRatio: this.formatAspectRatio(asset.width ?? width, asset.height ?? height),
+        vkResponseKeys: this.collectObjectKeys(rawContent),
+        vkVariantsKeys: this.collectObjectKeys(rawContent.variants),
+        createdAt: asset.createdAt.toISOString(),
+      }),
+    );
 
     await this.repository.logAction({
       test: { connect: { id: test.id } },
@@ -368,5 +410,21 @@ export class VkAdsTestVideoAssetsService {
     }
 
     return value as Record<string, unknown>;
+  }
+
+  private collectObjectKeys(value: unknown): string[] {
+    const record = this.asRecord(value);
+    return record ? Object.keys(record) : [];
+  }
+
+  private formatAspectRatio(
+    width: number | null,
+    height: number | null,
+  ): string | null {
+    if (!width || !height) {
+      return null;
+    }
+
+    return `${width}:${height}`;
   }
 }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   VkAdsCreateIdResponse,
+  VkAdsFieldError,
   VkAdsTestClientError,
   VkAdsTestClient,
   VkAdsUrl,
@@ -29,12 +30,42 @@ export type VkAdsTestBannerTemplate = {
 
 type VideoSlotProfile = 'portrait_9_16' | 'portrait_4_5';
 
+export type VkAdsCitiesBannerDiagnostics = {
+  testId: number | null;
+  accountIntegrationId: number | null;
+  cityIndex: number | null;
+  cityId: number | null;
+  cityName: string | null;
+  packageId: number | null;
+  templateBannerId: number | null;
+  templateContentKeys: string[];
+  templateTextblockKeys: string[];
+  templateUrlKeys: string[];
+  templatePatternIds: Array<number | string>;
+  templateVideoSlots: string[];
+  templateImageSlots: string[];
+  candidateVideoSlots: string[];
+  candidateSlotsWithExistingTemplateContent: string[];
+  resolvedSlot: string | null;
+  finalContentVideoId: number | null;
+  templateVideoId: number | null;
+  selectedVideoContentId: number | null;
+  contentKeys: string[];
+  urlKeys: string[];
+  textblockKeys: string[];
+  hasVideoContent: boolean;
+  videoContentKeys: string[];
+  payloadPatternCompatibilityHint: string | null;
+  reason: string | null;
+};
+
 export class VkAdsTestBuildError extends Error {
   readonly stage: 'createAdGroup' | 'createBanner';
   readonly status?: number;
   readonly vkErrorBody?: unknown;
   readonly vkErrorCode?: string;
   readonly vkErrorMessage?: string;
+  readonly fieldErrors?: Record<string, VkAdsFieldError>;
   readonly adGroupPayload?: Record<string, unknown>;
   readonly bannerPayload?: Record<string, unknown>;
   readonly templateAdGroupId?: number;
@@ -47,6 +78,7 @@ export class VkAdsTestBuildError extends Error {
     vkErrorBody?: unknown;
     vkErrorCode?: string;
     vkErrorMessage?: string;
+    fieldErrors?: Record<string, VkAdsFieldError>;
     adGroupPayload?: Record<string, unknown>;
     bannerPayload?: Record<string, unknown>;
     templateAdGroupId?: number;
@@ -59,6 +91,7 @@ export class VkAdsTestBuildError extends Error {
     this.vkErrorBody = params.vkErrorBody;
     this.vkErrorCode = params.vkErrorCode;
     this.vkErrorMessage = params.vkErrorMessage;
+    this.fieldErrors = params.fieldErrors;
     this.adGroupPayload = params.adGroupPayload;
     this.bannerPayload = params.bannerPayload;
     this.templateAdGroupId = params.templateAdGroupId;
@@ -462,6 +495,66 @@ export class VkAdsTestBuilderService {
   async prepareBannerTemplate(integrationId: number, packageId?: number) {
     const resolvedPackageId = packageId ?? DEFAULT_PACKAGE_ID;
     return this.getCachedBannerTemplate(integrationId, resolvedPackageId);
+  }
+
+  describeCitiesBannerDiagnostics(params: {
+    template: VkAdsTestBannerTemplate;
+    creative?: VkAdsTestBuildOneVariantInput['creative'];
+    testId?: number;
+    accountIntegrationId?: number;
+    cityIndex?: number;
+    cityId?: number;
+    cityName?: string;
+    packageId?: number;
+  }): VkAdsCitiesBannerDiagnostics {
+    const templateBanner = this.requireRecord(
+      params.template.banner,
+      'VK Ads banner template must be an object',
+    );
+    const templateContent = this.requireRecord(
+      templateBanner.content,
+      'VK Ads banner template is missing content',
+    );
+    const templateTextblocks = this.requireRecord(
+      templateBanner.textblocks,
+      'VK Ads banner template is missing textblocks',
+    );
+    const templateUrls = this.asRecord(templateBanner.urls);
+    const slotDiagnostics = this.resolveVideoSlotDiagnostics(
+      templateContent,
+      params.creative,
+    );
+
+    return {
+      testId: params.testId ?? null,
+      accountIntegrationId: params.accountIntegrationId ?? null,
+      cityIndex: params.cityIndex ?? null,
+      cityId: params.cityId ?? null,
+      cityName: params.cityName ?? null,
+      packageId: params.packageId ?? null,
+      templateBannerId: params.template.bannerId ?? null,
+      templateContentKeys: Object.keys(templateContent),
+      templateTextblockKeys: Object.keys(templateTextblocks),
+      templateUrlKeys: templateUrls ? Object.keys(templateUrls) : [],
+      templatePatternIds: this.collectTemplatePatternIds(templateContent),
+      templateVideoSlots: slotDiagnostics.candidateVideoSlots,
+      templateImageSlots: this.collectTemplateImageSlots(templateContent),
+      candidateVideoSlots: slotDiagnostics.candidateVideoSlots,
+      candidateSlotsWithExistingTemplateContent:
+        slotDiagnostics.candidateSlotsWithExistingTemplateContent,
+      resolvedSlot: slotDiagnostics.resolvedSlot,
+      finalContentVideoId: slotDiagnostics.finalContentVideoId,
+      templateVideoId: slotDiagnostics.templateVideoId,
+      selectedVideoContentId: slotDiagnostics.selectedVideoContentId,
+      contentKeys: slotDiagnostics.contentKeys,
+      urlKeys: templateUrls ? Object.keys(templateUrls) : [],
+      textblockKeys: Object.keys(templateTextblocks),
+      hasVideoContent: slotDiagnostics.hasVideoContent,
+      videoContentKeys: slotDiagnostics.videoContentKeys,
+      payloadPatternCompatibilityHint:
+        slotDiagnostics.payloadPatternCompatibilityHint,
+      reason: slotDiagnostics.reason,
+    };
   }
 
   async createBannerFromResolvedTemplate(params: {
@@ -1223,6 +1316,7 @@ export class VkAdsTestBuilderService {
         vkErrorBody: error.rawError,
         vkErrorCode: error.vkErrorCode,
         vkErrorMessage: error.vkErrorMessage,
+        fieldErrors: error.fieldErrors,
         adGroupPayload: context.adGroupPayload,
         bannerPayload: context.bannerPayload,
         templateAdGroupId: context.templateAdGroupId,
@@ -1335,6 +1429,163 @@ export class VkAdsTestBuilderService {
     return (
       key === 'video_portrait_4_5_30s' || key === 'video_portrait_4_5_180s'
     );
+  }
+
+  private resolveVideoSlotDiagnostics(
+    templateContent: Record<string, unknown>,
+    creative: VkAdsTestBuildOneVariantInput['creative'] | undefined,
+  ): {
+    candidateVideoSlots: string[];
+    candidateSlotsWithExistingTemplateContent: string[];
+    resolvedSlot: string | null;
+    finalContentVideoId: number | null;
+    templateVideoId: number | null;
+    selectedVideoContentId: number | null;
+    contentKeys: string[];
+    hasVideoContent: boolean;
+    videoContentKeys: string[];
+    payloadPatternCompatibilityHint: string | null;
+    reason: string | null;
+  } {
+    const candidateVideoSlots = Object.entries(templateContent)
+      .filter(([, value]) => {
+        const record = this.asRecord(value);
+        const type = typeof record?.type === 'string' ? record.type : undefined;
+        return type === 'video' || false;
+      })
+      .map(([key]) => key);
+
+    const fallbackVideoSlots = Object.keys(templateContent).filter((key) =>
+      key.startsWith('video_'),
+    );
+    const mergedCandidateVideoSlots = Array.from(
+      new Set([...candidateVideoSlots, ...fallbackVideoSlots]),
+    );
+    const candidateSlotsWithExistingTemplateContent =
+      mergedCandidateVideoSlots.filter((key) => {
+        const record = this.asRecord(templateContent[key]);
+        return this.asNumber(record?.id) !== null;
+      });
+    const selectedVideoContentId = this.asNumber(
+      creative?.videoAssetVkContentId,
+    );
+    const width = this.asNumber(creative?.videoAssetWidth);
+    const height = this.asNumber(creative?.videoAssetHeight);
+
+    let videoSlotProfile: VideoSlotProfile | null = null;
+    if (
+      selectedVideoContentId !== null &&
+      width !== null &&
+      height !== null
+    ) {
+      try {
+        videoSlotProfile = this.resolveVideoSlotProfile(width, height);
+      } catch {
+        videoSlotProfile = null;
+      }
+    }
+
+    const compatibleSlots = videoSlotProfile
+      ? candidateSlotsWithExistingTemplateContent.filter((key) =>
+          this.isCompatibleVideoContentKey(key, videoSlotProfile),
+        )
+      : [];
+    const resolvedSlot = compatibleSlots[0] ?? null;
+    const templateVideoId = resolvedSlot
+      ? this.asNumber(this.asRecord(templateContent[resolvedSlot])?.id)
+      : null;
+    const finalContentVideoId =
+      resolvedSlot !== null && selectedVideoContentId !== null
+        ? selectedVideoContentId
+        : null;
+    const contentKeys = [
+      ...Object.keys(templateContent).filter((key) => {
+        const record = this.asRecord(templateContent[key]);
+        const type = typeof record?.type === 'string' ? record.type : undefined;
+        return type !== 'video' && !key.startsWith('video_');
+      }),
+      ...compatibleSlots,
+    ];
+    const hasVideoContent = compatibleSlots.length > 0;
+    const reason =
+      resolvedSlot !== null
+        ? null
+        : mergedCandidateVideoSlots.length === 0
+          ? 'no_video_slots_in_template'
+          : selectedVideoContentId === null
+            ? 'selected_video_missing_vk_content_id'
+            : videoSlotProfile === null
+              ? 'selected_video_not_compatible_with_slot'
+              : 'template_has_video_but_no_matching_role';
+
+    return {
+      candidateVideoSlots: mergedCandidateVideoSlots,
+      candidateSlotsWithExistingTemplateContent,
+      resolvedSlot,
+      finalContentVideoId,
+      templateVideoId,
+      selectedVideoContentId,
+      contentKeys,
+      hasVideoContent,
+      videoContentKeys: compatibleSlots,
+      payloadPatternCompatibilityHint:
+        resolvedSlot !== null ? 'compatible' : reason,
+      reason,
+    };
+  }
+
+  private collectTemplateImageSlots(
+    templateContent: Record<string, unknown>,
+  ): string[] {
+    return Object.entries(templateContent)
+      .filter(([key, value]) => {
+        const record = this.asRecord(value);
+        const type = typeof record?.type === 'string' ? record.type : undefined;
+        return type === 'image' || key.startsWith('image_');
+      })
+      .map(([key]) => key);
+  }
+
+  private collectTemplatePatternIds(
+    templateContent: Record<string, unknown>,
+  ): Array<number | string> {
+    const patternIds: Array<number | string> = [];
+
+    for (const value of Object.values(templateContent)) {
+      const record = this.asRecord(value);
+      if (!record) {
+        continue;
+      }
+
+      for (const key of ['pattern_id', 'patternId']) {
+        const patternId = this.asNumber(record[key]);
+        if (patternId !== null) {
+          patternIds.push(patternId);
+        }
+      }
+
+      for (const key of ['pattern_ids', 'patternIds', 'patterns']) {
+        const nested = record[key];
+        if (!Array.isArray(nested)) {
+          continue;
+        }
+
+        for (const item of nested) {
+          const nestedRecord = this.asRecord(item);
+          const nestedId = this.asNumber(nestedRecord?.id ?? item);
+          if (nestedId !== null) {
+            patternIds.push(nestedId);
+            continue;
+          }
+
+          if (typeof item === 'string' || typeof item === 'number') {
+            patternIds.push(item);
+          }
+        }
+      }
+    }
+
+    return Array.from(new Set(patternIds));
   }
 
   private buildBannerTextblocksFromTemplate(

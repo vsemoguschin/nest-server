@@ -34,6 +34,13 @@ const WIRE_TYPES = ['Акустический', 'Белый', 'Черный', '�
 export class CreateTaskOrderDto {
   @IsOptional() @IsString() @MaxLength(255) title?: string;
   @IsOptional() @IsString() deadline?: string; // YYYY-MM-DD
+  @IsOptional() @IsString() cloudLink?: string;
+  @IsOptional() @IsString() size?: string;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  spreadsCount?: number;
   @IsOptional() @IsString() material?: string;
   @IsOptional() @IsInt() @Min(0) boardWidth?: number;
   @IsOptional() @IsInt() @Min(0) boardHeight?: number;

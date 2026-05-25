@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateBoardDto {
   @ApiProperty({ example: 'Новая доска' })
@@ -12,4 +13,11 @@ export class CreateBoardDto {
   @IsString()
   @MaxLength(2000)
   description?: string;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  projectId?: number | null;
 }

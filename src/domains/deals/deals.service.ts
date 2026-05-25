@@ -77,6 +77,7 @@ interface DealListFilters {
   haveReviews?: string[];
   isRegular?: string[];
   boxsize?: string[];
+  priceMismatch?: boolean;
 }
 
 interface BuildDealsResponseOptions extends DealMapOptions {
@@ -463,6 +464,17 @@ export class DealsService {
       postFilters.push((deal) => allowed.has(this.getDaysGoneCategory(deal)));
     }
 
+    if (filters.priceMismatch === true) {
+      postFilters.push((deal) => {
+        const dealPrice = deal.price ?? 0;
+        const dealersSum = (deal.dealers ?? []).reduce(
+          (sum: number, d: Record<string, any>) => sum + (d.price ?? 0),
+          0,
+        );
+        return dealPrice !== dealersSum;
+      });
+    }
+
     return { where, postFilters };
   }
 
@@ -531,6 +543,14 @@ export class DealsService {
       pages: deal.pages,
       pageType: deal.pageType,
       hasDelivered,
+      priceMismatch:
+        price !==
+        (deal.dealers ?? []).reduce(
+          (sum: number, d: Record<string, any>) => sum + (d.price ?? 0),
+          0,
+        )
+          ? 'true'
+          : 'false',
     };
 
     if (costTotal !== undefined) {
